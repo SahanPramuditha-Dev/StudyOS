@@ -1,5 +1,9 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+/* Tailwind v4 Dark Mode Configuration */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-primary-50: #f0f9ff;
   --color-primary-100: #e0f2fe;
@@ -29,6 +33,11 @@
 :root {
   --primary: #0ea5e9;
   --accent: #8b5cf6;
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
 }
 
 body {

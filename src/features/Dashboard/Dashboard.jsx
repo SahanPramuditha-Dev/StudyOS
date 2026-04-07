@@ -96,7 +96,7 @@ const Dashboard = ({ setActiveTab }) => {
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
       {/* Hero Section */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 to-accent-600 p-8 text-white shadow-2xl shadow-primary-500/20">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-8 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="space-y-4 text-center md:text-left">
             <h2 className="text-3xl md:text-4xl font-bold">Ready for a breakthrough?</h2>

@@ -30,6 +30,7 @@ import toast from 'react-hot-toast';
 const App = () => {
   const { user, logout, loading } = useAuth();
   const { theme, toggleTheme } = useTheme();
+
   const { 
     notifications, 
     markNotificationAsRead, 
