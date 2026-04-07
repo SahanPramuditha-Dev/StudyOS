@@ -15,8 +15,11 @@ import {
 import { motion } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { useTheme } from '../../context/ThemeContext';
+import { Sun, Moon } from 'lucide-react';
 
 const Dashboard = ({ setActiveTab }) => {
+  const { theme, toggleTheme } = useTheme();
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
@@ -110,10 +113,11 @@ const Dashboard = ({ setActiveTab }) => {
                 <ArrowUpRight size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </button>
               <button 
-                onClick={() => setActiveTab('courses')}
-                className="px-6 py-2.5 rounded-xl bg-primary-500/30 backdrop-blur-md border border-white/20 text-white font-bold hover:bg-primary-500/40 transition-colors"
+                onClick={toggleTheme}
+                className="px-6 py-2.5 rounded-xl bg-primary-500/30 backdrop-blur-md border border-white/20 text-white font-bold hover:bg-primary-500/40 transition-colors flex items-center gap-2"
               >
-                Explore Courses
+                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
               </button>
             </div>
           </div>

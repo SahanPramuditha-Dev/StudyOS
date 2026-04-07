@@ -11,7 +11,7 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { Clock, BookOpen } from 'lucide-react';
+import { Clock, BookOpen, Layout } from 'lucide-react';
 
 export const WatchChart = ({ data }) => (
   <div className="card h-full flex flex-col">
@@ -55,14 +55,14 @@ export const WatchChart = ({ data }) => (
   </div>
 );
 
-export const CourseChart = ({ data }) => {
+const BasePieChart = ({ data, title, icon: Icon, label }) => {
   const total = data.reduce((a, b) => a + b.value, 0);
   
   return (
     <div className="card h-full flex flex-col">
       <h3 className="text-lg font-bold mb-8 flex items-center gap-2 dark:text-white">
-        <BookOpen className="text-accent-500" size={20} />
-        Course Distribution
+        <Icon className="text-primary-500" size={20} />
+        {title}
       </h3>
       <div className="h-64 w-full relative">
         <ResponsiveContainer width="100%" height="100%">
@@ -85,7 +85,7 @@ export const CourseChart = ({ data }) => {
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-3xl font-black text-slate-800 dark:text-white">{total}</span>
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Streams</span>
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</span>
         </div>
       </div>
       <div className="space-y-3 mt-auto">
@@ -102,3 +102,11 @@ export const CourseChart = ({ data }) => {
     </div>
   );
 };
+
+export const CourseChart = ({ data }) => (
+  <BasePieChart data={data} title="Course Distribution" icon={BookOpen} label="Streams" />
+);
+
+export const ProjectChart = ({ data }) => (
+  <BasePieChart data={data} title="Project Status" icon={Layout} label="Builds" />
+);

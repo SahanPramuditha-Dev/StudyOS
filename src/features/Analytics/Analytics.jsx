@@ -11,7 +11,7 @@ import { format, subDays, isSameDay, startOfDay } from 'date-fns';
 
 // Sub-components
 import StatsCards from './components/StatsCards';
-import { WatchChart, CourseChart } from './components/LearningCharts';
+import { WatchChart, CourseChart, ProjectChart } from './components/LearningCharts';
 import Heatmap from './components/Heatmap';
 
 const Analytics = () => {
@@ -93,6 +93,7 @@ const Analytics = () => {
     return {
       watchChartData: last7Days,
       courseChartData: courseStats,
+      projectChartData: projectStats,
       heatmapData: last28Days,
       kpis: {
         totalWatchTime,
@@ -135,29 +136,14 @@ const Analytics = () => {
         <div className="lg:col-span-2">
           <WatchChart data={analytics.watchChartData} />
         </div>
-        <div>
+        <div className="space-y-8">
           <CourseChart data={analytics.courseChartData} />
+          <ProjectChart data={analytics.projectChartData} />
         </div>
       </div>
 
       {/* Heatmap Layer */}
       <Heatmap data={analytics.heatmapData} />
-
-      {/* Future Scaling Placeholder */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 opacity-50">
-        <div className="card border-dashed bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center py-12">
-          <div className="text-center space-y-2">
-            <Layout size={32} className="mx-auto text-slate-300" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Weak Area Detection (Coming Soon)</p>
-          </div>
-        </div>
-        <div className="card border-dashed bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center py-12">
-          <div className="text-center space-y-2">
-            <TrendingUp size={32} className="mx-auto text-slate-300" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Predictive Performance (Coming Soon)</p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
