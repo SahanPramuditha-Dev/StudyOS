@@ -5,7 +5,6 @@ import {
   Youtube, 
   FileText, 
   FolderOpen, 
-  Library, 
   Github as GithubIcon, 
   Layout as Kanban, 
   BarChart, 
@@ -14,25 +13,55 @@ import {
   Settings,
   Menu,
   X,
-  Plus
+  Plus,
+  ShieldAlert,
+  Lock,
+  Target,
+  CalendarClock,
+  Inbox
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { NavLink } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => {
   const [isOpen, setIsOpen] = useState(true);
+  const { profile, isAdmin } = useAuth();
+
+  const toPath = (id) => {
+    if (id === 'dashboard') return '/dashboard';
+    if (id === 'admin') return '/admin';
+    if (id === 'legal') return '/legal';
+    if (id === 'settings') return '/settings';
+    return `/${id}`;
+  };
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'courses', icon: BookOpen, label: 'Courses' },
-    { id: 'videos', icon: Youtube, label: 'Video Tracker' },
-    { id: 'notes', icon: FileText, label: 'Notes' },
-    { id: 'resources', icon: FolderOpen, label: 'Resources' },
-    { id: 'papers', icon: Library, label: 'Papers' },
-    { id: 'projects', icon: GithubIcon, label: 'Projects' },
-    { id: 'workspace', icon: Kanban, label: 'Workspace' },
-    { id: 'analytics', icon: BarChart, label: 'Analytics' },
-    { id: 'reminders', icon: Bell, label: 'Reminders' },
+    { id: 'courses', icon: BookOpen, label: 'Courses', permission: 'courses' },
+    { id: 'videos', icon: Youtube, label: 'Video Tracker', permission: 'videos' },
+    { id: 'notes', icon: FileText, label: 'Notes', permission: 'notes' },
+    { id: 'resources', icon: FolderOpen, label: 'Resources', permission: 'resources' },
+    { id: 'projects', icon: GithubIcon, label: 'Projects', permission: 'projects' },
+    { id: 'assignments', icon: FileText, label: 'Assignments', permission: 'assignments' },
+    { id: 'workspace', icon: Kanban, label: 'Workspace', permission: 'workspace' },
+    { id: 'analytics', icon: BarChart, label: 'Analytics', permission: 'analytics' },
+    { id: 'goals', icon: Target, label: 'Goals' },
+    { id: 'planner', icon: CalendarClock, label: 'Planner' },
+    { id: 'review', icon: Inbox, label: 'Review Hub' },
+    { id: 'reminders', icon: Bell, label: 'Calendar', permission: 'reminders' },
   ];
+
+  // Filter menu items based on permissions
+  const filteredMenuItems = menuItems.filter(item => {
+    if (isAdmin) return true;
+    if (!profile?.permissions) return true;
+    if (!item.permission) return true;
+    return profile.permissions[item.permission] !== false;
+  });
+
+  const adminItem = isAdmin ? { id: 'admin', icon: ShieldAlert, label: 'Admin Panel' } : null;
+  const legalItem = { id: 'legal', icon: Lock, label: 'Legal' };
 
   const sidebarContent = (
     <div className="flex flex-col h-full dark:bg-slate-900 transition-colors duration-300">
@@ -83,9 +112,10 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
       </div>
 
       <div className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar">
-        {menuItems.map((item) => (
-          <button
+        {filteredMenuItems.map((item) => (
+          <NavLink
             key={item.id}
+            to={toPath(item.id)}
             onClick={() => {
               setActiveTab(item.id);
               if (isMobileOpen) setIsMobileOpen(false);
@@ -104,12 +134,52 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
                 className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-500 dark:bg-primary-400"
               />
             )}
-          </button>
+          </NavLink>
         ))}
+
+        {adminItem && (
+          <div className="pt-4 mt-4 border-t border-slate-50 dark:border-slate-800">
+            <NavLink
+              key={adminItem.id}
+              to={toPath(adminItem.id)}
+              onClick={() => {
+                setActiveTab(adminItem.id);
+                if (isMobileOpen) setIsMobileOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                activeTab === adminItem.id 
+                  ? 'bg-slate-900 text-white shadow-lg' 
+                  : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
+              }`}
+            >
+              <adminItem.icon size={22} className={activeTab === adminItem.id ? 'text-white' : 'text-slate-400'} />
+              {(isOpen || isMobileOpen) && <span className="font-bold">Admin Panel</span>}
+            </NavLink>
+          </div>
+        )}
+
+        <div className="pt-2 mt-2 border-t border-slate-50 dark:border-slate-800">
+          <NavLink
+            to={toPath(legalItem.id)}
+            onClick={() => {
+              setActiveTab(legalItem.id);
+              if (isMobileOpen) setIsMobileOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+              activeTab === legalItem.id 
+                ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100' 
+                : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
+            }`}
+          >
+            <legalItem.icon size={22} className={activeTab === legalItem.id ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'} />
+            {(isOpen || isMobileOpen) && <span className="font-medium">{legalItem.label}</span>}
+          </NavLink>
+        </div>
       </div>
 
       <div className="p-3 border-t border-slate-50 dark:border-slate-800">
-        <button
+        <NavLink
+          to={toPath('settings')}
           onClick={() => {
             setActiveTab('settings');
             if (isMobileOpen) setIsMobileOpen(false);
@@ -122,7 +192,7 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
         >
           <Settings size={22} className="text-slate-400 dark:text-slate-500" />
           {(isOpen || isMobileOpen) && <span className="font-medium">Settings</span>}
-        </button>
+        </NavLink>
       </div>
     </div>
   );

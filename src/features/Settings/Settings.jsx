@@ -37,19 +37,30 @@ import {
   Type,
   ToggleLeft as ToggleIcon,
   Globe,
-  Database
+  Database,
+  CreditCard,
+  Crown,
+  Zap
 } from 'lucide-react';
 import { StorageService, STORAGE_KEYS } from '../../services/storage';
+import { computeUsageMetrics } from '../../services/usageMetrics';
 import { useStorage } from '../../hooks/useStorage';
+import { auth, functions } from '../../services/firebase';
+import { httpsCallable } from 'firebase/functions';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
+import GoogleCalendarSettings from '../../components/GoogleCalendarSettings';
 
 const Settings = () => {
-  const { user, logout, updateUserProfile, uploadProfileImage, resetPassword, deleteAccount } = useAuth();
+  const { user, profile, logout, updateUserProfile, uploadProfileImage, resetPassword, deleteAccount } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const proPriceId = import.meta.env.VITE_STRIPE_PRO_PRICE_ID;
   
   const [isUploading, setIsUploading] = useState(false);
+  const [activeSection, setActiveSection] = useState('profile');
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
 
   // Confirm Modal State
   const [confirmConfig, setConfirmConfig] = useState({
@@ -60,6 +71,28 @@ const Settings = () => {
     confirmText: 'Confirm',
     type: 'danger'
   });
+
+  const handleUpgrade = async (priceId) => {
+    if (!priceId) {
+      toast.error('Pro plan is not configured yet.');
+      return;
+    }
+    try {
+      setIsUpgrading(true);
+      const createSession = httpsCallable(functions, 'createCheckoutSession');
+      const { data } = await createSession({ 
+        priceId, 
+        origin: window.location.origin 
+      });
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      toast.error('Upgrade failed: ' + error.message);
+    } finally {
+      setIsUpgrading(false);
+    }
+  };
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -136,42 +169,176 @@ const Settings = () => {
     defaultDifficulty: 'Intermediate'
   });
 
-  const [notifSettings, setNotificationSettings] = useStorage(STORAGE_KEYS.NOTIF_SETTINGS, {
+  const [rawNotifSettings, setNotificationSettings] = useStorage(STORAGE_KEYS.NOTIF_SETTINGS, {
     enabled: true,
     reminders: true,
     deadlines: true,
     streaks: true,
-    method: 'browser'
+    method: 'browser',
+    silentHours: { enabled: false, start: '22:00', end: '07:00' },
+    emailNotifications: { roleChanges: true, reminders: true }
   });
+  const notifSettings = useMemo(() => {
+    const defaults = {
+      enabled: true,
+      reminders: true,
+      deadlines: true,
+      streaks: true,
+      method: 'browser',
+      channels: {
+        reminder: { web: true, email: true },
+        deadline: { web: true, email: false },
+        streak: { web: true, email: false },
+        roleChanges: { web: true, email: true }
+      },
+      silentHours: { enabled: false, start: '22:00', end: '07:00' },
+      emailNotifications: { roleChanges: true, reminders: true }
+    };
+    const candidate = (rawNotifSettings && typeof rawNotifSettings === 'object') ? rawNotifSettings : {};
+    return {
+      ...defaults,
+      ...candidate,
+      silentHours: {
+        ...defaults.silentHours,
+        ...(candidate.silentHours || {})
+      },
+      emailNotifications: {
+        ...defaults.emailNotifications,
+        ...(candidate.emailNotifications || {})
+      },
+      channels: {
+        ...defaults.channels,
+        ...(candidate.channels || {})
+      }
+    };
+  }, [rawNotifSettings]);
+
+  React.useEffect(() => {
+    const shouldRepair = JSON.stringify(rawNotifSettings) !== JSON.stringify(notifSettings);
+    if (shouldRepair) {
+      setNotificationSettings(notifSettings);
+    }
+  }, [rawNotifSettings, notifSettings, setNotificationSettings]);
 
   const [privacySettings, setPrivacySettings] = useStorage(STORAGE_KEYS.PRIVACY, {
     isPublic: false,
     activityVisible: true,
-    analyticsConsent: true
+    analyticsConsent: true,
+    dataRetentionDays: 365,
+    autoDeleteCompletedReminders: false,
+    autoDeleteImportedBackups: false
   });
 
   // Real data for analytics snapshot
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
+  const [resources] = useStorage(STORAGE_KEYS.RESOURCES, []);
+  const [papers] = useStorage(STORAGE_KEYS.PAPERS, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
+  const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0 });
+  const [achievements, setAchievements] = useStorage(STORAGE_KEYS.ACHIEVEMENTS, []);
 
   const analytics = useMemo(() => {
     const totalSeconds = videos.reduce((acc, v) => acc + (v.lastPosition || 0), 0);
+    const usage = profile?.usage || {};
+    const totalWatchMinutes = usage.videoCount ? Math.round(totalSeconds / 60) : Math.round((usage.totalWatchSeconds || totalSeconds) / 60);
     return {
-      studyTime: (totalSeconds / 3600).toFixed(1),
-      active: courses.filter(c => c.status === 'Active').length,
+      studyTime: (totalWatchMinutes / 60).toFixed(1),
+      active: usage.courseCount ?? courses.filter(c => c.status === 'Active').length,
       completed: courses.filter(c => c.status === 'Completed').length,
       notes: notes.length,
       streak: streak.current,
       productivity: courses.length > 0 
         ? Math.round(courses.reduce((acc, c) => acc + (c.progress || 0), 0) / courses.length) 
-        : 0
+        : 0,
+      storageUsedMB: Number(usage.storageUsedMB || 0),
+      fileCount: Number(usage.fileCount || 0)
     };
-  }, [courses, notes, videos, streak]);
+  }, [courses, notes, videos, streak, profile]);
 
-  const [activeSection, setActiveSection] = useState('profile');
+  const usageMetrics = useMemo(
+    () => computeUsageMetrics({
+      resources,
+      notes,
+      papers,
+      cloudUsage: profile?.usage
+    }),
+    [resources, notes, papers, profile]
+  );
+
+  const computedAchievements = useMemo(() => {
+    const totalTasks = projects.reduce((acc, project) => acc + Object.values(project.board || {}).flat().length, 0);
+    const source = [
+      {
+        id: 'streak7',
+        title: '7-Day Streak',
+        desc: 'Study for 7 consecutive days',
+        value: analytics.streak,
+        target: 7,
+        icon: Flame,
+        color: 'text-red-500'
+      },
+      {
+        id: 'resourceMaster',
+        title: 'Resource Master',
+        desc: 'Manage 50 learning artifacts',
+        value: analytics.fileCount,
+        target: 50,
+        icon: Download,
+        color: 'text-blue-500'
+      },
+      {
+        id: 'noteTaker',
+        title: 'Note Taker',
+        desc: 'Create 100 deep-study notes',
+        value: analytics.notes,
+        target: 100,
+        icon: FileText,
+        color: 'text-purple-500'
+      },
+      {
+        id: 'fastLearner',
+        title: 'Fast Learner',
+        desc: 'Complete 5 courses',
+        value: analytics.completed,
+        target: 5,
+        icon: GraduationCap,
+        color: 'text-green-500'
+      },
+      {
+        id: 'taskFinisher',
+        title: 'Task Finisher',
+        desc: 'Create 100 project tasks',
+        value: totalTasks,
+        target: 100,
+        icon: CheckCircle2,
+        color: 'text-teal-500'
+      }
+    ];
+
+    return source.map((achievement) => {
+      const progress = Math.min(100, Math.round((achievement.value / achievement.target) * 100));
+      return {
+        ...achievement,
+        progress,
+        unlocked: progress >= 100
+      };
+    });
+  }, [analytics, projects]);
+
+  React.useEffect(() => {
+    const persistedShape = (achievements || []).map(({ id, progress, unlocked }) => ({ id, progress, unlocked }));
+    const computedShape = computedAchievements.map(({ id, progress, unlocked }) => ({ id, progress, unlocked }));
+    const changed = JSON.stringify(persistedShape) !== JSON.stringify(computedShape);
+    if (changed) {
+      setAchievements(computedShape.map((item) => ({ ...item, updatedAt: new Date().toISOString() })));
+    }
+  }, [computedAchievements, achievements, setAchievements]);
+
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [avatarFallback, setAvatarFallback] = useState(false);
+  const [profileErrors, setProfileErrors] = useState({});
   const [profileForm, setProfileForm] = useState({
     name: '',
     avatar: '',
@@ -196,6 +363,15 @@ const Settings = () => {
     }
   }, [user]);
 
+  const googleProviderPhoto = auth.currentUser?.providerData?.find((provider) => provider?.providerId === 'google.com')?.photoURL;
+  const effectiveAvatar = (user?.avatar || profile?.avatar || googleProviderPhoto || auth.currentUser?.photoURL || '').trim();
+  const fallbackAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || user?.email || 'StudyOS User')}&background=0f172a&color=ffffff`;
+  const displayAvatar = avatarFallback ? fallbackAvatar : (effectiveAvatar || fallbackAvatar);
+
+  React.useEffect(() => {
+    setAvatarFallback(false);
+  }, [effectiveAvatar]);
+
   const handleClearData = () => {
     setConfirmConfig({
       isOpen: true,
@@ -211,17 +387,66 @@ const Settings = () => {
     });
   };
 
-  const handleExportData = () => {
-    const data = StorageService.getAll();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `studyos-backup-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Backup exported successfully!');
+  const handleExportData = async () => {
+    try {
+      const exportDataFn = httpsCallable(functions, 'exportUserDataPackage');
+      const { data } = await exportDataFn();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `studyos-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('Cloud data package exported successfully!');
+    } catch (error) {
+      console.error(error);
+      // Fallback to local-only export
+      const localData = StorageService.getAll();
+      const blob = new Blob([JSON.stringify(localData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `studyos-local-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast('Cloud export unavailable. Exported local backup.');
+    }
+  };
+
+  const applyImportedData = (parsedData) => {
+    try {
+      localStorage.setItem(`studyos_import_backup_${Date.now()}`, JSON.stringify(parsedData));
+    } catch {
+      void 0;
+    }
+    const payload = parsedData?.modules && typeof parsedData.modules === 'object'
+      ? parsedData.modules
+      : parsedData;
+
+    const validStorageKeys = new Set(Object.values(STORAGE_KEYS));
+    Object.keys(payload).forEach((key) => {
+      if (validStorageKeys.has(key) && payload[key] !== undefined) {
+        localStorage.setItem(key, JSON.stringify(payload[key]));
+      }
+    });
+  };
+
+  const handleSelectiveClear = (keys, label) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: `Reset ${label}`,
+      message: `This will clear ${label} data from your account on this device. Continue?`,
+      confirmText: 'Reset',
+      type: 'danger',
+      onConfirm: () => {
+        keys.forEach((key) => localStorage.removeItem(key));
+        toast.success(`${label} reset complete`);
+        setTimeout(() => window.location.reload(), 900);
+      }
+    });
   };
 
   const handleImportData = (e) => {
@@ -231,28 +456,78 @@ const Settings = () => {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const data = JSON.parse(event.target.result);
-        Object.keys(data).forEach(key => {
-          if (data[key]) {
-            localStorage.setItem(key, JSON.stringify(data[key]));
+        const parsed = JSON.parse(event.target.result);
+        const payload = parsed?.modules && typeof parsed.modules === 'object' ? parsed.modules : parsed;
+        if (!payload || typeof payload !== 'object') {
+          throw new Error('Invalid backup payload');
+        }
+
+        const validStorageKeys = new Set(Object.values(STORAGE_KEYS));
+        const matchedKeys = Object.keys(payload).filter((key) => validStorageKeys.has(key));
+        if (!matchedKeys.length) {
+          throw new Error('No recognized StudyOS keys found in backup');
+        }
+
+        setImportSummary({
+          matchedCount: matchedKeys.length,
+          keys: matchedKeys
+        });
+
+        setConfirmConfig({
+          isOpen: true,
+          title: 'Import Backup Data',
+          message: `Found ${matchedKeys.length} valid module(s): ${matchedKeys.join(', ')}. This will overwrite existing local module data. Continue?`,
+          confirmText: 'Import Now',
+          type: 'primary',
+          onConfirm: () => {
+            applyImportedData(parsed);
+            toast.success('Data imported successfully! Refreshing...');
+            setTimeout(() => window.location.reload(), 1200);
           }
         });
-        toast.success('Data imported successfully! Refreshing...');
-        setTimeout(() => window.location.reload(), 1500);
       } catch (error) {
-        toast.error('Invalid backup file');
+        toast.error(error?.message || 'Invalid backup file');
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+    const validationErrors = {};
+
+    if (profileForm.phone && !/^[+0-9()\-\s]{7,20}$/.test(profileForm.phone.trim())) {
+      validationErrors.phone = 'Enter a valid phone number.';
+    }
+    if (profileForm.year && profileForm.year.trim().length > 30) {
+      validationErrors.year = 'Year/Sem should be shorter than 30 characters.';
+    }
+    if (profileForm.avatar && !/^https?:\/\/.+/i.test(profileForm.avatar.trim())) {
+      validationErrors.avatar = 'Profile URL should start with http:// or https://';
+    }
+
+    if (Object.keys(validationErrors).length) {
+      setProfileErrors(validationErrors);
+      toast.error('Fix profile fields before saving');
+      return;
+    }
+
+    setProfileErrors({});
     try {
       await updateUserProfile(profileForm);
       setIsEditingProfile(false);
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.success('Signed out successfully');
+    } catch (error) {
+      toast.error('Failed to sign out');
     }
   };
 
@@ -262,6 +537,9 @@ const Settings = () => {
     { id: 'personalization', label: 'Personalization', icon: Palette },
     { id: 'study', label: 'Study Setup', icon: Target },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'channels', label: 'Channels Matrix', icon: Mail },
+    { id: 'integrations', label: 'Integrations', icon: Globe },
+    { id: 'billing', label: 'Plan & Billing', icon: CreditCard },
     { id: 'data', label: 'Data & Privacy', icon: Database },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'achievements', label: 'Achievements', icon: Award },
@@ -334,8 +612,9 @@ const Settings = () => {
                       <div className="flex flex-col sm:flex-row items-center gap-8">
                         <div className="relative">
                           <img 
-                            src={user?.avatar} 
+                            src={displayAvatar}
                             alt={user?.name} 
+                            onError={() => setAvatarFallback(true)}
                             className="w-32 h-32 rounded-[2.5rem] border-4 border-white dark:border-slate-800 shadow-2xl object-cover"
                           />
                           <div className="absolute -bottom-2 -right-2 p-2.5 rounded-2xl bg-green-500 text-white border-4 border-white dark:border-slate-900 shadow-lg">
@@ -449,6 +728,7 @@ const Settings = () => {
                           value={profileForm.avatar}
                           onChange={e => setProfileForm({...profileForm, avatar: e.target.value})}
                         />
+                        {profileErrors.avatar && <p className="text-xs text-red-500 ml-1">{profileErrors.avatar}</p>}
                       </div>
                       <div className="md:col-span-2 space-y-1.5">
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1">Bio</label>
@@ -482,6 +762,7 @@ const Settings = () => {
                           value={profileForm.year}
                           onChange={e => setProfileForm({...profileForm, year: e.target.value})}
                         />
+                        {profileErrors.year && <p className="text-xs text-red-500 ml-1">{profileErrors.year}</p>}
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-400 uppercase ml-1">Phone Number</label>
@@ -490,6 +771,7 @@ const Settings = () => {
                           value={profileForm.phone}
                           onChange={e => setProfileForm({...profileForm, phone: e.target.value})}
                         />
+                        {profileErrors.phone && <p className="text-xs text-red-500 ml-1">{profileErrors.phone}</p>}
                       </div>
                       <div className="md:col-span-2 flex gap-4 pt-4">
                         <button type="submit" className="flex-1 py-4 rounded-[1.5rem] bg-primary-500 text-white font-bold hover:bg-primary-600 transition-all shadow-xl shadow-primary-500/20 flex items-center justify-center gap-2">
@@ -606,6 +888,17 @@ const Settings = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
+                          <Palette size={14} /> Accent Color
+                        </label>
+                        <input
+                          type="color"
+                          className="w-full h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none cursor-pointer"
+                          value={personalization.accentColor}
+                          onChange={e => setPersonalization({ ...personalization, accentColor: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
                           <Type size={14} /> Font Size
                         </label>
                         <select 
@@ -637,6 +930,23 @@ const Settings = () => {
                             </button>
                           ))}
                         </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
+                          <Globe size={14} /> Default Landing
+                        </label>
+                        <select
+                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
+                          value={personalization.defaultLanding}
+                          onChange={e => setPersonalization({ ...personalization, defaultLanding: e.target.value })}
+                        >
+                          <option value="dashboard">Dashboard</option>
+                          <option value="courses">Courses</option>
+                          <option value="videos">Videos</option>
+                          <option value="notes">Notes</option>
+                          <option value="projects">Projects</option>
+                          <option value="analytics">Analytics</option>
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -676,17 +986,42 @@ const Settings = () => {
                           type="number" 
                           className="w-20 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 font-bold"
                           value={studyPrefs.pomodoro}
-                          onChange={e => setStudyPrefs({...studyPrefs, pomodoro: parseInt(e.target.value)})}
+                          onChange={e => setStudyPrefs({...studyPrefs, pomodoro: Math.max(10, Math.min(120, parseInt(e.target.value) || 25))})}
                         />
                         <span className="text-sm text-slate-400 font-medium">min Focus /</span>
                         <input 
                           type="number" 
                           className="w-20 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 font-bold"
                           value={studyPrefs.breakInterval}
-                          onChange={e => setStudyPrefs({...studyPrefs, breakInterval: parseInt(e.target.value)})}
+                          onChange={e => setStudyPrefs({...studyPrefs, breakInterval: Math.max(1, Math.min(60, parseInt(e.target.value) || 5))})}
                         />
                         <span className="text-sm text-slate-400 font-medium">min Break</span>
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-slate-400 uppercase ml-1">Preferred Study Slot</label>
+                      <select
+                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
+                        value={studyPrefs.preferredSlot}
+                        onChange={e => setStudyPrefs({ ...studyPrefs, preferredSlot: e.target.value })}
+                      >
+                        <option>Morning</option>
+                        <option>Afternoon</option>
+                        <option>Evening</option>
+                        <option>Night</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-slate-400 uppercase ml-1">Default Difficulty</label>
+                      <select
+                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
+                        value={studyPrefs.defaultDifficulty}
+                        onChange={e => setStudyPrefs({ ...studyPrefs, defaultDifficulty: e.target.value })}
+                      >
+                        <option>Beginner</option>
+                        <option>Intermediate</option>
+                        <option>Advanced</option>
+                      </select>
                     </div>
                   </div>
                 </section>
@@ -694,33 +1029,364 @@ const Settings = () => {
 
               {/* Notification Settings */}
               {activeSection === 'notifications' && (
-                <section className="card space-y-6">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-500">
-                      <Bell size={24} />
+                <section className="card space-y-8">
+                  <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800/50 pb-6">
+                    <h3 className="text-xl font-black flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-500">
+                        <Bell size={24} />
+                      </div>
+                      Notification Preferences
+                    </h3>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* General Switches */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">App Alerts</h4>
+                      {[
+                        { id: 'enabled', label: 'Push Notifications', desc: 'Enable all app alerts' },
+                        { id: 'reminders', label: 'Study Reminders', desc: 'Alerts for your daily goals' },
+                        { id: 'deadlines', label: 'Course Deadlines', desc: 'Reminders for upcoming tasks' },
+                        { id: 'streaks', label: 'Streak Alerts', desc: 'Don\'t lose your study momentum' },
+                      ].map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-5 rounded-[1.5rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50">
+                          <div>
+                            <p className="font-bold text-slate-800 dark:text-white">{item.label}</p>
+                            <p className="text-xs text-slate-400">{item.desc}</p>
+                          </div>
+                          <button 
+                            onClick={() => setNotificationSettings({...notifSettings, [item.id]: !notifSettings[item.id]})}
+                            className={`w-12 h-6 rounded-full transition-colors relative ${notifSettings[item.id] ? 'bg-primary-500' : 'bg-slate-200 dark:bg-slate-700'}`}
+                          >
+                            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${notifSettings[item.id] ? 'left-7' : 'left-1'}`} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    Notifications
-                  </h3>
-                  <div className="space-y-4">
-                    {[
-                      { id: 'enabled', label: 'Push Notifications', desc: 'Enable all app alerts' },
-                      { id: 'reminders', label: 'Study Reminders', desc: 'Alerts for your daily goals' },
-                      { id: 'deadlines', label: 'Course Deadlines', desc: 'Reminders for upcoming tasks' },
-                      { id: 'streaks', label: 'Streak Alerts', desc: 'Don\'t lose your study momentum' },
-                    ].map(item => (
-                      <div key={item.id} className="flex items-center justify-between p-5 rounded-[1.5rem] bg-slate-50 dark:bg-slate-800/50">
-                        <div>
-                          <p className="font-bold text-slate-800 dark:text-white">{item.label}</p>
-                          <p className="text-xs text-slate-400">{item.desc}</p>
+
+                    {/* Silent Hours */}
+                    <div className="p-6 rounded-[2rem] bg-slate-900 text-white space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 rounded-2xl bg-white/10 text-white">
+                            <Moon size={20} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-lg">Silent Hours</p>
+                            <p className="text-xs text-slate-400">Suppress alerts during study or sleep</p>
+                          </div>
                         </div>
                         <button 
-                          onClick={() => setNotificationSettings({...notifSettings, [item.id]: !notifSettings[item.id]})}
-                          className={`w-12 h-6 rounded-full transition-colors relative ${notifSettings[item.id] ? 'bg-primary-500' : 'bg-slate-200 dark:bg-slate-700'}`}
+                          onClick={() => setNotificationSettings({
+                            ...notifSettings, 
+                            silentHours: { ...notifSettings.silentHours, enabled: !notifSettings.silentHours.enabled }
+                          })}
+                          className={`w-12 h-6 rounded-full transition-colors relative ${notifSettings.silentHours.enabled ? 'bg-primary-500' : 'bg-slate-700'}`}
                         >
-                          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${notifSettings[item.id] ? 'left-7' : 'left-1'}`} />
+                          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${notifSettings.silentHours.enabled ? 'left-7' : 'left-1'}`} />
                         </button>
                       </div>
-                    ))}
+
+                      {notifSettings.silentHours.enabled && (
+                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 uppercase">From</label>
+                            <input 
+                              type="time" 
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold text-white outline-none focus:border-primary-500"
+                              value={notifSettings.silentHours.start}
+                              onChange={e => setNotificationSettings({
+                                ...notifSettings,
+                                silentHours: { ...notifSettings.silentHours, start: e.target.value }
+                              })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 uppercase">Until</label>
+                            <input 
+                              type="time" 
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold text-white outline-none focus:border-primary-500"
+                              value={notifSettings.silentHours.end}
+                              onChange={e => setNotificationSettings({
+                                ...notifSettings,
+                                silentHours: { ...notifSettings.silentHours, end: e.target.value }
+                              })}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Email Delivery Options */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
+                        <Mail size={14} /> Transactional Email
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button 
+                          onClick={() => setNotificationSettings({
+                            ...notifSettings,
+                            emailNotifications: { 
+                              ...notifSettings.emailNotifications, 
+                              roleChanges: !notifSettings.emailNotifications.roleChanges 
+                            }
+                          })}
+                          className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${
+                            notifSettings.emailNotifications.roleChanges 
+                              ? 'bg-primary-50 dark:bg-primary-500/10 border-primary-500/20' 
+                              : 'bg-slate-50 dark:bg-slate-800/50 border-transparent'
+                          }`}
+                        >
+                          <div className="text-left">
+                            <p className="font-bold text-sm">Role Updates</p>
+                            <p className="text-[10px] text-slate-400">Account status & roles</p>
+                          </div>
+                          <CheckCircle2 size={20} className={notifSettings.emailNotifications.roleChanges ? 'text-primary-500' : 'text-slate-300'} />
+                        </button>
+
+                        <button 
+                          onClick={() => setNotificationSettings({
+                            ...notifSettings,
+                            emailNotifications: { 
+                              ...notifSettings.emailNotifications, 
+                              reminders: !notifSettings.emailNotifications.reminders 
+                            }
+                          })}
+                          className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${
+                            notifSettings.emailNotifications.reminders 
+                              ? 'bg-primary-50 dark:bg-primary-500/10 border-primary-500/20' 
+                              : 'bg-slate-50 dark:bg-slate-800/50 border-transparent'
+                          }`}
+                        >
+                          <div className="text-left">
+                            <p className="font-bold text-sm">Study Alerts</p>
+                            <p className="text-[10px] text-slate-400">Emailed reminders</p>
+                          </div>
+                          <CheckCircle2 size={20} className={notifSettings.emailNotifications.reminders ? 'text-primary-500' : 'text-slate-300'} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Integrations Section */}
+              {activeSection === 'channels' && (
+                <section className="card space-y-6">
+                  <h3 className="text-xl font-black flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500">
+                      <Mail size={24} />
+                    </div>
+                    Notification Channels
+                  </h3>
+                  <p className="text-sm text-slate-500">Control delivery channel per notification type.</p>
+                  <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 dark:bg-slate-800/50">
+                        <tr>
+                          <th className="px-4 py-3 text-xs uppercase tracking-widest text-slate-400 font-black">Type</th>
+                          <th className="px-4 py-3 text-xs uppercase tracking-widest text-slate-400 font-black">Web</th>
+                          <th className="px-4 py-3 text-xs uppercase tracking-widest text-slate-400 font-black">Email</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {[
+                          ['reminder', 'Study Reminder'],
+                          ['deadline', 'Deadlines'],
+                          ['streak', 'Streak Alerts'],
+                          ['roleChanges', 'Role Changes']
+                        ].map(([key, label]) => (
+                          <tr key={key}>
+                            <td className="px-4 py-3 font-bold text-slate-700 dark:text-slate-200">{label}</td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={() => setNotificationSettings({
+                                  ...notifSettings,
+                                  channels: {
+                                    ...notifSettings.channels,
+                                    [key]: { ...(notifSettings.channels?.[key] || {}), web: !(notifSettings.channels?.[key]?.web) }
+                                  }
+                                })}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold ${notifSettings.channels?.[key]?.web ? 'bg-primary-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}
+                              >
+                                {notifSettings.channels?.[key]?.web ? 'On' : 'Off'}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3">
+                              <button
+                                onClick={() => setNotificationSettings({
+                                  ...notifSettings,
+                                  channels: {
+                                    ...notifSettings.channels,
+                                    [key]: { ...(notifSettings.channels?.[key] || {}), email: !(notifSettings.channels?.[key]?.email) }
+                                  }
+                                })}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold ${notifSettings.channels?.[key]?.email ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}
+                              >
+                                {notifSettings.channels?.[key]?.email ? 'On' : 'Off'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* Integrations Section */}
+              {activeSection === 'integrations' && (
+                <section className="card space-y-8">
+                  <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                    <div className="p-2.5 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                      <Globe size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-800 dark:text-white">Integrations</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">Connect external services to StudyOS</p>
+                    </div>
+                  </div>
+
+                  <GoogleCalendarSettings />
+                </section>
+              )}
+
+              {/* Billing Section */}
+              {activeSection === 'billing' && (
+                <section className="card space-y-8">
+                  <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800/50 pb-6">
+                    <h3 className="text-xl font-black flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500">
+                        <CreditCard size={24} />
+                      </div>
+                      Plan & Billing
+                    </h3>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                      <div className={`w-2 h-2 rounded-full ${profile?.plan === 'Pro' ? 'bg-indigo-500' : 'bg-slate-400'}`} />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        Current: {profile?.plan || 'Free'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Usage Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50">
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 text-primary-500 shadow-sm">
+                          <Database size={20} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Storage Used</p>
+                          <p className="text-xl font-black">{usageMetrics.displayStorageUsedMB.toFixed(1)} MB</p>
+                        </div>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary-500" 
+                          style={{ width: `${Math.min(100, (usageMetrics.displayStorageUsedMB / (profile?.limits?.storageMB || 10)) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 mt-2 text-right">
+                        Limit: {profile?.limits?.storageMB || 10} MB
+                      </p>
+                    </div>
+
+                    <div className="p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50">
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 text-blue-500 shadow-sm">
+                          <FileText size={20} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Items</p>
+                          <p className="text-xl font-black">{usageMetrics.displayFileCount}</p>
+                        </div>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500" 
+                          style={{ width: `${Math.min(100, (usageMetrics.displayFileCount / (profile?.limits?.maxFiles || 50)) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 mt-2 text-right">
+                        Limit: {profile?.limits?.maxFiles || 50}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Plan Comparison */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                    {/* Free Plan */}
+                    <div className="p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 space-y-6 relative overflow-hidden group">
+                      <div className="space-y-2">
+                        <h4 className="text-2xl font-black">Free Plan</h4>
+                        <p className="text-slate-400 font-bold text-sm">For casual learners</p>
+                      </div>
+                      <div className="text-4xl font-black">$0<span className="text-lg text-slate-400 ml-1">/mo</span></div>
+                      
+                      <div className="space-y-4 pt-4">
+                        {[
+                          '10MB Storage',
+                          '50 Total Files',
+                          'Standard Support',
+                          'Basic Analytics'
+                        ].map(f => (
+                          <div key={f} className="flex items-center gap-3 text-sm font-bold text-slate-600 dark:text-slate-400">
+                            <CheckCircle2 size={18} className="text-green-500" />
+                            {f}
+                          </div>
+                        ))}
+                      </div>
+
+                      <button 
+                        disabled 
+                        className="w-full py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 font-black text-sm uppercase tracking-widest"
+                      >
+                        {profile?.plan === 'Pro' ? 'Downgrade' : 'Current Plan'}
+                      </button>
+                    </div>
+
+                    {/* Pro Plan */}
+                    <div className="p-8 rounded-[2.5rem] bg-slate-900 text-white border-2 border-indigo-500/50 space-y-6 relative overflow-hidden group">
+                      <div className="absolute top-4 right-4 p-2 bg-indigo-500 rounded-xl shadow-lg rotate-12 group-hover:rotate-0 transition-transform">
+                        <Crown size={20} className="text-white" />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <h4 className="text-2xl font-black text-white">Pro Plan</h4>
+                        <p className="text-indigo-300/60 font-bold text-sm">For serious students</p>
+                      </div>
+                      <div className="text-4xl font-black">$9.99<span className="text-lg text-indigo-300/40 ml-1">/mo</span></div>
+                      
+                      <div className="space-y-4 pt-4">
+                        {[
+                          '500MB Storage',
+                          '1,000 Total Files',
+                          'Priority Support',
+                          'Advanced Heatmaps',
+                          'Custom Branding'
+                        ].map(f => (
+                          <div key={f} className="flex items-center gap-3 text-sm font-bold text-indigo-100/80">
+                            <Zap size={18} className="text-indigo-400" />
+                            {f}
+                          </div>
+                        ))}
+                      </div>
+
+                      {profile?.plan === 'Pro' ? (
+                        <button className="w-full py-4 rounded-2xl bg-indigo-500/20 text-indigo-400 font-black text-sm uppercase tracking-widest border border-indigo-500/30">
+                          Active Subscription
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => handleUpgrade(proPriceId)}
+                          disabled={isUpgrading || !proPriceId}
+                          className="w-full py-4 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-3"
+                        >
+                          {isUpgrading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (proPriceId ? 'Upgrade to Pro' : 'Pro Not Configured')}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </section>
               )}
@@ -739,15 +1405,61 @@ const Settings = () => {
                       <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Privacy Controls</h4>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-bold">Public Profile</span>
-                        <ToggleIcon className={privacySettings.isPublic ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                        <button onClick={() => setPrivacySettings({ ...privacySettings, isPublic: !privacySettings.isPublic })}>
+                          <ToggleIcon className={privacySettings.isPublic ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                        </button>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-bold">Activity Tracking</span>
-                        <ToggleIcon className={privacySettings.analyticsConsent ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                        <button onClick={() => setPrivacySettings({ ...privacySettings, analyticsConsent: !privacySettings.analyticsConsent })}>
+                          <ToggleIcon className={privacySettings.analyticsConsent ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold">Activity Visible To Others</span>
+                        <button onClick={() => setPrivacySettings({ ...privacySettings, activityVisible: !privacySettings.activityVisible })}>
+                          <ToggleIcon className={privacySettings.activityVisible ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                        </button>
                       </div>
                     </div>
                     <div className="space-y-4">
                       <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Governance</h4>
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-3">
+                        <p className="text-xs font-black uppercase tracking-widest text-slate-400">Data Retention</p>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-sm font-bold">Retention window (days)</span>
+                          <input
+                            type="number"
+                            min={30}
+                            max={3650}
+                            value={privacySettings.dataRetentionDays || 365}
+                            onChange={(e) => setPrivacySettings({
+                              ...privacySettings,
+                              dataRetentionDays: Math.max(30, Math.min(3650, Number(e.target.value) || 365))
+                            })}
+                            className="w-28 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold">Auto-delete completed reminders</span>
+                          <button onClick={() => setPrivacySettings({ ...privacySettings, autoDeleteCompletedReminders: !privacySettings.autoDeleteCompletedReminders })}>
+                            <ToggleIcon className={privacySettings.autoDeleteCompletedReminders ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold">Auto-delete imported backups after apply</span>
+                          <button onClick={() => setPrivacySettings({ ...privacySettings, autoDeleteImportedBackups: !privacySettings.autoDeleteImportedBackups })}>
+                            <ToggleIcon className={privacySettings.autoDeleteImportedBackups ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
+                          </button>
+                        </div>
+                      </div>
+                      {importSummary && (
+                        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30">
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            Last import preview: {importSummary.matchedCount} modules recognized.
+                          </p>
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         <button 
                           onClick={handleExportData}
@@ -766,6 +1478,32 @@ const Settings = () => {
                       >
                         Clear All Data
                       </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleSelectiveClear([STORAGE_KEYS.COURSES, STORAGE_KEYS.VIDEOS, STORAGE_KEYS.NOTES], 'Learning')}
+                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
+                        >
+                          Reset Learning
+                        </button>
+                        <button
+                          onClick={() => handleSelectiveClear([STORAGE_KEYS.PROJECTS, STORAGE_KEYS.ASSIGNMENTS, STORAGE_KEYS.TASKS], 'Projects')}
+                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
+                        >
+                          Reset Projects
+                        </button>
+                        <button
+                          onClick={() => handleSelectiveClear([STORAGE_KEYS.REMINDERS, STORAGE_KEYS.NOTIFICATIONS], 'Planner')}
+                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
+                        >
+                          Reset Planner
+                        </button>
+                        <button
+                          onClick={() => handleSelectiveClear([STORAGE_KEYS.PERSONALIZATION, STORAGE_KEYS.STUDY_PREFS, STORAGE_KEYS.NOTIF_SETTINGS, STORAGE_KEYS.PRIVACY], 'Preferences')}
+                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
+                        >
+                          Reset Preferences
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -809,13 +1547,8 @@ const Settings = () => {
                     Scholar Milestones
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {[
-                      { title: '7-Day Streak', desc: 'Study for 7 consecutive days', progress: 70, icon: Flame, color: 'text-red-500' },
-                      { title: 'Resource Master', desc: 'Upload 50 learning documents', progress: 45, icon: Download, color: 'text-blue-500' },
-                      { title: 'Note Taker', desc: 'Create 100 deep-study notes', progress: 12, icon: FileText, color: 'text-purple-500' },
-                      { title: 'Fast Learner', desc: 'Complete 5 courses in a month', progress: 80, icon: GraduationCap, color: 'text-green-500' },
-                    ].map((badge, i) => (
-                      <div key={i} className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
+                    {computedAchievements.map((badge) => (
+                      <div key={badge.id} className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
                         <div className={`w-14 h-14 rounded-2xl bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center ${badge.color}`}>
                           <badge.icon size={28} />
                         </div>

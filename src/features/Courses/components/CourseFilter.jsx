@@ -18,7 +18,9 @@ const CourseFilter = ({
   setSortBy, 
   onReset, 
   onAdd, 
-  courseCount 
+  courseCount,
+  showArchived,
+  setShowArchived
 }) => {
   return (
     <div className="flex flex-col gap-8 mb-12 animate-in fade-in slide-in-from-bottom-4">
@@ -77,8 +79,24 @@ const CourseFilter = ({
               <option className="dark:bg-slate-900">Active</option>
               <option className="dark:bg-slate-900">Paused</option>
               <option className="dark:bg-slate-900">Completed</option>
+              <option className="dark:bg-slate-900">Archived</option>
             </select>
           </div>
+
+          <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
+
+          <button
+            type="button"
+            onClick={() => setShowArchived?.(!showArchived)}
+            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+              showArchived
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-800'
+            }`}
+            title="Toggle showing archived courses"
+          >
+            {showArchived ? 'Showing Archived' : 'Hide Archived'}
+          </button>
         </div>
 
         <div className="flex items-center gap-3">

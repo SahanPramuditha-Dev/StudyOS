@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { StorageService } from '../services/storage';
 import { FirestoreService } from '../services/firestore';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 /**
  * useStorage provides cloud-first persistent state synced with Firestore.
@@ -9,57 +10,74 @@ import { useAuth } from '../context/AuthContext';
  * Local state is used for responsiveness, and changes are pushed to Firestore.
  */
 export const useStorage = (key, initialValue) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const isSyncingFromCloud = useRef(false);
-  const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize with initialValue or local storage (if any)
   const [storedValue, setStoredValue] = useState(() => {
     const localItem = StorageService.get(key);
     return localItem !== null ? localItem : initialValue;
   });
+  const [isInitialized, setIsInitialized] = useState(() => !user);
+
+  // Check if user is active and within storage limits
+  const isActionAllowed = () => {
+    if (!profile) return true; // Default if profile hasn't loaded
+    if (profile.status?.isActive === false || profile.status?.isBlocked === true) {
+      toast.error('Account restricted. Action blocked.');
+      return false;
+    }
+    // Storage limit check (approximate based on JSON size)
+    const currentSize = JSON.stringify(storedValue).length;
+    const currentMB = currentSize / (1024 * 1024);
+    if (profile.limits?.storageMB && currentMB > profile.limits.storageMB) {
+      toast.error(`Storage limit of ${profile.limits.storageMB}MB exceeded.`);
+      return false;
+    }
+    return true;
+  };
 
   // Sync with Firestore (Push local changes to cloud)
   useEffect(() => {
-    // ONLY push if:
-    // 1. User is logged in
-    // 2. We have finished the initial cloud fetch (isInitialized)
-    // 3. We are not currently receiving an update FROM the cloud
     if (user && isInitialized && !isSyncingFromCloud.current) {
-      console.log(`[useStorage] [Cloud Push] Updating ${key}...`);
-      FirestoreService.saveUserData(user.id, key, storedValue);
+      if (!isActionAllowed()) return;
+
+      const handler = setTimeout(() => {
+        FirestoreService.saveUserData(user.id, key, storedValue);
+      }, 5000); // 5 second debounce for cloud sync
+
       StorageService.set(key, storedValue);
+      
+      return () => clearTimeout(handler);
     }
-  }, [user, key, storedValue, isInitialized]);
+  }, [isInitialized, key, storedValue, user, profile]);
 
   // Effect to handle initial Firestore fetch and real-time subscription
   useEffect(() => {
     if (!user) {
-      setIsInitialized(false);
+      isSyncingFromCloud.current = false;
+      setIsInitialized(true);
       return;
     }
 
+    setIsInitialized(false);
+
     const fetchInitialData = async () => {
       try {
-        console.log(`[useStorage] [Cloud Fetch] ${key}...`);
         const cloudData = await FirestoreService.getUserData(user.id, key);
         
         if (cloudData !== null) {
           isSyncingFromCloud.current = true;
           setStoredValue(cloudData);
           StorageService.set(key, cloudData);
-          // Set initialized true AFTER state update
-          setTimeout(() => { 
-            isSyncingFromCloud.current = false;
-            setIsInitialized(true);
-          }, 300);
         } else {
-          // Cloud empty, local data is now "authoritative"
-          setIsInitialized(true);
+          StorageService.set(key, storedValue);
         }
       } catch (error) {
         console.error(`[useStorage] [Cloud Fetch Error] ${key}:`, error);
-        setIsInitialized(true); 
+      } finally {
+        isSyncingFromCloud.current = false;
+        setIsInitialized(true);
       }
     };
 
@@ -70,7 +88,6 @@ export const useStorage = (key, initialValue) => {
       if (data !== null) {
         const currentLocal = StorageService.get(key);
         if (JSON.stringify(data) !== JSON.stringify(currentLocal)) {
-          console.log(`[useStorage] [Cloud Sync] ${key}`);
           isSyncingFromCloud.current = true;
           setStoredValue(data);
           StorageService.set(key, data);

@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { 
   BookOpen, 
-  Flame, 
   FileText, 
   Clock, 
   Plus, 
@@ -10,27 +9,33 @@ import {
   Layout as KanbanIcon,
   BarChart,
   CheckCircle2,
-  Calendar
+  Calendar,
+  AlertCircle,
+  Target
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
-import { useTheme } from '../../context/ThemeContext';
-import { Sun, Moon } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = ({ setActiveTab }) => {
-  const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const go = (tab) => {
+    setActiveTab(tab);
+    navigate(`/${tab}`);
+  };
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
   const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
+  const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
-
-  console.log('[Dashboard] Data loaded:', { courses, notes, videos, streak, projects });
 
   const stats = useMemo(() => {
     const activeCourses = courses.filter(c => c.status === 'Active').length;
-    const completedCourses = courses.filter(c => c.status === 'Completed').length;
+    const submittedAssignments = assignments.filter(a => a.status === 'Submitted').length;
+    const pendingAssignments = assignments.filter(a => a.status !== 'Submitted').length;
+    const activeProjects = projects.filter(p => p.status === 'Active').length;
     
     // Calculate total watch time from videos
     const totalSeconds = videos.reduce((acc, v) => acc + (v.lastPosition || 0), 0);
@@ -38,12 +43,12 @@ const Dashboard = ({ setActiveTab }) => {
 
     return [
       { label: 'Active Courses', value: activeCourses, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
-      { label: 'Study Streak', value: `${streak.current} Days`, icon: Flame, color: 'text-orange-600', bg: 'bg-orange-50' },
       { label: 'Notes Taken', value: notes.length, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
-      { label: 'Watch Time', value: `${hours}h`, icon: Clock, color: 'text-teal-600', bg: 'bg-teal-50' },
-      { label: 'Completed', value: completedCourses, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+      { label: 'Pending Assignments', value: pendingAssignments, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+      { label: 'Submitted', value: submittedAssignments, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
+      { label: 'Active Projects', value: activeProjects, icon: KanbanIcon, color: 'text-slate-700', bg: 'bg-slate-100' },
     ];
-  }, [courses, notes, videos, streak]);
+  }, [courses, notes, videos, streak, assignments, projects]);
 
   const productivityScore = useMemo(() => {
     if (courses.length === 0) return 0;
@@ -59,7 +64,8 @@ const Dashboard = ({ setActiveTab }) => {
       title: `Added Course: ${c.title}`,
       time: 'Recently',
       icon: BookOpen,
-      color: 'bg-blue-500'
+      color: 'bg-blue-500',
+      createdAt: c.createdAt || ''
     }));
 
     // Get latest notes
@@ -67,7 +73,8 @@ const Dashboard = ({ setActiveTab }) => {
       title: `Created Note: ${n.title}`,
       time: 'Recently',
       icon: FileText,
-      color: 'bg-purple-500'
+      color: 'bg-purple-500',
+      createdAt: n.createdAt || ''
     }));
 
     // Get latest videos
@@ -75,7 +82,8 @@ const Dashboard = ({ setActiveTab }) => {
       title: `Watched: ${v.title}`,
       time: v.progress === 100 ? 'Completed' : `${v.progress}% watched`,
       icon: Clock,
-      color: 'bg-teal-500'
+      color: 'bg-teal-500',
+      createdAt: v.lastWatched || v.addedAt || ''
     }));
 
     // Get latest projects
@@ -83,59 +91,78 @@ const Dashboard = ({ setActiveTab }) => {
       title: `New Project: ${p.name}`,
       time: p.status,
       icon: KanbanIcon,
-      color: 'bg-slate-700'
+      color: 'bg-slate-700',
+      createdAt: p.createdAt || ''
     }));
 
-    return activities.sort((a, b) => 0.5 - Math.random()).slice(0, 4);
-  }, [courses, notes, videos, projects]);
+    // Get latest assignments
+    assignments.slice(-2).forEach(a => activities.push({
+      title: `New Assignment: ${a.title}`,
+      time: a.status,
+      icon: FileText,
+      color: 'bg-amber-500',
+      createdAt: a.createdAt || ''
+    }));
+
+    return activities
+      .sort((left, right) => (right.createdAt || '').localeCompare(left.createdAt || ''))
+      .slice(0, 4);
+  }, [courses, notes, videos, projects, assignments]);
 
   const todayFocus = useMemo(() => {
     return courses.find(c => c.status === 'Active') || courses[0];
   }, [courses]);
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+    <div className="space-y-10 max-w-7xl mx-auto pb-12 pt-4">
       {/* Hero Section */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-8 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="space-y-4 text-center md:text-left">
-            <h2 className="text-3xl md:text-4xl font-bold">Ready for a breakthrough?</h2>
-            <p className="text-primary-100 max-w-md text-lg">
-              Track your progress, manage your courses, and master your learning journey all in one place.
-            </p>
-            <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start">
+      <section className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-12 md:p-16 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
+        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-16">
+          <div className="space-y-8 text-center lg:text-left flex-1">
+            <div className="space-y-3">
+              <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-tight">
+                Ready for a <br />
+                <span className="text-primary-200">breakthrough?</span>
+              </h2>
+              <p className="text-primary-100/90 max-w-xl text-lg md:text-2xl font-medium leading-relaxed">
+                Track your progress, manage your courses, and master your learning journey all in one place.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-5 justify-center lg:justify-start pt-4">
               <button 
-                onClick={() => setActiveTab('workspace')}
-                className="px-6 py-2.5 rounded-xl bg-white text-primary-600 font-bold hover:bg-primary-50 transition-colors flex items-center gap-2 group"
+                onClick={() => go('workspace')}
+                className="px-10 py-4 rounded-2xl bg-white text-primary-600 font-bold hover:bg-primary-50 transition-all hover:scale-105 active:scale-95 shadow-xl shadow-primary-500/10 flex items-center gap-2 group"
               >
-                <Plus size={18} />
+                <Plus size={24} />
                 Create Study Plan
-                <ArrowUpRight size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                <ArrowUpRight size={20} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </button>
               <button 
-                onClick={toggleTheme}
-                className="px-6 py-2.5 rounded-xl bg-primary-500/30 backdrop-blur-md border border-white/20 text-white font-bold hover:bg-primary-500/40 transition-colors flex items-center gap-2"
+                onClick={() => go('review')}
+                className="px-10 py-4 rounded-2xl bg-primary-500/20 backdrop-blur-2xl border border-white/20 text-white font-bold hover:bg-primary-500/30 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
               >
-                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-                {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+                <TrendingUp size={24} />
+                Open Review Hub
               </button>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-6">
+          
+          <div className="hidden xl:flex items-center gap-12 bg-white/5 backdrop-blur-3xl rounded-[3rem] p-12 border border-white/10 shadow-2xl">
             <div className="text-center">
-              <div className="text-4xl font-black mb-1">{productivityScore}%</div>
-              <div className="text-xs uppercase tracking-widest text-primary-200">Overall Progress</div>
+              <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{productivityScore}%</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">Overall Progress</div>
             </div>
-            <div className="w-px h-12 bg-white/20"></div>
+            <div className="w-px h-20 bg-white/10"></div>
             <div className="text-center">
-              <div className="text-4xl font-black mb-1">{courses.length}</div>
-              <div className="text-xs uppercase tracking-widest text-primary-200">Total Courses</div>
+              <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{courses.length}</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">Total Courses</div>
             </div>
           </div>
         </div>
+        
         {/* Decorative elements */}
-        <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-64 h-64 bg-accent-400/20 rounded-full blur-2xl"></div>
+        <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-[40rem] h-[40rem] bg-white/10 rounded-full blur-[120px] pointer-events-none animate-pulse duration-[10s]"></div>
+        <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-[30rem] h-[30rem] bg-accent-400/20 rounded-full blur-[100px] pointer-events-none animate-pulse duration-[8s]"></div>
       </section>
 
       {/* Stats Grid */}
@@ -215,32 +242,60 @@ const Dashboard = ({ setActiveTab }) => {
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 <button 
-                  onClick={() => setActiveTab('courses')}
+                  onClick={() => go('courses')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-left group"
                 >
                   <Plus size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-primary-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Course</p>
                 </button>
                 <button 
-                  onClick={() => setActiveTab('notes')}
+                  onClick={() => go('notes')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-accent-50 dark:hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition-colors text-left group"
                 >
                   <FileText size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-accent-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Note</p>
                 </button>
                 <button 
-                  onClick={() => setActiveTab('reminders')}
+                  onClick={() => go('reminders')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-left group"
                 >
                   <Clock size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-orange-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Timer</p>
                 </button>
                 <button 
-                  onClick={() => setActiveTab('analytics')}
+                  onClick={() => go('assignments')}
+                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-left group"
+                >
+                  <FileText size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-amber-500" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Assignments</p>
+                </button>
+                <button 
+                  onClick={() => go('analytics')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-teal-50 dark:hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left group"
                 >
                   <TrendingUp size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-teal-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Analytics</p>
+                </button>
+                <button 
+                  onClick={() => go('goals')}
+                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-left group"
+                >
+                  <Target size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-emerald-500" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Goals</p>
+                </button>
+                <button
+                  onClick={() => go('planner')}
+                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left group"
+                >
+                  <Calendar size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Planner</p>
+                </button>
+                <button
+                  onClick={() => go('review')}
+                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors text-left group"
+                >
+                  <AlertCircle size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-rose-500" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Review Hub</p>
                 </button>
               </div>
             </div>
@@ -289,7 +344,7 @@ const Dashboard = ({ setActiveTab }) => {
                 </div>
               )}
               <button 
-                onClick={() => setActiveTab('videos')}
+                onClick={() => go('videos')}
                 className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 transition-colors font-bold text-sm"
               >
                 Start Session

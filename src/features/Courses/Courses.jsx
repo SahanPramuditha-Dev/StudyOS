@@ -9,19 +9,25 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { toggleSelectionId, toggleSelectAll, softArchiveByIds, restoreByIds, hardDeleteByIds } from '../../utils/entityOps';
+import { courseCompletedNotification } from '../../utils/notificationBuilders';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
+import { useReminders } from '../../context/ReminderContext';
 
 // Sub-components
 import CourseItem from './components/CourseItem';
 import CourseFilter from './components/CourseFilter';
 import CourseForm from './components/CourseForm';
 import ConfirmModal from '../../components/ConfirmModal';
+import BulkActionBar from '../../components/BulkActionBar';
 
 const Courses = () => {
   // 1. State Management
   const [courses, setCourses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [resources] = useStorage(STORAGE_KEYS.RESOURCES, []);
+  const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
+  const { addNotification } = useReminders();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCourseForResources, setSelectedCourseForResources] = useState(null);
@@ -30,6 +36,13 @@ const Courses = () => {
   const [sortBy, setSortBy] = useState('title'); // 'title' | 'progress' | 'platform'
   const [editingCourse, setEditingCourse] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '', title: '' });
+
+  const [selectedCourseIds, setSelectedCourseIds] = useState([]);
+  const [bulkTagInput, setBulkTagInput] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('Active');
+  const [selectedCourseDetail, setSelectedCourseDetail] = useState(null);
+  const [detailTab, setDetailTab] = useState('overview'); // overview | assignments | resources
+  const [showArchived, setShowArchived] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -41,19 +54,24 @@ const Courses = () => {
     status: 'Active',
     trackingType: 'percentage',
     timeTracking: { current: '00:00:00', total: '00:00:00' },
-    moduleTracking: { total: 1, completed: 0 }
+    moduleTracking: { total: 1, completed: 0 },
+    archived: false
   });
 
   // 2. Search, Filter & Sort Logic (Derived State)
   const filteredAndSortedCourses = useMemo(() => {
     let result = courses.filter(course => {
       const query = searchTerm.toLowerCase();
+      const isArchived = course.archived === true;
+      if (!showArchived && isArchived && filterStatus !== 'Archived') return false;
       const matchesSearch = 
         course.title.toLowerCase().includes(query) ||
         course.platform.toLowerCase().includes(query) ||
         (course.tags || []).some(t => t.toLowerCase().includes(query));
       
-      const matchesStatus = filterStatus === 'All' || course.status === filterStatus;
+      const matchesStatus = filterStatus === 'All'
+        ? true
+        : (filterStatus === 'Archived' ? isArchived : course.status === filterStatus);
       return matchesSearch && matchesStatus;
     });
 
@@ -64,52 +82,166 @@ const Courses = () => {
       if (sortBy === 'platform') return a.platform.localeCompare(b.platform);
       return 0;
     });
-  }, [courses, searchTerm, filterStatus, sortBy]);
+  }, [courses, searchTerm, filterStatus, sortBy, showArchived]);
 
   // 3. CRUD Operations
   const handleSubmit = (e) => {
     e.preventDefault();
-    const tagsArray = typeof formData.tags === 'string' 
-      ? formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
-      : formData.tags;
+    const title = String(formData.title || '').trim();
+    const platform = String(formData.platform || '').trim();
+    const category = String(formData.category || '').trim();
+    const difficulty = String(formData.difficulty || 'Beginner').trim();
+    const status = String(formData.status || 'Active').trim();
+    const trackingType = String(formData.trackingType || 'percentage').trim();
+
+    const tagsArray = typeof formData.tags === 'string'
+      ? formData.tags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag)
+          .slice(0, 20)
+      : Array.isArray(formData.tags) ? formData.tags : [];
+
+    if (!title || title.length < 3) {
+      toast.error('Course title should be at least 3 characters');
+      return;
+    }
+    if (!platform) {
+      toast.error('Platform is required');
+      return;
+    }
+    if (!category) {
+      toast.error('Category is required');
+      return;
+    }
+    if (title.length > 120 || platform.length > 80 || category.length > 80) {
+      toast.error('One of the fields is too long');
+      return;
+    }
+    const isDuplicate = courses.some((c) => {
+      if (editingCourse && c.id === editingCourse.id) return false;
+      return String(c.title || '').trim().toLowerCase() === title.toLowerCase()
+        && String(c.platform || '').trim().toLowerCase() === platform.toLowerCase();
+    });
+    if (isDuplicate) {
+      toast.error('A course with the same title + platform already exists');
+      return;
+    }
+
+    const validateTime = (time) => {
+      if (!time) return true;
+      return /^(\d{1,3}):([0-5]\d):([0-5]\d)$/.test(String(time).trim());
+    };
 
     // Calculate progress based on tracking type
     let calculatedProgress = formData.progress;
     if (formData.trackingType === 'time') {
+      if (!validateTime(formData.timeTracking?.current) || !validateTime(formData.timeTracking?.total)) {
+        toast.error('Time format must be HH:MM:SS (e.g. 12:30:00)');
+        return;
+      }
       const current = timeToSeconds(formData.timeTracking.current);
       const total = timeToSeconds(formData.timeTracking.total);
       calculatedProgress = total > 0 ? Math.round((current / total) * 100) : 0;
     } else if (formData.trackingType === 'modules') {
+      const totalModules = Math.max(1, Number(formData.moduleTracking?.total || 1));
+      const completedModules = Math.max(0, Math.min(totalModules, Number(formData.moduleTracking?.completed || 0)));
       calculatedProgress = formData.moduleTracking.total > 0 
-        ? Math.round((formData.moduleTracking.completed / formData.moduleTracking.total) * 100) 
+        ? Math.round((completedModules / totalModules) * 100) 
         : 0;
     }
     
     const courseData = { 
-      ...formData, 
+      ...formData,
+      title,
+      platform,
+      category,
+      difficulty,
+      status,
+      trackingType,
       tags: tagsArray, 
       progress: Math.min(100, Math.max(0, calculatedProgress)),
+      archived: Boolean(formData.archived),
       updatedAt: new Date().toISOString()
     };
 
     if (editingCourse) {
-      setCourses(courses.map(c => c.id === editingCourse.id ? { ...courseData, id: c.id } : c));
+      const prevStatus = editingCourse.status;
+      const nextCourse = { ...courseData, id: editingCourse.id };
+      setCourses(courses.map(c => c.id === editingCourse.id ? nextCourse : c));
       toast.success('Course path optimized!');
+
+      if (prevStatus !== 'Completed' && nextCourse.status === 'Completed') {
+        addNotification(courseCompletedNotification(nextCourse.title));
+      }
     } else {
-      setCourses([{ ...courseData, id: nanoid(), createdAt: new Date().toISOString() }, ...courses]);
+      const created = { ...courseData, id: nanoid(), createdAt: new Date().toISOString() };
+      setCourses([created, ...courses]);
       toast.success('New learning stream launched!');
+
+      if (created.status === 'Completed') {
+        addNotification(courseCompletedNotification(created.title));
+      }
     }
     
     closeModal();
+  };
+
+  const toggleCourseSelection = (courseId) => {
+    setSelectedCourseIds((prev) => toggleSelectionId(prev, courseId));
+  };
+
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filteredAndSortedCourses.map((c) => c.id);
+    setSelectedCourseIds((prev) => toggleSelectAll(prev, visibleIds));
+  };
+
+  const clearSelection = () => setSelectedCourseIds([]);
+
+  const applyBulkStatus = () => {
+    if (!selectedCourseIds.length) return;
+    const selected = new Set(selectedCourseIds);
+    setCourses((prev) => prev.map((c) => (
+      selected.has(c.id) ? { ...c, status: bulkStatus, archived: false, updatedAt: new Date().toISOString() } : c
+    )));
+    toast.success(`Updated ${selectedCourseIds.length} course(s)`);
+    clearSelection();
+  };
+
+  const applyBulkTag = () => {
+    const tag = bulkTagInput.trim().toLowerCase();
+    if (!selectedCourseIds.length || !tag) return;
+    const selected = new Set(selectedCourseIds);
+    setCourses((prev) => prev.map((c) => {
+      if (!selected.has(c.id)) return c;
+      const tags = Array.isArray(c.tags) ? c.tags : [];
+      return tags.includes(tag) ? c : { ...c, tags: [...tags, tag], updatedAt: new Date().toISOString() };
+    }));
+    toast.success(`Tagged ${selectedCourseIds.length} course(s)`);
+    setBulkTagInput('');
+  };
+
+  const applyBulkArchive = () => {
+    if (!selectedCourseIds.length) return;
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Archive Courses',
+      message: `Archive ${selectedCourseIds.length} selected course(s)?`,
+      onConfirm: () => {
+        setCourses((prev) => softArchiveByIds(prev, selectedCourseIds));
+        toast.success('Courses archived');
+        clearSelection();
+      }
+    });
   };
 
   const handleDelete = (id) => {
     setConfirmConfig({
       isOpen: true,
       title: 'Archive Course',
-      message: 'Terminate this learning path? All progress data will be lost.',
+      message: 'Archive this course? You can restore it later from Archived.',
       onConfirm: () => {
-        setCourses(courses.filter(c => c.id !== id));
+        setCourses(courses.map((c) => (c.id === id ? { ...c, archived: true, updatedAt: new Date().toISOString() } : c)));
         toast.success('Course archived');
       }
     });
@@ -122,7 +254,8 @@ const Courses = () => {
       tags: Array.isArray(course.tags) ? course.tags.join(', ') : course.tags,
       trackingType: course.trackingType || 'percentage',
       timeTracking: course.timeTracking || { current: '00:00:00', total: '00:00:00' },
-      moduleTracking: course.moduleTracking || { total: 1, completed: 0 }
+      moduleTracking: course.moduleTracking || { total: 1, completed: 0 },
+      archived: course.archived === true
     });
     setIsModalOpen(true);
   };
@@ -140,7 +273,29 @@ const Courses = () => {
       status: 'Active',
       trackingType: 'percentage',
       timeTracking: { current: '00:00:00', total: '00:00:00' },
-      moduleTracking: { total: 1, completed: 0 }
+      moduleTracking: { total: 1, completed: 0 },
+      archived: false
+    });
+  };
+
+  const applyBulkRestore = () => {
+    if (!selectedCourseIds.length) return;
+    setCourses((prev) => restoreByIds(prev, selectedCourseIds));
+    toast.success(`Restored ${selectedCourseIds.length} course(s)`);
+    clearSelection();
+  };
+
+  const applyBulkHardDelete = () => {
+    if (!selectedCourseIds.length) return;
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Permanently',
+      message: `Permanently delete ${selectedCourseIds.length} selected course(s)? This cannot be undone.`,
+      onConfirm: () => {
+        setCourses((prev) => hardDeleteByIds(prev, selectedCourseIds));
+        toast.success('Courses deleted permanently');
+        clearSelection();
+      }
     });
   };
 
@@ -218,7 +373,25 @@ const Courses = () => {
         onReset={handleResetData}
         onAdd={() => setIsModalOpen(true)}
         courseCount={filteredAndSortedCourses.length}
+        showArchived={showArchived}
+        setShowArchived={setShowArchived}
       />
+
+      {selectedCourseIds.length > 0 && (
+        <BulkActionBar selectedCount={selectedCourseIds.length} onSelectVisible={toggleSelectAllVisible} onClear={clearSelection} className="mb-6">
+          <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="px-2 py-1 rounded-lg text-xs">
+            <option value="Active">Active</option>
+            <option value="Paused">Paused</option>
+            <option value="Completed">Completed</option>
+          </select>
+          <button onClick={applyBulkStatus} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">Set status</button>
+          <input value={bulkTagInput} onChange={(e) => setBulkTagInput(e.target.value)} placeholder="tag" className="px-2 py-1 rounded-lg text-xs w-28" />
+          <button onClick={applyBulkTag} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">Add tag</button>
+          <button onClick={applyBulkRestore} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">Restore</button>
+          <button onClick={applyBulkArchive} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-700">Archive</button>
+          <button onClick={applyBulkHardDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white">Hard delete</button>
+        </BulkActionBar>
+      )}
 
       {/* Course Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -230,6 +403,10 @@ const Courses = () => {
               onEdit={handleEdit}
               onDelete={handleDelete}
               onViewResources={setSelectedCourseForResources}
+              onOpenDetail={(c) => { setSelectedCourseDetail(c); setDetailTab('overview'); }}
+              assignments={assignments}
+              selected={selectedCourseIds.includes(course.id)}
+              onToggleSelect={toggleCourseSelection}
             />
           ))}
         </AnimatePresence>
@@ -319,6 +496,168 @@ const Courses = () => {
                   <div className="py-20 text-center bg-slate-50/50 dark:bg-slate-900/50 rounded-[2.5rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
                     <FolderOpen size={48} className="mx-auto text-slate-200 dark:text-slate-800 mb-4" />
                     <p className="text-slate-400 font-bold text-sm">No assets linked yet.</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Course Detail Modal */}
+      <AnimatePresence>
+        {selectedCourseDetail && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedCourseDetail(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-3xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-800 dark:text-white">{selectedCourseDetail.title}</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 font-bold">{selectedCourseDetail.platform} • {selectedCourseDetail.category}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEdit(selectedCourseDetail)}
+                    className="px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setSelectedCourseDetail(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-6 pt-4 flex items-center gap-2">
+                {[
+                  ['overview', 'Overview'],
+                  ['assignments', 'Assignments'],
+                  ['resources', 'Resources']
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setDetailTab(id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${
+                      detailTab === id ? 'bg-slate-900 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-500'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <div className="ml-auto flex gap-2">
+                  <button
+                    onClick={() => {
+                      const next = { ...selectedCourseDetail, status: 'Completed' };
+                      setCourses((prev) => prev.map((c) => (c.id === next.id ? { ...c, status: 'Completed', archived: false, updatedAt: new Date().toISOString(), progress: Math.max(100, Number(c.progress || 0)) } : c)));
+                      setSelectedCourseDetail(next);
+                      addNotification(courseCompletedNotification(next.title));
+                    }}
+                    className="px-3 py-2 rounded-xl bg-emerald-500 text-white text-xs font-black uppercase tracking-widest"
+                  >
+                    Mark Completed
+                  </button>
+                  <button
+                    onClick={() => {
+                      const nextStatus = selectedCourseDetail.status === 'Paused' ? 'Active' : 'Paused';
+                      setCourses((prev) => prev.map((c) => (
+                        c.id === selectedCourseDetail.id
+                          ? { ...c, status: nextStatus, archived: false, updatedAt: new Date().toISOString() }
+                          : c
+                      )));
+                      setSelectedCourseDetail((prev) => ({ ...prev, status: nextStatus }));
+                      toast.success(nextStatus === 'Paused' ? 'Course paused' : 'Course resumed');
+                    }}
+                    className={`px-3 py-2 rounded-xl text-white text-xs font-black uppercase tracking-widest ${
+                      selectedCourseDetail.status === 'Paused'
+                        ? 'bg-blue-500 hover:bg-blue-600'
+                        : 'bg-amber-500 hover:bg-amber-600'
+                    }`}
+                  >
+                    {selectedCourseDetail.status === 'Paused' ? 'Resume' : 'Pause'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 max-h-[65vh] overflow-y-auto custom-scrollbar space-y-4">
+                {detailTab === 'overview' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</p>
+                      <p className="text-lg font-black mt-1 text-slate-800 dark:text-white">{selectedCourseDetail.status}</p>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Progress</p>
+                      <p className="text-lg font-black mt-1 text-slate-800 dark:text-white">{selectedCourseDetail.progress}%</p>
+                    </div>
+                    <div className="md:col-span-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tags</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {(selectedCourseDetail.tags || []).length === 0 ? (
+                          <span className="text-sm text-slate-400">No tags</span>
+                        ) : (
+                          (selectedCourseDetail.tags || []).map((t) => (
+                            <span key={t} className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                              #{t}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {detailTab === 'assignments' && (
+                  <div className="space-y-2">
+                    {assignments.filter((a) => a.courseId === selectedCourseDetail.id).length === 0 ? (
+                      <div className="py-16 text-center text-slate-400 font-bold">No assignments linked to this course.</div>
+                    ) : (
+                      assignments.filter((a) => a.courseId === selectedCourseDetail.id).map((a) => (
+                        <div key={a.id} className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
+                          <p className="font-black text-slate-800 dark:text-white">{a.title || a.name || 'Assignment'}</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">{a.status || ''}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {detailTab === 'resources' && (
+                  <div className="space-y-2">
+                    {resources.filter((r) => r.associatedType === 'Course' && r.associatedId === selectedCourseDetail.id).length === 0 ? (
+                      <div className="py-16 text-center text-slate-400 font-bold">No resources linked to this course.</div>
+                    ) : (
+                      resources
+                        .filter((r) => r.associatedType === 'Course' && r.associatedId === selectedCourseDetail.id)
+                        .map((r) => (
+                          <a
+                            key={r.id}
+                            href={r.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+                          >
+                            <div>
+                              <p className="font-black text-slate-800 dark:text-white">{r.name}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{r.type}</p>
+                            </div>
+                            <ExternalLink size={18} className="text-slate-400" />
+                          </a>
+                        ))
+                    )}
                   </div>
                 )}
               </div>

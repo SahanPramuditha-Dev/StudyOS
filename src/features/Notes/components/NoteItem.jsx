@@ -1,7 +1,17 @@
 import React from 'react';
-import { Clock, Trash2, Tag, BookOpen, Link as LinkIcon } from 'lucide-react';
+import { Clock, Trash2, BookOpen, Link as LinkIcon, Pin } from 'lucide-react';
 
-const NoteItem = ({ note, isActive, onClick, onDelete, courses, videos }) => {
+const NoteItem = ({
+  note,
+  isActive,
+  onClick,
+  onDelete,
+  courses,
+  videos,
+  selected = false,
+  onToggleSelect,
+  onTogglePin
+}) => {
   const course = courses.find(c => c.id === note.courseId);
   const video = videos.find(v => v.id === note.videoId);
 
@@ -15,18 +25,45 @@ const NoteItem = ({ note, isActive, onClick, onDelete, courses, videos }) => {
       }`}
     >
       <div className="flex justify-between items-start mb-2">
-        <h3 className={`text-sm font-bold truncate flex-1 mr-2 ${isActive ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-200'}`}>
-          {note.title || 'Untitled Note'}
-        </h3>
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(note.id);
-          }}
-          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shrink-0"
-        >
-          <Trash2 size={14} />
-        </button>
+        <div className="flex items-center gap-2 flex-1 min-w-0 mr-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect?.(note.id);
+            }}
+            className={`w-4 h-4 rounded border flex items-center justify-center text-[9px] font-black ${
+              selected ? 'bg-primary-500 border-primary-500 text-white' : 'border-slate-300 text-transparent'
+            }`}
+            aria-label={`Select ${note.title || 'note'}`}
+          >
+            ✓
+          </button>
+          <h3 className={`text-sm font-bold truncate flex-1 ${isActive ? 'text-primary-700 dark:text-primary-400' : 'text-slate-700 dark:text-slate-200'}`}>
+            {note.title || 'Untitled Note'}
+          </h3>
+          {note.pinned && <Pin size={12} className="text-amber-500 shrink-0" />}
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin?.(note.id);
+            }}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all shrink-0"
+            title={note.pinned ? 'Unpin note' : 'Pin note'}
+          >
+            <Pin size={14} />
+          </button>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(note.id);
+            }}
+            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shrink-0"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
       
       <p className="text-xs text-slate-400 dark:text-slate-500 line-clamp-2 mb-3 leading-relaxed">

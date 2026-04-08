@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Search as SearchIcon, 
   X, 
@@ -14,7 +14,6 @@ import { StorageService } from '../../services/storage';
 
 const GlobalSearch = ({ isOpen, onClose, onSelectTab }) => {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -25,12 +24,11 @@ const GlobalSearch = ({ isOpen, onClose, onSelectTab }) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [onClose]);
 
-  useEffect(() => {
+  const results = useMemo(() => {
     if (!query) {
-      setResults([]);
-      return;
+      return [];
     }
 
     const allData = StorageService.getAll();
@@ -82,7 +80,7 @@ const GlobalSearch = ({ isOpen, onClose, onSelectTab }) => {
       }
     });
 
-    setResults(searchResults.slice(0, 8));
+    return searchResults.slice(0, 8);
   }, [query]);
 
   const getIcon = (type) => {

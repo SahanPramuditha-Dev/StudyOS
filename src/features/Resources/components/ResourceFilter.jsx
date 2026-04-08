@@ -19,7 +19,9 @@ const ResourceFilter = ({
   onUpload, 
   onAddLink, 
   isUploading,
-  itemCount
+  itemCount,
+  viewMode = 'all',
+  setViewMode
 }) => {
   return (
     <div className="flex flex-col gap-8 mb-12 animate-in fade-in slide-in-from-bottom-4">
@@ -99,6 +101,20 @@ const ResourceFilter = ({
         </div>
 
         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 px-4">
+          <div className="inline-flex rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1">
+            <button
+              onClick={() => setViewMode?.('all')}
+              className={`px-2.5 py-1 rounded-lg transition ${viewMode === 'all' ? 'bg-primary-500 text-white' : 'text-slate-500'}`}
+            >
+              All Assets
+            </button>
+            <button
+              onClick={() => setViewMode?.('papers')}
+              className={`px-2.5 py-1 rounded-lg transition ${viewMode === 'papers' ? 'bg-primary-500 text-white' : 'text-slate-500'}`}
+            >
+              Papers
+            </button>
+          </div>
           <RotateCcw size={12} className="text-slate-300" />
           Real-time Cloud Sync
         </div>

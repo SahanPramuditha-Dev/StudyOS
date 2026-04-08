@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        getUserProfile().role in ['admin', 'superadmin'];
+    }
+
+    function isActive() {
+      return isAuthenticated() &&
+        getUserProfile().status.isActive == true &&
+        getUserProfile().status.isBlocked == false;
+    }
+
+    function isVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+
+    function withinLimits() {
+      let profile = getUserProfile();
+      let limits = profile.get('limits', {});
+      let usage = profile.get('usage', {});
+      
+      // Safety: Only check limits for normal users
+      return profile.role in ['admin', 'superadmin'] || (
+        usage.get('fileCount', 0) <= limits.get('maxFiles', 100) &&
+        usage.get('storageUsedMB', 0) <= limits.get('storageMB', 10)
+      );
+    }
+
+    function hasModuleAccess(document) {
+      let perms = getUserProfile().permissions;
+      let modules = perms.get('modules', {});
+      
+      return
+        (document == 'studyos_courses' && (modules.get('courses', false) == true || perms.get('courses', false) == true)) ||
+        (document == 'studyos_videos' && (modules.get('videos', false) == true || perms.get('videos', false) == true)) ||
+        (document == 'studyos_notes' && (modules.get('notes', false) == true || perms.get('notes', false) == true)) ||
+        (document == 'studyos_resources' && (modules.get('resources', false) == true || perms.get('resources', false) == true)) ||
+        (document == 'studyos_projects' && (modules.get('projects', false) == true || perms.get('projects', false) == true)) ||
+        (document == 'studyos_tasks' && (modules.get('projects', false) == true || perms.get('projects', false) == true)) ||
+        (document == 'studyos_workspace' && (modules.get('workspace', false) == true || perms.get('workspace', false) == true)) ||
+        (document == 'studyos_analytics' && (modules.get('analytics', false) == true || perms.get('analytics', false) == true)) ||
+        (document == 'studyos_reminders' && (modules.get('reminders', false) == true || perms.get('reminders', false) == true)) ||
+        (document == 'studyos_settings') ||
+        (document == 'studyos_streak') ||
+        (document == 'studyos_notifications') ||
+        (document == 'studyos_personalization') ||
+        (document == 'studyos_study_prefs') ||
+        (document == 'studyos_notif_settings') ||
+        (document == 'studyos_privacy') ||
+        (document == 'studyos_achievements');
+    }
+
+    function isCreatingOwnProfile(userId) {
+      return isOwner(userId) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.role == 'user';
+    }
+
+    function isSafeSelfProfileUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'name',
+        'avatar',
+        'bio',
+        'university',
+        'degree',
+        'year',
+        'phone',
+        'lastLogin',
+        'updatedAt'
+      ]);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isCreatingOwnProfile(userId);
+      allow update: if (isOwner(userId) && isSafeSelfProfileUpdate()) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /users/{userId}/data/{document} {
+      allow read: if (isOwner(userId) && isActive() && hasModuleAccess(document)) || isAdmin();
+      allow write: if (isOwner(userId) && isActive() && isVerified() && hasModuleAccess(document) && withinLimits()) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /settings/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

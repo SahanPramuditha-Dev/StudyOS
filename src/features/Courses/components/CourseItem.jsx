@@ -5,11 +5,24 @@ import {
   ExternalLink, 
   BookOpen, 
   Clock, 
-  FolderOpen 
+  FolderOpen,
+  FileText,
+  ArrowUpRight
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const CourseItem = ({ course, onEdit, onDelete, onViewResources }) => {
+const CourseItem = ({
+  course,
+  onEdit,
+  onDelete,
+  onViewResources,
+  onOpenDetail,
+  assignments = [],
+  selected = false,
+  onToggleSelect
+}) => {
+  const relatedAssignments = assignments.filter(a => a.courseId === course.id);
+  
   const getStatusColor = (status) => {
     switch (status) {
       case 'Active': return 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400';
@@ -28,10 +41,31 @@ const CourseItem = ({ course, onEdit, onDelete, onViewResources }) => {
       className="card group flex flex-col bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm hover:shadow-xl transition-all"
     >
       <div className="flex justify-between items-start mb-4">
-        <div className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${getStatusColor(course.status)}`}>
-          {course.status}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleSelect?.(course.id)}
+            className={`w-5 h-5 rounded-md border flex items-center justify-center text-[10px] font-black transition-all ${
+              selected
+                ? 'bg-primary-500 border-primary-500 text-white shadow-md shadow-primary-500/30'
+                : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-transparent hover:border-primary-400'
+            }`}
+            aria-label={`Select ${course.title}`}
+          >
+            ✓
+          </button>
+          <div className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${getStatusColor(course.status)}`}>
+            {course.status}
+          </div>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onOpenDetail?.(course)}
+            className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+            title="Open details"
+          >
+            <ArrowUpRight size={16} />
+          </button>
           <button 
             onClick={() => onEdit(course)} 
             className="p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-primary-500 transition-colors"
@@ -48,9 +82,16 @@ const CourseItem = ({ course, onEdit, onDelete, onViewResources }) => {
       </div>
 
       <div className="flex-1">
-        <h3 className="text-xl font-black text-slate-800 dark:text-white mb-1 group-hover:text-primary-500 transition-colors line-clamp-1">
+        <button
+          type="button"
+          onClick={() => onOpenDetail?.(course)}
+          className="text-left"
+          title="Open course details"
+        >
+          <h3 className="text-xl font-black text-slate-800 dark:text-white mb-1 group-hover:text-primary-500 transition-colors line-clamp-1">
           {course.title}
-        </h3>
+          </h3>
+        </button>
         <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2">
           <ExternalLink size={14} className="text-primary-500" />
           {course.platform}
@@ -94,6 +135,12 @@ const CourseItem = ({ course, onEdit, onDelete, onViewResources }) => {
               <Clock size={14} className="text-primary-500" />
               {course.difficulty}
             </div>
+            {relatedAssignments.length > 0 && (
+              <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest">
+                <FileText size={14} />
+                {relatedAssignments.length} {relatedAssignments.length === 1 ? 'Assignment' : 'Assignments'}
+              </div>
+            )}
           </div>
           <button 
             onClick={() => onViewResources(course)}

@@ -9,16 +9,19 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Tag,
+  Database,
+  Timer
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Active': return 'bg-green-100 text-green-600 dark:bg-green-500/10 dark:text-green-400';
+      case 'Ongoing': return 'bg-green-100 text-green-600 dark:bg-green-500/10 dark:text-green-400';
+      case 'Submitted': return 'bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400';
       case 'Completed': return 'bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400';
-      case 'Paused': return 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400';
       case 'Archived': return 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
       default: return 'bg-slate-50 text-slate-400';
     }
@@ -42,6 +45,22 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
   const completedTasks = project.board?.done?.length || 0;
   const progress = taskCount > 0 ? Math.round((completedTasks / taskCount) * 100) : 0;
 
+  // Storage usage calculation (mock or real)
+  const storageUsage = project.files?.reduce((acc, f) => acc + (f.size || 0), 0) || 0;
+  const storageMB = (storageUsage / (1024 * 1024)).toFixed(2);
+
+  // Deadline countdown
+  const getDeadlineInfo = (deadline) => {
+    if (!deadline) return null;
+    const diff = new Date(deadline) - new Date();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    if (days < 0) return { text: 'Overdue', color: 'text-red-500' };
+    if (days === 0) return { text: 'Due Today', color: 'text-orange-500' };
+    return { text: `${days} days left`, color: 'text-slate-400' };
+  };
+
+  const deadlineInfo = getDeadlineInfo(project.deadline);
+
   return (
     <motion.div 
       layout
@@ -56,10 +75,17 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
             <Code size={28} />
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-800 dark:text-white group-hover:text-primary-500 transition-colors">
-              {project.name}
-            </h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-xl font-black text-slate-800 dark:text-white group-hover:text-primary-500 transition-colors">
+                {project.name}
+              </h3>
+              {project.subject && (
+                <span className="px-2 py-0.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 text-primary-500 text-[9px] font-black uppercase tracking-widest">
+                  {project.subject}
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
               {project.stack || 'No Stack Defined'}
             </p>
           </div>
@@ -96,21 +122,19 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
             <AlertCircle size={12} />
             {project.priority}
           </span>
-          {project.deadline && (
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 text-slate-400">
-              <Calendar size={12} />
-              {new Date(project.deadline).toLocaleDateString()}
-            </span>
-          )}
+          <span className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 text-slate-400">
+            <Database size={12} />
+            {storageMB} MB
+          </span>
         </div>
 
-        {/* Progress Section */}
-        <div className="space-y-3 pt-2">
+        {/* Progress & Deadline Section */}
+        <div className="space-y-4 pt-2">
           <div className="flex justify-between items-end">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={14} className="text-green-500" />
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Progress: {completedTasks}/{taskCount} Tasks
+                Execution: {completedTasks}/{taskCount} Tasks
               </span>
             </div>
             <span className="text-xs font-black text-slate-800 dark:text-white">{progress}%</span>
@@ -124,15 +148,30 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
               }`}
             />
           </div>
+
+          {deadlineInfo && (
+            <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-400">
+                  <Timer size={14} />
+                </div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Deadline</span>
+              </div>
+              <span className={`text-[10px] font-black uppercase tracking-widest ${deadlineInfo.color}`}>
+                {deadlineInfo.text}
+              </span>
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-3 pt-4">
+        <div className="flex gap-3 pt-2">
           <button 
             onClick={() => onOpenWorkspace(project.id)}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-primary-500 text-white text-xs font-black uppercase tracking-widest shadow-lg shadow-primary-500/20 hover:bg-primary-600 hover:shadow-primary-500/30 transition-all active:scale-95"
+            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-primary-500 text-white text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-primary-500/20 hover:bg-primary-600 hover:shadow-primary-500/30 transition-all active:scale-95 group"
           >
             <LayoutGrid size={16} />
-            Open Workspace
+            View Details
+            <ExternalLink size={14} className="group-hover:translate-x-1 transition-transform" />
           </button>
           {project.repo && (
             <a 

@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { toggleSelectionId, toggleSelectAll, softArchiveByIds, restoreByIds, hardDeleteByIds } from '../../utils/entityOps';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 
@@ -23,6 +24,7 @@ import NotesList from './components/NotesList';
 import NoteEditor from './components/NoteEditor';
 import NotePreview from './components/NotePreview';
 import ConfirmModal from '../../components/ConfirmModal';
+import BulkActionBar from '../../components/BulkActionBar';
 
 const Notes = () => {
   // 1. State Management
@@ -34,10 +36,15 @@ const Notes = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('edit'); // 'edit', 'preview', 'split'
   const [isMobileListOpen, setIsMobileListOpen] = useState(true);
+  const [selectedNoteIds, setSelectedNoteIds] = useState([]);
+  const [bulkTagInput, setBulkTagInput] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
 
   // Modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   // Derive active note from id
   const activeNote = useMemo(() => 
@@ -47,25 +54,44 @@ const Notes = () => {
   // 2. Search & Filtering (Derived State)
   const filteredNotes = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) return notes;
-    
-    return notes.filter(n => 
-      (n.title || '').toLowerCase().includes(query) ||
-      (n.content || '').toLowerCase().includes(query) ||
-      (n.tags || []).some(t => t.toLowerCase().includes(query))
-    );
-  }, [notes, searchQuery]);
+    const scoped = notes
+      .filter((n) => (showArchived ? true : n.archived !== true))
+      .filter((n) => (showPinnedOnly ? n.pinned === true : true));
+    const searched = !query
+      ? scoped
+      : scoped.filter(n => 
+          (n.title || '').toLowerCase().includes(query) ||
+          (n.content || '').toLowerCase().includes(query) ||
+          (n.tags || []).some(t => t.toLowerCase().includes(query))
+        );
+    return searched.sort((a, b) => {
+      const pinA = a.pinned ? 1 : 0;
+      const pinB = b.pinned ? 1 : 0;
+      if (pinA !== pinB) return pinB - pinA;
+      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+    });
+  }, [notes, searchQuery, showArchived, showPinnedOnly]);
 
   // 3. CRUD Operations
   const handleCreateNote = () => {
+    const baseTitle = 'New Insight';
+    const existingTitles = new Set(notes.map((n) => String(n.title || '').trim().toLowerCase()));
+    let nextTitle = baseTitle;
+    let counter = 2;
+    while (existingTitles.has(nextTitle.toLowerCase())) {
+      nextTitle = `${baseTitle} ${counter}`;
+      counter += 1;
+    }
     const newNote = {
       id: nanoid(),
-      title: 'New Insight',
+      title: nextTitle,
       content: '',
       tags: [],
       courseId: '',
       videoId: '',
       timestamp: null,
+      pinned: false,
+      archived: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -77,9 +103,13 @@ const Notes = () => {
 
   const updateActiveNote = useCallback((updates) => {
     if (!activeNoteId) return;
+    const nextTitle = updates?.title !== undefined ? String(updates.title).trim() : undefined;
+    if (nextTitle !== undefined && (nextTitle.length < 2 || nextTitle.length > 120)) return;
+    const nextContent = updates?.content !== undefined ? String(updates.content) : undefined;
+    if (nextContent !== undefined && nextContent.length > 50000) return;
     setNotes(prev => prev.map(n => 
       n.id === activeNoteId 
-        ? { ...n, ...updates, updatedAt: new Date().toISOString() } 
+        ? { ...n, ...updates, title: nextTitle !== undefined ? nextTitle : n.title, updatedAt: new Date().toISOString() } 
         : n
     ));
   }, [activeNoteId, setNotes]);
@@ -91,10 +121,58 @@ const Notes = () => {
 
   const confirmDeleteNote = () => {
     if (!noteToDelete) return;
-    setNotes(prev => prev.filter(n => n.id !== noteToDelete));
+    setNotes(prev => prev.map(n => n.id === noteToDelete ? { ...n, archived: true, updatedAt: new Date().toISOString() } : n));
     if (activeNoteId === noteToDelete) setActiveNoteId(null);
     setNoteToDelete(null);
     toast.success('Note archived');
+  };
+
+  const toggleNoteSelection = (id) => {
+    setSelectedNoteIds((prev) => toggleSelectionId(prev, id));
+  };
+
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filteredNotes.map((n) => n.id);
+    setSelectedNoteIds((prev) => toggleSelectAll(prev, visibleIds));
+  };
+
+  const clearSelection = () => setSelectedNoteIds([]);
+
+  const bulkArchive = () => {
+    if (!selectedNoteIds.length) return;
+    setNotes((prev) => softArchiveByIds(prev, selectedNoteIds));
+    if (selectedNoteIds.includes(activeNoteId)) setActiveNoteId(null);
+    toast.success(`Archived ${selectedNoteIds.length} note(s)`);
+    clearSelection();
+  };
+
+  const bulkRestore = () => {
+    if (!selectedNoteIds.length) return;
+    setNotes((prev) => restoreByIds(prev, selectedNoteIds));
+    toast.success(`Restored ${selectedNoteIds.length} note(s)`);
+    clearSelection();
+  };
+
+  const bulkHardDelete = () => {
+    if (!selectedNoteIds.length) return;
+    setBulkDeleteConfirmOpen(true);
+  };
+
+  const bulkAddTag = () => {
+    const tag = bulkTagInput.trim().toLowerCase();
+    if (!selectedNoteIds.length || !tag) return;
+    const selected = new Set(selectedNoteIds);
+    setNotes((prev) => prev.map((n) => {
+      if (!selected.has(n.id)) return n;
+      const tags = Array.isArray(n.tags) ? n.tags : [];
+      return tags.includes(tag) ? n : { ...n, tags: [...tags, tag], updatedAt: new Date().toISOString() };
+    }));
+    toast.success(`Tagged ${selectedNoteIds.length} note(s)`);
+    setBulkTagInput('');
+  };
+
+  const togglePinNote = (id) => {
+    setNotes((prev) => prev.map((n) => n.id === id ? { ...n, pinned: !n.pinned, updatedAt: new Date().toISOString() } : n));
   };
 
   // 4. Auto-Save Logic (Persistence)
@@ -109,7 +187,7 @@ const Notes = () => {
     }, 1500);
     
     return () => clearTimeout(timeout);
-  }, [activeNote?.content, activeNote?.title]);
+  }, [activeNote?.content, activeNote?.title, activeNote?.id]);
 
   // 5. Export Functionality
   const exportNote = (format = 'md') => {
@@ -166,8 +244,30 @@ const Notes = () => {
             setSearchTerm={setSearchQuery}
             courses={courses}
             videos={videos}
+            selectedNoteIds={selectedNoteIds}
+            onToggleSelect={toggleNoteSelection}
+            onTogglePin={togglePinNote}
+            showArchived={showArchived}
+            setShowArchived={setShowArchived}
+            showPinnedOnly={showPinnedOnly}
+            setShowPinnedOnly={setShowPinnedOnly}
           />
         </motion.div>
+
+        {selectedNoteIds.length > 0 && (
+          <BulkActionBar
+            selectedCount={selectedNoteIds.length}
+            onSelectVisible={toggleSelectAllVisible}
+            onClear={clearSelection}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-40 p-3 bg-primary-50/95 dark:bg-primary-900/30 backdrop-blur-sm shadow-xl"
+          >
+            <input value={bulkTagInput} onChange={(e) => setBulkTagInput(e.target.value)} placeholder="tag" className="px-2 py-1 rounded-lg text-xs w-24" />
+            <button onClick={bulkAddTag} className="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">Add tag</button>
+            <button onClick={bulkRestore} className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">Restore</button>
+            <button onClick={bulkArchive} className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-700">Archive</button>
+            <button onClick={bulkHardDelete} className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-900 text-white">Hard delete</button>
+          </BulkActionBar>
+        )}
 
         {/* Editor & Preview Workspace */}
         <AnimatePresence mode="wait">
@@ -341,6 +441,21 @@ const Notes = () => {
         title="Archive Note"
         message="Are you sure you want to archive this knowledge piece? This will remove it from your notes collection."
         confirmText="Archive"
+        type="danger"
+      />
+      <ConfirmModal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setNotes((prev) => hardDeleteByIds(prev, selectedNoteIds));
+          if (selectedNoteIds.includes(activeNoteId)) setActiveNoteId(null);
+          toast.success(`Deleted ${selectedNoteIds.length} note(s)`);
+          clearSelection();
+          setBulkDeleteConfirmOpen(false);
+        }}
+        title="Delete Notes Permanently"
+        message={`Permanently delete ${selectedNoteIds.length} selected note(s)? This cannot be undone.`}
+        confirmText="Delete"
         type="danger"
       />
     </div>

@@ -2,21 +2,19 @@ import React from 'react';
 import { 
   Bell, 
   Trash2, 
-  Clock, 
   MessageSquare, 
   Calendar,
   CheckCircle2,
-  AlertCircle,
-  MoreVertical,
-  Flag,
   Edit3,
   RefreshCcw,
   Zap,
-  Mail
+  Mail,
+  BookOpen
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toReminderDateTime } from '../../../utils/reminderDate';
 
-const ReminderItem = ({ reminder, onToggle, onDelete, onMarkDone, onEdit }) => {
+const ReminderItem = ({ reminder, onToggle, onDelete, onMarkDone, onEdit, linkedCourseTitle }) => {
   const getPriorityColor = (priority) => {
     switch (priority) {
       case 'High': return 'text-red-500 bg-red-50 dark:bg-red-500/10';
@@ -26,7 +24,8 @@ const ReminderItem = ({ reminder, onToggle, onDelete, onMarkDone, onEdit }) => {
     }
   };
 
-  const isOverdue = !reminder.completed && new Date(reminder.date + ' ' + reminder.time) < new Date();
+  const reminderAt = toReminderDateTime(reminder.date, reminder.time);
+  const isOverdue = !reminder.completed && reminderAt ? reminderAt < new Date() : false;
 
   return (
     <motion.div 
@@ -68,7 +67,7 @@ const ReminderItem = ({ reminder, onToggle, onDelete, onMarkDone, onEdit }) => {
             </p>
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
               <Calendar size={12} />
-              {new Date(reminder.date).toLocaleDateString()}
+              {reminderAt ? reminderAt.toLocaleDateString() : reminder.date}
             </span>
             {reminder.category && (
               <span className="text-[9px] font-black text-primary-500 bg-primary-50 dark:bg-primary-500/10 px-2 py-0.5 rounded-md uppercase tracking-tighter">
@@ -91,6 +90,12 @@ const ReminderItem = ({ reminder, onToggle, onDelete, onMarkDone, onEdit }) => {
               <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-md uppercase tracking-tighter flex items-center gap-1">
                 <Mail size={10} />
                 Email
+              </span>
+            )}
+            {linkedCourseTitle && (
+              <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md uppercase tracking-tighter flex items-center gap-1">
+                <BookOpen size={10} />
+                {linkedCourseTitle}
               </span>
             )}
           </div>

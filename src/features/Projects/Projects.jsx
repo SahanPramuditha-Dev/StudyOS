@@ -20,6 +20,7 @@ import toast from 'react-hot-toast';
 // Sub-components
 import ProjectItem from './components/ProjectItem';
 import ProjectForm from './components/ProjectForm';
+import ProjectDetail from './components/ProjectDetail';
 import ConfirmModal from '../../components/ConfirmModal';
 
 const Projects = ({ onSelectProject }) => {
@@ -27,27 +28,37 @@ const Projects = ({ onSelectProject }) => {
   const [projects, setProjects] = useStorage(STORAGE_KEYS.PROJECTS, []);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('All'); // All, Active, Completed, Paused
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '' });
 
   const [formData, setFormData] = useState({
     name: '',
+    subject: '',
     stack: '',
     repo: '',
-    status: 'Active',
+    status: 'Ongoing', // Ongoing, Submitted, Completed
     priority: 'Medium',
     deadline: '',
     description: '',
     board: { todo: [], doing: [], done: [] },
-    bugs: [],
-    ideas: []
+    files: [], // { name, type, size, url, tag, createdAt }
+    docs: [], // { id, title, content, version, updatedAt }
+    submissions: [], // { id, title, fileUrl, date, version }
+    bugs: [], // { id, title, desc, status, severity, screenshot }
+    snippets: [], // { id, title, code, language }
+    notes: [], // { id, title, content, createdAt, updatedAt }
+    activity: [] // { id, type, detail, timestamp }
   });
+
+  // Get selected project
+  const selectedProject = selectedProjectId ? projects.find(p => p.id === selectedProjectId) : null;
 
   // 2. Stats Calculation
   const stats = useMemo(() => {
     const total = projects.length;
-    const active = projects.filter(p => p.status === 'Active').length;
+    const active = projects.filter(p => p.status === 'Ongoing').length;
     const completed = projects.filter(p => p.status === 'Completed').length;
     const totalTasks = projects.reduce((acc, p) => {
       const pTasks = p.board ? (
@@ -127,17 +138,37 @@ const Projects = ({ onSelectProject }) => {
     setEditingProject(null);
     setFormData({
       name: '',
+      subject: '',
       stack: '',
       repo: '',
-      status: 'Active',
+      status: 'Ongoing',
       priority: 'Medium',
       deadline: '',
       description: '',
       board: { todo: [], doing: [], done: [] },
+      files: [],
+      docs: [],
+      submissions: [],
       bugs: [],
-      ideas: []
+      snippets: [],
+      notes: [],
+      activity: []
     });
   };
+
+  // Show Project Detail if one is selected
+  if (selectedProject) {
+    return (
+      <ProjectDetail
+        project={selectedProject}
+        onBack={() => setSelectedProjectId(null)}
+        onUpdate={(updated) => {
+          setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+          toast.success('Project updated');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto pb-12 space-y-12">
@@ -228,7 +259,7 @@ const Projects = ({ onSelectProject }) => {
               project={project}
               onEdit={handleEdit}
               onDelete={deleteProject}
-              onOpenWorkspace={(id) => onSelectProject(id)}
+              onOpenWorkspace={(id) => setSelectedProjectId(id)}
             />
           ))}
         </AnimatePresence>

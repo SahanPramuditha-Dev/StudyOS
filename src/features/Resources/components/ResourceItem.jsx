@@ -13,7 +13,18 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const ResourceItem = ({ res, onEdit, onDelete, courses, videos }) => {
+const ResourceItem = ({
+  res,
+  onEdit,
+  onDelete,
+  onMove,
+  folderOptions = [],
+  courses,
+  videos,
+  selected = false,
+  onToggleSelect,
+  onDragStart
+}) => {
   const getIcon = () => {
     switch (res.type) {
       case 'Link': return <LinkIcon size={20} />;
@@ -44,11 +55,22 @@ const ResourceItem = ({ res, onEdit, onDelete, courses, videos }) => {
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
+      draggable
+      onDragStart={(e) => onDragStart?.(e, { type: 'resource', id: res.id })}
       className="card group relative flex flex-col bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-[2rem] shadow-sm hover:shadow-xl transition-all"
     >
       <div className="flex justify-between items-start mb-4">
-        <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-primary-500 group-hover:bg-primary-500 group-hover:text-white transition-all shadow-sm">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onToggleSelect?.(res.id)}
+            className={`w-5 h-5 rounded-md border flex items-center justify-center text-[10px] font-black ${selected ? 'bg-primary-500 border-primary-500 text-white' : 'border-slate-300 text-transparent'}`}
+            aria-label={`Select ${res.name}`}
+          >
+            ✓
+          </button>
+          <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-primary-500 group-hover:bg-primary-500 group-hover:text-white transition-all shadow-sm">
           {getIcon()}
+          </div>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button 
@@ -106,6 +128,20 @@ const ResourceItem = ({ res, onEdit, onDelete, courses, videos }) => {
         >
           <ExternalLink size={14} /> {res.isLocal ? 'Open File' : 'Visit Link'}
         </a>
+      </div>
+      <div className="mt-3">
+        <select
+          value={res.folderId || ''}
+          onChange={(e) => onMove?.(res.id, e.target.value || null)}
+          className="w-full text-[10px] font-black uppercase tracking-widest"
+        >
+          <option value="">Move to Root</option>
+          {folderOptions.map((folder) => (
+            <option key={folder.id} value={folder.id}>
+              {folder.pathLabel}
+            </option>
+          ))}
+        </select>
       </div>
     </motion.div>
   );

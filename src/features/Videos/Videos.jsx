@@ -29,21 +29,33 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { toggleSelectionId, toggleSelectAll, softArchiveByIds, restoreByIds, hardDeleteByIds } from '../../utils/entityOps';
+import { videoCompletedNotification } from '../../utils/notificationBuilders';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
+import BulkActionBar from '../../components/BulkActionBar';
+import { useReminders } from '../../context/ReminderContext';
 
 const Videos = () => {
   const [videos, setVideos] = useStorage(STORAGE_KEYS.VIDEOS, []);
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
-  const [activeVideo, setActiveVideo] = useState(null);
+  const { addNotification } = useReminders();
+  const [activeVideoId, setActiveVideoId] = useState(null);
+  const [selectedVideoIds, setSelectedVideoIds] = useState([]);
+  const [bulkCourseId, setBulkCourseId] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  
+  const activeVideo = React.useMemo(() => 
+    videos.find(v => v.id === activeVideoId), 
+  [videos, activeVideoId]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCourse, setFilterCourse] = useState('all');
   
   // YouTube API State
   const [ytPlayer, setYtPlayer] = useState(null);
-  const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showNotesPanel, setShowNotesPanel] = useState(true);
@@ -68,9 +80,16 @@ const Videos = () => {
 
   const updateVideoData = (id, data) => {
     setVideos(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
-    if (activeVideo?.id === id) {
-      setActiveVideo(prev => ({ ...prev, ...data }));
-    }
+  };
+
+  const clearSelection = () => setSelectedVideoIds([]);
+
+  const toggleVideoSelection = (id) => {
+    setSelectedVideoIds((prev) => toggleSelectionId(prev, id));
+  };
+
+  const toggleSelectAllVisible = (visibleIds) => {
+    setSelectedVideoIds((prev) => toggleSelectAll(prev, visibleIds));
   };
 
   // Load YouTube IFrame API once
@@ -175,7 +194,7 @@ const Videos = () => {
         setIsPlaying(false);
       };
     }
-  }, [activeVideo?.id]);
+  }, [activeVideoId, activeVideo?.videoId]);
 
   // Sync Playback Rate
   useEffect(() => {
@@ -187,39 +206,48 @@ const Videos = () => {
   // Tracking Interval
   useEffect(() => {
     let interval;
-    if (activeVideo) {
-      lastTrackedTimeRef.current = activeVideo.lastPosition || 0;
-    }
-
-    if (isPlaying && ytPlayer && ytPlayer.getCurrentTime) {
+    
+    if (isPlaying && ytPlayer && ytPlayer.getCurrentTime && activeVideoId) {
       interval = setInterval(() => {
         const time = ytPlayer.getCurrentTime();
         const duration = ytPlayer.getDuration();
-        setCurrentTime(time);
+        let completedTitle = null;
 
         if (time > 0 && duration > 0) {
-          const progress = Math.round((time / duration) * 100);
-          const isCompleted = progress >= 90;
-          
-          // Calculate watch time increment using the ref
-          const lastPos = lastTrackedTimeRef.current;
-          const timeDiff = time - lastPos;
-          const watchIncrement = (timeDiff > 0 && timeDiff < 5) ? timeDiff : 0;
-          
-          lastTrackedTimeRef.current = time;
-
-          updateVideoData(activeVideo.id, {
-            lastPosition: time,
-            progress: Math.max(activeVideo.progress, progress),
-            completed: activeVideo.completed || isCompleted,
-            totalWatchTime: (activeVideo.totalWatchTime || 0) + watchIncrement,
-            lastWatched: new Date().toISOString()
-          });
+          setVideos(prev => prev.map(v => {
+            if (v.id !== activeVideoId) return v;
+            
+            const progress = Math.round((time / duration) * 100);
+            const isCompleted = progress >= 90;
+            const lastPos = v.lastPosition || 0;
+            const timeDiff = time - lastPos;
+            
+            // Only count as watch time if it's natural playback (small forward jump)
+            // 8s because interval is now 5s
+            const watchIncrement = (timeDiff > 0 && timeDiff < 8) ? timeDiff : 0;
+            
+            return {
+              ...v,
+              lastPosition: time,
+              progress: Math.max(v.progress || 0, progress),
+              completed: v.completed || isCompleted,
+              completionNotified: v.completionNotified || (!v.completed && isCompleted),
+              totalWatchTime: (v.totalWatchTime || 0) + watchIncrement,
+              lastWatched: new Date().toISOString()
+            };
+          }));
+          const current = videos.find((v) => v.id === activeVideoId);
+          if (current && !current.completed && Math.round((time / duration) * 100) >= 90) {
+            completedTitle = current.title;
+          }
+          if (completedTitle) {
+            addNotification(videoCompletedNotification(completedTitle, 'reached'));
+          }
         }
-      }, 2000);
+      }, 5000);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, ytPlayer, activeVideo?.id]);
+  }, [isPlaying, ytPlayer, activeVideoId, setVideos, videos, addNotification]);
 
   // Track session start
   useEffect(() => {
@@ -234,19 +262,23 @@ const Videos = () => {
       const sessionEnd = {
         ...sessionStartRef.current,
         endTime: new Date().toISOString(),
-        endPosition: activeVideo.lastPosition,
+        endPosition: activeVideo?.lastPosition || 0,
         duration: (new Date() - new Date(sessionStartRef.current.startTime)) / 1000
       };
 
-      if (sessionEnd.duration > 5) { // Only log sessions longer than 5s
-        updateVideoData(activeVideo.id, {
-          playbackLogs: [sessionEnd, ...(activeVideo.playbackLogs || [])].slice(0, 50) // Keep last 50 sessions
-        });
+      if (sessionEnd.duration > 5 && activeVideoId) {
+        setVideos(prev => prev.map(v => {
+          if (v.id !== activeVideoId) return v;
+          return {
+            ...v,
+            playbackLogs: [sessionEnd, ...(v.playbackLogs || [])].slice(0, 50)
+          };
+        }));
       }
       sessionStartRef.current = null;
     }
     return () => {
-      if (sessionStartRef.current) {
+      if (sessionStartRef.current && activeVideoId) {
         const sessionEnd = {
           ...sessionStartRef.current,
           endTime: new Date().toISOString(),
@@ -254,15 +286,14 @@ const Videos = () => {
           duration: (new Date() - new Date(sessionStartRef.current.startTime)) / 1000
         };
         if (sessionEnd.duration > 5) {
-          // Note: Using a functional update here to ensure we use latest videos state
-          setVideos(prev => prev.map(v => v.id === activeVideo?.id ? {
+          setVideos(prev => prev.map(v => v.id === activeVideoId ? {
             ...v,
             playbackLogs: [sessionEnd, ...(v.playbackLogs || [])].slice(0, 50)
           } : v));
         }
       }
     };
-  }, [isPlaying, activeVideo?.id]);
+  }, [isPlaying, activeVideoId]);
 
   const extractYouTubeId = (url) => {
     // Standard URL: https://www.youtube.com/watch?v=VIDEO_ID
@@ -282,6 +313,12 @@ const Videos = () => {
       return;
     }
 
+    const duplicate = videos.some((v) => v.videoId === videoId && v.archived !== true);
+    if (duplicate) {
+      toast.error('This video already exists in your tracker');
+      return;
+    }
+
     const newVideo = {
       id: nanoid(),
       videoId,
@@ -298,7 +335,9 @@ const Videos = () => {
       addedAt: new Date().toISOString(),
       lastWatched: new Date().toISOString(),
       bookmarks: [],
-      playbackLogs: []
+      playbackLogs: [],
+      archived: false,
+      completionNotified: false
     };
 
     setVideos([newVideo, ...videos]);
@@ -378,15 +417,19 @@ const Videos = () => {
 
   const confirmDeleteVideo = () => {
     if (!videoToDelete) return;
-    setVideos(videos.filter(v => v.id !== videoToDelete));
-    if (activeVideo?.id === videoToDelete) setActiveVideo(null);
+    setVideos(videos.map(v => v.id === videoToDelete ? { ...v, archived: true, updatedAt: new Date().toISOString() } : v));
+    if (activeVideoId === videoToDelete) setActiveVideoId(null);
     setVideoToDelete(null);
-    toast.success('Video removed');
+    toast.success('Video archived');
   };
 
   const toggleComplete = (video) => {
-    updateVideoData(video.id, { completed: !video.completed });
+    const nextCompleted = !video.completed;
+    updateVideoData(video.id, { completed: nextCompleted, completionNotified: nextCompleted });
     toast.success(video.completed ? 'Video marked as in-progress' : 'Video marked as completed!');
+    if (nextCompleted) {
+      addNotification(videoCompletedNotification(video.title));
+    }
   };
 
   const formatTime = (seconds) => {
@@ -399,10 +442,62 @@ const Videos = () => {
   };
 
   const filteredVideos = videos.filter(v => {
+    const isArchived = v.archived === true;
+    if (!showArchived && isArchived) return false;
     const matchesSearch = v.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCourse = filterCourse === 'all' || v.courseId === filterCourse;
     return matchesSearch && matchesCourse;
   });
+
+  const applyBulkAssignCourse = () => {
+    if (!selectedVideoIds.length) return;
+    const selected = new Set(selectedVideoIds);
+    setVideos((prev) => prev.map((v) => (
+      selected.has(v.id) ? { ...v, courseId: bulkCourseId, archived: false, updatedAt: new Date().toISOString() } : v
+    )));
+    toast.success(`Assigned ${selectedVideoIds.length} video(s)`);
+    clearSelection();
+  };
+
+  const applyBulkMarkComplete = (completed) => {
+    if (!selectedVideoIds.length) return;
+    const selected = new Set(selectedVideoIds);
+    setVideos((prev) => prev.map((v) => (
+      selected.has(v.id) ? { ...v, completed, completionNotified: completed, archived: false, updatedAt: new Date().toISOString() } : v
+    )));
+    toast.success(`${completed ? 'Completed' : 'Reopened'} ${selectedVideoIds.length} video(s)`);
+    clearSelection();
+  };
+
+  const applyBulkArchive = () => {
+    if (!selectedVideoIds.length) return;
+    setVideos((prev) => softArchiveByIds(prev, selectedVideoIds));
+    if (selectedVideoIds.includes(activeVideoId)) setActiveVideoId(null);
+    toast.success(`Archived ${selectedVideoIds.length} video(s)`);
+    clearSelection();
+  };
+
+  const applyBulkRestore = () => {
+    if (!selectedVideoIds.length) return;
+    setVideos((prev) => restoreByIds(prev, selectedVideoIds));
+    toast.success(`Restored ${selectedVideoIds.length} video(s)`);
+    clearSelection();
+  };
+
+  const applyBulkHardDelete = () => {
+    if (!selectedVideoIds.length) return;
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Videos Permanently',
+      message: `Permanently delete ${selectedVideoIds.length} selected video(s)? This action cannot be undone.`,
+      onConfirm: () => {
+        setVideos((prev) => hardDeleteByIds(prev, selectedVideoIds));
+        if (selectedVideoIds.includes(activeVideoId)) setActiveVideoId(null);
+        toast.success(`Deleted ${selectedVideoIds.length} video(s)`);
+        clearSelection();
+      }
+    });
+  };
 
   return (
     <div className="max-w-7xl mx-auto pb-12 space-y-8">
@@ -436,6 +531,17 @@ const Videos = () => {
             <option value="all">All Courses</option>
             {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
           </select>
+          <button
+            onClick={() => setShowArchived((prev) => !prev)}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest border transition ${
+              showArchived
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-100 dark:border-slate-800'
+            }`}
+            title="Toggle archived videos"
+          >
+            {showArchived ? 'Showing Archived' : 'Hide Archived'}
+          </button>
           <button 
             onClick={() => setIsModalOpen(true)}
             className="px-6 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-bold transition-all shadow-xl shadow-primary-500/20 flex items-center gap-2"
@@ -444,6 +550,25 @@ const Videos = () => {
           </button>
         </div>
       </div>
+
+      {selectedVideoIds.length > 0 && (
+        <BulkActionBar
+          selectedCount={selectedVideoIds.length}
+          onSelectVisible={() => toggleSelectAllVisible(filteredVideos.map((v) => v.id))}
+          onClear={clearSelection}
+        >
+          <select value={bulkCourseId} onChange={(e) => setBulkCourseId(e.target.value)} className="px-2 py-1 rounded-lg text-xs">
+            <option value="">No Course</option>
+            {courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+          </select>
+          <button onClick={applyBulkAssignCourse} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">Assign course</button>
+          <button onClick={() => applyBulkMarkComplete(true)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">Complete</button>
+          <button onClick={() => applyBulkMarkComplete(false)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-700">Reopen</button>
+          <button onClick={applyBulkRestore} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">Restore</button>
+          <button onClick={applyBulkArchive} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-700">Archive</button>
+          <button onClick={applyBulkHardDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white">Hard delete</button>
+        </BulkActionBar>
+      )}
 
       <div className={`grid grid-cols-1 ${activeVideo ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-8 transition-all duration-500`}>
         {/* Playlist / Library */}
@@ -454,7 +579,8 @@ const Videos = () => {
                 layout
                 key={video.id}
                 onClick={() => {
-                  setActiveVideo(video);
+                  if (video.archived) return;
+                  setActiveVideoId(video.id);
                   setIsPlaying(true);
                 }}
                 className={`group relative card p-3 cursor-pointer transition-all border-2 ${
@@ -463,6 +589,20 @@ const Videos = () => {
                     : 'border-transparent hover:border-slate-100 dark:hover:border-slate-800'
                 }`}
               >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleVideoSelection(video.id);
+                  }}
+                  className={`absolute z-10 top-3 left-3 w-5 h-5 rounded-md border flex items-center justify-center text-[10px] font-black transition-all ${
+                    selectedVideoIds.includes(video.id)
+                      ? 'bg-primary-500 border-primary-500 text-white'
+                      : 'bg-white/90 border-slate-300 text-transparent'
+                  }`}
+                  aria-label={`Select ${video.title}`}
+                >
+                  ✓
+                </button>
                 <div className={`flex ${!activeVideo ? 'flex-col' : 'gap-4'} h-full`}>
                   <div className={`relative ${!activeVideo ? 'aspect-video mb-3' : 'w-32 h-20'} rounded-xl overflow-hidden bg-slate-900 shrink-0`}>
                     <img src={video.thumbnail} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
@@ -474,6 +614,11 @@ const Videos = () => {
                     {video.completed && (
                       <div className="absolute top-2 right-2 p-1 rounded-lg bg-green-500 text-white shadow-lg">
                         <Check size={12} strokeWidth={3} />
+                      </div>
+                    )}
+                    {video.archived && (
+                      <div className="absolute top-2 right-10 px-2 py-0.5 rounded-md bg-slate-900/80 text-[10px] font-black text-white uppercase tracking-widest">
+                        Archived
                       </div>
                     )}
                     <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md bg-black/70 text-[10px] font-black text-white">
@@ -598,7 +743,7 @@ const Videos = () => {
                         <Trash2 size={24} />
                       </button>
                       <button 
-                        onClick={() => setActiveVideo(null)}
+                        onClick={() => setActiveVideoId(null)}
                         className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-red-500 transition-all"
                         title="Close Player"
                       >

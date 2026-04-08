@@ -3,7 +3,24 @@ import { Plus, FileText, Filter } from 'lucide-react';
 import SearchBar from './SearchBar';
 import NoteItem from './NoteItem';
 
-const NotesList = ({ notes, activeNote, onSelect, onCreate, onDelete, searchTerm, setSearchTerm, courses, videos }) => {
+const NotesList = ({
+  notes,
+  activeNote,
+  onSelect,
+  onCreate,
+  onDelete,
+  searchTerm,
+  setSearchTerm,
+  courses,
+  videos,
+  selectedNoteIds = [],
+  onToggleSelect,
+  onTogglePin,
+  showArchived,
+  setShowArchived,
+  showPinnedOnly,
+  setShowPinnedOnly
+}) => {
   return (
     <div className="flex flex-col gap-6 h-full">
       <div className="flex items-center justify-between">
@@ -34,6 +51,22 @@ const NotesList = ({ notes, activeNote, onSelect, onCreate, onDelete, searchTerm
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
             {notes.length} Total Notes
           </span>
+          <button
+            onClick={() => setShowArchived?.(!showArchived)}
+            className={`ml-auto px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+              showArchived ? 'bg-slate-900 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+            }`}
+          >
+            {showArchived ? 'Archived On' : 'Archived Off'}
+          </button>
+          <button
+            onClick={() => setShowPinnedOnly?.(!showPinnedOnly)}
+            className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+              showPinnedOnly ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+            }`}
+          >
+            {showPinnedOnly ? 'Pinned Only' : 'All Notes'}
+          </button>
         </div>
       </div>
 
@@ -47,6 +80,9 @@ const NotesList = ({ notes, activeNote, onSelect, onCreate, onDelete, searchTerm
             onDelete={onDelete}
             courses={courses}
             videos={videos}
+            selected={selectedNoteIds.includes(note.id)}
+            onToggleSelect={onToggleSelect}
+            onTogglePin={onTogglePin}
           />
         ))}
         {notes.length === 0 && (

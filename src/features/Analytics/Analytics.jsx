@@ -2,16 +2,15 @@ import React, { useMemo } from 'react';
 import { 
   Calendar,
   ChevronDown,
-  TrendingUp,
-  Layout
+  TrendingUp
 } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
-import { format, subDays, isSameDay, startOfDay } from 'date-fns';
+import { format, subDays, isSameDay } from 'date-fns';
 
 // Sub-components
 import StatsCards from './components/StatsCards';
-import { WatchChart, CourseChart, ProjectChart } from './components/LearningCharts';
+import { WatchChart, CourseChart, ProjectChart, StreakChart, CohortChart, ConsistencyPanel } from './components/LearningCharts';
 import Heatmap from './components/Heatmap';
 
 const Analytics = () => {
@@ -21,6 +20,7 @@ const Analytics = () => {
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
   const [streakData] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
+  const streakCurrent = streakData.current || 0;
 
   // 2. Data Aggregation & Logic Engine
   const analytics = useMemo(() => {
@@ -65,6 +65,8 @@ const Analytics = () => {
       const date = subDays(new Date(), 27 - i);
       const dateStr = format(date, 'yyyy-MM-dd');
       let dailyMinutes = 0;
+      let dailyNotes = 0;
+      let dailyTasks = 0;
       
       videos.forEach(v => {
         (v.playbackLogs || []).forEach(log => {
@@ -74,10 +76,63 @@ const Analytics = () => {
         });
       });
 
-      return { date: dateStr, value: Math.round(dailyMinutes) };
+      notes.forEach(n => {
+        if (n.createdAt && isSameDay(new Date(n.createdAt), date)) {
+          dailyNotes++;
+        }
+      });
+
+      projects.forEach(p => {
+        Object.values(p.board || {}).flat().forEach(t => {
+          if (t.createdAt && isSameDay(new Date(t.createdAt), date)) {
+            dailyTasks++;
+          }
+        });
+      });
+
+      return { 
+        date: dateStr, 
+        value: Math.round(dailyMinutes),
+        breakdown: {
+          watchMins: Math.round(dailyMinutes),
+          notes: dailyNotes,
+          tasks: dailyTasks
+        }
+      };
     });
 
-    // D. Key Performance Indicators (KPIs)
+    // D. Streak Trend (Last 30 days)
+    const streakTrend = Array.from({ length: 30 }, (_, i) => {
+      const date = subDays(new Date(), 29 - i);
+      let dailyMinutes = 0;
+      videos.forEach(v => {
+        (v.playbackLogs || []).forEach(log => {
+          if (log.endTime && isSameDay(new Date(log.endTime), date)) {
+            dailyMinutes += (log.duration || 0) / 60;
+          }
+        });
+      });
+      return { name: format(date, 'MMM dd'), value: Math.round(dailyMinutes) };
+    });
+
+    // E. Weekly Cohort (Last 4 weeks)
+    const weeklyCohort = Array.from({ length: 4 }, (_, i) => {
+      const weekStart = subDays(new Date(), (3 - i) * 7 + 6);
+      let activeDays = 0;
+      for (let j = 0; j < 7; j++) {
+        const date = subDays(weekStart, -j);
+        let isActive = false;
+        videos.forEach(v => {
+          (v.playbackLogs || []).forEach(log => {
+            if (log.endTime && isSameDay(new Date(log.endTime), date)) isActive = true;
+          });
+        });
+        if (isActive) activeDays++;
+      }
+      return { week: `Week ${i + 1}`, days: activeDays };
+    });
+
+    // F. Key Performance Indicators (KPIs)
     const totalWatchSeconds = videos.reduce((acc, v) => acc + (v.totalWatchTime || 0), 0);
     const totalWatchTime = Math.round(totalWatchSeconds / 60);
     
@@ -87,7 +142,7 @@ const Analytics = () => {
 
     // Productivity Score Engine (Formula-based)
     // Formula: (WatchTime/10) + (Notes*5) + (Projects*10) + (Streak*2)
-    const rawScore = (totalWatchTime / 10) + (notes.length * 5) + (projects.length * 10) + (streakData.current * 2);
+    const rawScore = (totalWatchTime / 10) + (notes.length * 5) + (projects.length * 10) + (streakCurrent * 2);
     const productivityScore = Math.min(100, Math.round(rawScore));
 
     return {
@@ -95,15 +150,17 @@ const Analytics = () => {
       courseChartData: courseStats,
       projectChartData: projectStats,
       heatmapData: last28Days,
+      streakTrend,
+      weeklyCohort,
       kpis: {
         totalWatchTime,
-        streak: streakData.current,
+        streak: streakCurrent,
         avgProgress,
         activeCourses: courses.filter(c => c.status === 'Active').length,
         productivityScore
       }
     };
-  }, [courses, videos, notes, projects, streakData]);
+  }, [courses, videos, notes, projects, streakCurrent]);
 
   return (
     <div className="max-w-7xl mx-auto pb-12 space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -129,21 +186,40 @@ const Analytics = () => {
       </div>
 
       {/* KPI Layer */}
-      <StatsCards stats={analytics.kpis} />
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-100">
+        <StatsCards stats={analytics.kpis} />
+      </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
+      {/* Charts Grid Row 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-8 h-full">
           <WatchChart data={analytics.watchChartData} />
         </div>
-        <div className="space-y-8">
+        <div className="lg:col-span-4 h-full">
           <CourseChart data={analytics.courseChartData} />
+        </div>
+      </div>
+
+      {/* Charts Grid Row 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-200">
+        <div className="lg:col-span-8 h-full">
+          <ConsistencyPanel data={analytics.watchChartData} />
+        </div>
+        <div className="lg:col-span-4 h-full">
           <ProjectChart data={analytics.projectChartData} />
         </div>
       </div>
 
       {/* Heatmap Layer */}
-      <Heatmap data={analytics.heatmapData} />
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300">
+        <Heatmap data={analytics.heatmapData} />
+      </div>
+
+      {/* Retention & Trend Layer */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 pb-12">
+        <StreakChart data={analytics.streakTrend} />
+        <CohortChart data={analytics.weeklyCohort} />
+      </div>
     </div>
   );
 };
