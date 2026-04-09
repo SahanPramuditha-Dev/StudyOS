@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Users, 
   Shield, 
@@ -106,13 +106,53 @@ const Admin = () => {
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
-  const [activeAdminPage, setActiveAdminPage] = useState('users');
+  const [activeAdminPage, setActiveAdminPage] = useState('overview');
   const [inviteEmail, setInviteEmail] = useState('');
   const [auditFeed, setAuditFeed] = useState([]);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const importRef = useRef(null);
   const [roleTemplates, setRoleTemplates] = useStorage('studyos_admin_role_templates', defaultRoleTemplates);
+  const [adminFeatureFlags, setAdminFeatureFlags] = useStorage('studyos_admin_feature_flags', {
+    githubIntegration: true,
+    googleCalendar: true,
+    bulkImport: true,
+    roleManagement: true,
+    advancedAnalytics: true,
+    supportTools: true
+  });
   const getCloudUsage = (rawUsage) => computeUsageMetrics({ cloudUsage: rawUsage });
+
+  const configHealth = useMemo(() => ({
+    online: typeof navigator === 'undefined' ? true : navigator.onLine,
+    firebaseAuth: Boolean(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
+    firestore: Boolean(import.meta.env.VITE_FIREBASE_PROJECT_ID),
+    githubOAuth: Boolean(import.meta.env.VITE_GITHUB_CLIENT_ID),
+    googleOAuth: Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID),
+    stripe: Boolean(import.meta.env.VITE_STRIPE_PRO_PRICE_ID),
+    posthog: Boolean(import.meta.env.VITE_POSTHOG_KEY),
+    sentry: Boolean(import.meta.env.VITE_SENTRY_DSN)
+  }), []);
+
+  const totalUsers = users.length;
+  const activeUsers = users.filter((u) => u.status?.isActive).length;
+  const blockedUsers = users.filter((u) => u.status?.isBlocked).length;
+  const adminUsers = users.filter((u) => u.role === 'admin' || u.role === 'superadmin').length;
+  const totalStorageLimit = users.reduce((acc, u) => acc + Number(u.limits?.storageMB || 0), 0);
+  const totalStorageUsed = users.reduce((acc, u) => acc + Number(getCloudUsage(u.usage).displayStorageUsedMB || 0), 0);
+  const usagePercent = totalStorageLimit > 0 ? Math.round((totalStorageUsed / totalStorageLimit) * 100) : 0;
+  const recentActivity = auditFeed.slice(0, 5);
+  const enabledFeatureCount = Object.values(adminFeatureFlags).filter(Boolean).length;
+  const featureDefinitions = [
+    { key: 'githubIntegration', label: 'GitHub integration', desc: 'Enable repo linking and GitHub syncing.' },
+    { key: 'googleCalendar', label: 'Google Calendar', desc: 'Allow reminders and calendar import sync.' },
+    { key: 'bulkImport', label: 'Bulk import tools', desc: 'Show CSV/JSON user import flows.' },
+    { key: 'roleManagement', label: 'Role management', desc: 'Allow admins to edit user roles and permissions.' },
+    { key: 'advancedAnalytics', label: 'Advanced analytics', desc: 'Expose storage, usage, and admin analytics.' },
+    { key: 'supportTools', label: 'Support tools', desc: 'Invite users and export/import data packages.' }
+  ];
+  const updateFeatureFlag = (key) => {
+    setAdminFeatureFlags({ ...adminFeatureFlags, [key]: !adminFeatureFlags[key] });
+  };
   
   // Storage Formatting Utility
   const formatStorage = (mb) => {
@@ -173,10 +213,11 @@ const Admin = () => {
     if (hasLegacyNames) {
       setRoleTemplates(defaultRoleTemplates);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleTemplates, setRoleTemplates]);
 
   useEffect(() => {
-    if (activeAdminPage !== 'audit') return;
+    if (!['audit', 'overview', 'health'].includes(activeAdminPage)) return;
     (async () => {
       const logs = await FirestoreService.getRecentAuditLogs(60);
       setAuditFeed(logs);
@@ -416,10 +457,13 @@ const Admin = () => {
   const renderAdminPageTabs = () => (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-2 inline-flex gap-2">
       {[
+        { id: 'overview', label: 'Overview', icon: Layout },
         { id: 'users', label: 'Users', icon: Users },
         { id: 'roles', label: 'Roles', icon: ClipboardList },
+        { id: 'features', label: 'Features', icon: Settings },
         { id: 'audit', label: 'Audit Logs', icon: Activity },
-        { id: 'health', label: 'System Health', icon: Server }
+        { id: 'health', label: 'System Health', icon: Server },
+        { id: 'support', label: 'Support', icon: UserPlus }
       ].map((tab) => (
         <button
           key={tab.id}
@@ -597,6 +641,216 @@ const Admin = () => {
     );
   }
 
+  if (activeAdminPage === 'overview') {
+    return (
+      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
+              <div className="p-3 rounded-[1.5rem] bg-slate-900 text-white shadow-xl">
+                <Layout size={32} />
+              </div>
+              Admin Command Center
+            </h1>
+            <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs mt-2">
+              Manage users, features, and platform health from one place
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setActiveAdminPage('users')} className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">Open Users</button>
+            <button onClick={() => setActiveAdminPage('health')} className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">System Health</button>
+            <button onClick={() => setActiveAdminPage('support')} className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">Support</button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { label: 'Total Users', value: totalUsers, icon: Users, color: 'text-primary-500', bg: 'bg-primary-50' },
+            { label: 'Active Users', value: activeUsers, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50' },
+            { label: 'Admin Accounts', value: adminUsers, icon: Shield, color: 'text-slate-900', bg: 'bg-slate-100' },
+            { label: 'Storage Used', value: `${usagePercent}%`, icon: HardDrive, color: 'text-blue-500', bg: 'bg-blue-50' }
+          ].map((stat, i) => (
+            <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-6">
+              <div className={`p-4 rounded-2xl ${stat.bg} dark:bg-opacity-10 ${stat.color}`}>
+                <stat.icon size={24} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</p>
+                <p className="text-2xl font-black text-slate-800 dark:text-white">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black">Platform Health</h2>
+              <button onClick={() => setActiveAdminPage('health')} className="text-sm font-bold text-primary-500">View Details</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Online', ok: configHealth.online },
+                { label: 'Firebase', ok: configHealth.firebaseAuth && configHealth.firestore },
+                { label: 'GitHub', ok: configHealth.githubOAuth },
+                { label: 'Google', ok: configHealth.googleOAuth },
+                { label: 'Stripe', ok: configHealth.stripe },
+                { label: 'PostHog', ok: configHealth.posthog }
+              ].map((item) => (
+                <div key={item.label} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</p>
+                  <p className={`mt-2 text-sm font-black ${item.ok ? 'text-green-600' : 'text-amber-600'}`}>
+                    {item.ok ? 'Healthy' : 'Needs setup'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black">Recent Admin Activity</h2>
+              <button onClick={() => setActiveAdminPage('audit')} className="text-sm font-bold text-primary-500">Open Logs</button>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+              {recentActivity.length === 0 && <p className="text-sm text-slate-400">No recent admin activity yet.</p>}
+              {recentActivity.map((log) => (
+                <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
+                  <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{log.type || 'event'}</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{log.targetUserId || 'system event'}</p>
+                  <p className="text-xs text-slate-400">{log.performedAt ? new Date(log.performedAt).toLocaleString() : ''}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'features') {
+    return (
+      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-black">Feature Flags</h2>
+              <p className="text-sm text-slate-500">Control which product surfaces are emphasized for admins and users.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAdminFeatureFlags({
+                  githubIntegration: true,
+                  googleCalendar: true,
+                  bulkImport: true,
+                  roleManagement: true,
+                  advancedAnalytics: true,
+                  supportTools: true
+                })}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold"
+              >
+                Reset Defaults
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {featureDefinitions.map((feature) => {
+              const enabled = !!adminFeatureFlags[feature.key];
+              return (
+                <button
+                  key={feature.key}
+                  onClick={() => updateFeatureFlag(feature.key)}
+                  className={`text-left p-4 rounded-2xl border transition-all ${
+                    enabled
+                      ? 'bg-primary-50 dark:bg-primary-500/10 border-primary-200 dark:border-primary-500/30'
+                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-black text-slate-800 dark:text-white">{feature.label}</p>
+                      <p className="text-sm text-slate-500 mt-1">{feature.desc}</p>
+                    </div>
+                    <div className={`w-12 h-6 rounded-full relative transition-colors ${enabled ? 'bg-primary-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                      <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${enabled ? 'left-6' : 'left-0.5'}`} />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'support') {
+    return (
+      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card space-y-4">
+            <h2 className="text-xl font-black">Support Tools</h2>
+            <p className="text-sm text-slate-500">Invite users, import data, and export backups without hunting through the user table.</p>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="email"
+                placeholder="new-user@example.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="flex-1 min-w-[220px] px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+              />
+              <button onClick={sendInvitation} className="px-4 py-2.5 rounded-xl bg-primary-500 text-white font-bold inline-flex items-center gap-2">
+                <UserPlus size={16} />
+                Send Invite
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+              <button onClick={exportToCSV} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm font-bold">
+                <Download size={16} />
+                CSV
+              </button>
+              <button onClick={exportUsersJSON} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm font-bold">
+                <Download size={16} />
+                JSON
+              </button>
+              <button onClick={() => importRef.current?.click()} className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm font-bold">
+                <Upload size={16} />
+                {bulkImportBusy ? 'Importing...' : 'Import'}
+              </button>
+              <input ref={importRef} type="file" accept=".json" className="hidden" onChange={importUsersFromFile} />
+            </div>
+          </div>
+
+          <div className="card space-y-4">
+            <h2 className="text-xl font-black">Support Snapshot</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Total users', value: totalUsers },
+                { label: 'Blocked', value: blockedUsers },
+                { label: 'Admin roles', value: adminUsers },
+                { label: 'Feature flags', value: enabledFeatureCount }
+              ].map((item) => (
+                <div key={item.label} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</p>
+                  <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{item.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-4">
+              <p className="text-sm text-slate-500">
+                Use this panel to manage onboarding and data movement for non-technical users.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (activeAdminPage === 'roles') {
     return (
       <div className="max-w-7xl mx-auto pb-12 space-y-8">
@@ -643,16 +897,10 @@ const Admin = () => {
   }
 
   if (activeAdminPage === 'health') {
-    const totalUsers = users.length;
-    const activeUsers = users.filter((u) => u.status?.isActive).length;
-    const blockedUsers = users.filter((u) => u.status?.isBlocked).length;
-    const totalStorageLimit = users.reduce((acc, u) => acc + Number(u.limits?.storageMB || 0), 0);
-      const totalStorageUsed = users.reduce((acc, u) => acc + Number(getCloudUsage(u.usage).displayStorageUsedMB || 0), 0);
-    const usagePercent = totalStorageLimit > 0 ? Math.round((totalStorageUsed / totalStorageLimit) * 100) : 0;
     return (
       <div className="max-w-7xl mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {[
             { label: 'Total Users', value: totalUsers },
             { label: 'Active Users', value: activeUsers },
@@ -664,6 +912,38 @@ const Admin = () => {
               <p className="text-2xl font-black mt-1 text-slate-800 dark:text-white">{card.value}</p>
             </div>
           ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card space-y-4">
+            <h2 className="text-xl font-black">Environment Status</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Online', ok: configHealth.online },
+                { label: 'Firebase Auth', ok: configHealth.firebaseAuth },
+                { label: 'Firestore', ok: configHealth.firestore },
+                { label: 'GitHub OAuth', ok: configHealth.githubOAuth },
+                { label: 'Google OAuth', ok: configHealth.googleOAuth },
+                { label: 'Stripe', ok: configHealth.stripe }
+              ].map((item) => (
+                <div key={item.label} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</p>
+                  <p className={`text-sm font-black mt-1 ${item.ok ? 'text-green-600' : 'text-amber-600'}`}>
+                    {item.ok ? 'Ready' : 'Missing'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card space-y-4">
+            <h2 className="text-xl font-black">Operational Notes</h2>
+            <div className="space-y-3 text-sm text-slate-500">
+              <p>Support tools and data import/export live in the Support tab.</p>
+              <p>Feature flags are controlled separately so you can stage rollout-safe changes.</p>
+              <p>Audit logs track role edits, blocking actions, and user updates.</p>
+            </div>
+          </div>
         </div>
       </div>
     );

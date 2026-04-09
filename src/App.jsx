@@ -48,17 +48,24 @@ const App = () => {
     addNotification
   } = useReminders();
 
-  // Initialize tab from current route to prevent route/tab mismatch on first paint
-  const initialTab = (() => {
-    const path = location.pathname.replace(/^\//, '') || 'dashboard';
-    return path.split('/')[0];
-  })();
-  const [activeTab, setActiveTab] = useState(initialTab);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [streak, setStreak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
   const [activeProjectId, setActiveProjectId] = useStorage('active_workspace_project', null);
+
+  const currentTabFromPath = (() => {
+    const firstSegment = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
+    if (firstSegment === 'support') return 'legal';
+    return firstSegment;
+  })();
+
+  const setActiveTab = (tab) => {
+    const nextPath = tab === 'dashboard' ? '/dashboard' : `/${tab}`;
+    if (location.pathname !== nextPath) {
+      navigate(nextPath);
+    }
+  };
 
   useEffect(() => {
     if (!('Notification' in window)) return;
@@ -92,37 +99,16 @@ const App = () => {
     navigate(dest, { replace: true });
   }, [loading, user, location.pathname, location.state, navigate]);
 
-  // Keep route and activeTab in sync (fixes cases where tab changes but route doesn't)
-  useEffect(() => {
-    const expectedPath = activeTab === 'dashboard' ? '/dashboard' : `/${activeTab}`;
-    if (location.pathname !== expectedPath) {
-      navigate(expectedPath, { replace: false });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
   // 1. Manual Pageview Capture for PostHog
   useEffect(() => {
     if (import.meta.env.VITE_POSTHOG_KEY) {
       posthog.capture('$pageview', {
         $current_url: window.location.href,
         $pathname: location.pathname,
-        module: activeTab
+        module: currentTabFromPath
       });
     }
-  }, [location.pathname, activeTab]);
-
-  // 2. Sync activeTab if location changes (browser back/forward or external link)
-  useEffect(() => {
-    const path = location.pathname.replace(/^\//, '') || 'dashboard';
-    const tab = path.split('/')[0];
-    // Avoid treating /login as a real module tab while authenticated (post-login redirect in flight)
-    if (user && tab === 'login') return;
-    if (tab && tab !== activeTab) {
-      setActiveTab(tab);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, activeTab, user]);
+  }, [location.pathname, currentTabFromPath]);
 
   useEffect(() => {
     if (!user) return;
@@ -175,12 +161,6 @@ const App = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  const currentTabFromPath = (() => {
-    const firstSegment = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
-    if (firstSegment === 'support') return 'legal';
-    return firstSegment;
-  })();
 
   if (loading) {
     return (

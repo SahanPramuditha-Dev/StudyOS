@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { 
   ArrowRight, 
   Chrome, 
+  Github,
   Eye, 
   EyeOff, 
   Lock, 
@@ -23,7 +24,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { login, signup, loginWithGoogle, resetPassword } = useAuth();
+  const { login, signup, loginWithGoogle, loginWithGitHub, resetPassword } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -55,6 +56,18 @@ const Auth = () => {
       await loginWithGoogle();
     } catch (error) {
       // loginWithGoogle already shows authErrorMessage toast before throwing
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGitHubLogin = async () => {
+    setLoading(true);
+
+    try {
+      await loginWithGitHub();
+    } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
@@ -297,6 +310,16 @@ const Auth = () => {
                   </div>
                   <span className="text-sm font-black text-slate-700 dark:text-slate-300 tracking-tight">Continue with Google</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleGitHubLogin}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-3 py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 border border-slate-900/5 dark:border-white/10 hover:bg-slate-800 dark:hover:bg-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-900/5 transition-all duration-300 disabled:opacity-50 group"
+                >
+                  <Github size={18} className="group-hover:scale-110 transition-transform duration-300" />
+                  <span className="text-sm font-black tracking-tight">Continue with GitHub</span>
+                </button>
               </div>
 
               <div className="text-center">
@@ -326,4 +349,3 @@ const Auth = () => {
 };
 
 export default Auth;
-

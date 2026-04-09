@@ -17,8 +17,8 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../../context/AuthContext';
-import { uploadFile, deleteFile, generateFilePath } from '../../../services/firebaseStorage';
+import { useAuth } from '../../../../context/AuthContext';
+import { uploadFile, deleteFile, generateFilePath } from '../../../../services/firebaseStorage';
 
 const FileManager = ({ project, onUpdate, onActivityAdd }) => {
   const { user } = useAuth();

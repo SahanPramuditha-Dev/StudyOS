@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ArrowLeft,
   FileText,
@@ -22,7 +22,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import { useStorage } from '../../../hooks/useStorage';
-import { STORAGE_KEYS } from '../../../services/storage';
+import FileManager from './tabs/FileManager';
+import GitHubIntegration from './tabs/GitHubIntegration';
+import DocumentationEditor from './tabs/DocumentationEditor';
+import TaskManager from './tabs/TaskManager';
+import SubmissionTracker from './tabs/SubmissionTracker';
+import BugTracker from './tabs/BugTracker';
+import CodeSnippets from './tabs/CodeSnippets';
+import NotesIdeapad from './tabs/NotesIdeapad';
+import ActivityLog from './tabs/ActivityLog';
 
 const OverviewTab = ({ project, getStatusColor }) => (
   <div className="space-y-8">
@@ -144,6 +152,10 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [accessLevel, setAccessLevel] = useStorage(`project_access_${project.id}`, 'private');
+  const showGithubTab = Boolean(project.repo) || (
+    typeof window !== 'undefined' && Boolean(sessionStorage.getItem('github_token'))
+  );
+  const displayActiveTab = !showGithubTab && activeTab === 'github' ? 'overview' : activeTab;
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: FileText },
@@ -156,7 +168,7 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
     { id: 'code', label: 'Snippets', icon: Code2, badge: project.snippets?.length || 0 },
     { id: 'notes', label: 'Notes', icon: Lightbulb },
     { id: 'activity', label: 'Activity', icon: History }
-  ];
+  ].filter(tab => showGithubTab || tab.id !== 'github');
 
   const getStatusColor = (status) => {
     const colors = {
@@ -258,7 +270,7 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 rounded-lg font-bold text-sm whitespace-nowrap transition-all relative shrink-0 ${
-                activeTab === tab.id
+                displayActiveTab === tab.id
                   ? 'text-primary-500 border-b-2 border-primary-500'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -278,22 +290,22 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
       {/* Tab Content */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={activeTab}
+          key={displayActiveTab}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {activeTab === 'overview' && <OverviewTab project={project} getStatusColor={getStatusColor} />}
-          {activeTab === 'files' && <FileManager project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'github' && <GitHubIntegration project={project} onUpdate={onUpdate} />}
-          {activeTab === 'docs' && <DocumentationEditor project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'tasks' && <TaskManager project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'submissions' && <SubmissionTracker project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'bugs' && <BugTracker project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'code' && <CodeSnippets project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'notes' && <NotesIdeapad project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {activeTab === 'activity' && <ActivityLog project={project} />}
+          {displayActiveTab === 'overview' && <OverviewTab project={project} getStatusColor={getStatusColor} />}
+          {displayActiveTab === 'files' && <FileManager project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'github' && <GitHubIntegration project={project} onUpdate={onUpdate} />}
+          {displayActiveTab === 'docs' && <DocumentationEditor project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'tasks' && <TaskManager project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'submissions' && <SubmissionTracker project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'bugs' && <BugTracker project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'code' && <CodeSnippets project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'notes' && <NotesIdeapad project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
+          {displayActiveTab === 'activity' && <ActivityLog project={project} />}
         </motion.div>
       </AnimatePresence>
     </div>

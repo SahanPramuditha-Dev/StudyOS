@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
+import {
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
   updateProfile,
   GoogleAuthProvider,
+  GithubAuthProvider,
   signInWithPopup,
   signInWithRedirect,
   sendPasswordResetEmail,
@@ -157,26 +158,12 @@ export const AuthProvider = ({ children }) => {
         await currentUser.reload();
         hydratedUser = auth.currentUser || currentUser;
 
-        // Check if user is signing in with Google
-        const isGoogleUser = hydratedUser.providerData?.some(
-          (provider) => provider.providerId === 'google.com'
-        );
-
-        let userProfile;
-        if (isGoogleUser) {
-          // For Google users, create a minimal profile without Firestore call
-          userProfile = FirestoreService.buildDefaultUserProfile(hydratedUser.uid, {
-            email: hydratedUser.email,
-            name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
-          });
-          console.log('[AuthContext] Using minimal profile for Google user');
-        } else {
-          // For email/password users, require Firestore profile
-          userProfile = await FirestoreService.createUserProfile(hydratedUser.uid, {
-            email: hydratedUser.email,
-            name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
-          });
-        }
+        // Create or fetch the Firestore user profile for every user.
+        // This ensures role-based access is preserved for Google sign-ins too.
+        const userProfile = await FirestoreService.createUserProfile(hydratedUser.uid, {
+          email: hydratedUser.email,
+          name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
+        });
 
         const resolvedAvatar = userProfile?.avatar || resolveAvatarFromAuth(hydratedUser) || buildFallbackAvatar(hydratedUser.displayName, hydratedUser.email);
 
@@ -272,10 +259,53 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const loginWithGitHub = async () => {
+    const provider = new GithubAuthProvider();
+    provider.addScope('repo');
+    provider.addScope('read:user');
+    provider.setCustomParameters({ allow_signup: 'true' });
+
+    try {
+      console.log('[AuthContext] Starting GitHub sign-in with popup');
+      const result = await signInWithPopup(auth, provider);
+      const credential = GithubAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken || null;
+      const githubProfile = result.additionalUserInfo?.profile || {};
+      const githubUserName =
+        githubProfile.login ||
+        githubProfile.name ||
+        result.user.displayName ||
+        result.user.email?.split('@')[0] ||
+        'GitHub User';
+
+      if (accessToken) {
+        sessionStorage.setItem('github_token', accessToken);
+        sessionStorage.setItem('github_user', githubUserName);
+      }
+
+      await result.user.reload();
+      await applyGoogleProfileAfterSignIn({
+        user: result.user,
+        _tokenResponse: result._tokenResponse
+      });
+
+      console.log('[AuthContext] GitHub sign-in completed', githubUserName);
+      toast.success(`Signed in with GitHub as ${githubUserName}.`);
+      return result.user;
+    } catch (error) {
+      console.error('[AuthContext] GitHub sign-in failed:', error.code, error.message);
+      toast.error(authErrorMessage(error));
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        sessionStorage.removeItem('github_token');
+        sessionStorage.removeItem('github_user');
+        sessionStorage.removeItem('github_repos');
       }
       await signOut(auth);
       setProfile(null);
@@ -421,6 +451,7 @@ export const AuthProvider = ({ children }) => {
       signup, 
       logout, 
       loginWithGoogle,
+      loginWithGitHub,
       resetPassword,
       deleteAccount,
       uploadProfileImage,

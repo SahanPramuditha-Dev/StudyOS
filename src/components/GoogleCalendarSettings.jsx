@@ -4,24 +4,29 @@ import { useReminders } from '../context/ReminderContext';
 import { getGoogleCalendarEvents, getGoogleTasks } from '../services/googleCalendar';
 import { useGoogleLogin } from '@react-oauth/google';
 import { addDays } from 'date-fns';
-import { Calendar, Link2, Unlink, ToggleLeft, ToggleRight, LogOut } from 'lucide-react';
+import { AlertTriangle, Calendar, Link2, LogOut, ToggleLeft, ToggleRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const GoogleCalendarSettings = () => {
-  const { isConnected, syncEnabled, tokenExpired, handleGoogleSuccess, disconnect, toggleSync, ensureValidToken } = useGoogleCalendarContext();
+const GoogleCalendarPanel = () => {
+  const {
+    isConnected,
+    syncEnabled,
+    tokenExpired,
+    handleGoogleSuccess,
+    disconnect,
+    toggleSync,
+    ensureValidToken
+  } = useGoogleCalendarContext();
   const { addReminder, reminders } = useReminders();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleConnect = (tokenResponse) => {
     setIsLoading(true);
     try {
-      console.log('Google login response:', tokenResponse);
       const success = handleGoogleSuccess(tokenResponse);
-      if (success) {
-        toast.success('Google Calendar connected successfully!');
-      } else {
-        toast.error('Failed to connect Google Calendar');
-      }
+      toast[success ? 'success' : 'error'](
+        success ? 'Google Calendar connected successfully!' : 'Failed to connect Google Calendar'
+      );
     } catch (error) {
       toast.error('Failed to connect Google Calendar');
       console.error('Google connect error:', error);
@@ -38,6 +43,14 @@ const GoogleCalendarSettings = () => {
     prompt: 'consent'
   });
 
+  const handleToggleSync = () => {
+    const nextValue = !syncEnabled;
+    const success = toggleSync(nextValue);
+    toast[success ? 'success' : 'error'](
+      success ? (nextValue ? 'Calendar sync enabled' : 'Calendar sync disabled') : 'Please connect Google Calendar first'
+    );
+  };
+
   const importGoogleEvents = async () => {
     const accessToken = ensureValidToken();
     if (!accessToken) {
@@ -47,8 +60,6 @@ const GoogleCalendarSettings = () => {
 
     setIsLoading(true);
     try {
-      const tokenString = typeof accessToken === 'string' ? accessToken : JSON.stringify(accessToken);
-      console.log('Importing Google events with access token (preview):', tokenString.slice(0, 20));
       const startDate = new Date();
       const endDate = addDays(startDate, 30);
 
@@ -61,26 +72,21 @@ const GoogleCalendarSettings = () => {
         toast('Google Tasks import skipped: enable the Tasks API in your Google Cloud project');
       }
 
-      console.log('Fetched Google events count:', events.length);
-      console.log('Fetched Google tasks count:', tasks.length);
+      let importedCount = 0;
 
-      const importedEvents = events.reduce((count, event) => {
-        if (!event?.id) return count;
+      events.forEach((event) => {
+        if (!event?.id) return;
         const eventKey = `${event._calendarId || 'primary'}:${event.id}`;
-        const alreadyImported = reminders.some((r) => r.googleCalendarEventId === eventKey);
-        if (alreadyImported) return count;
+        if (reminders.some((r) => r.googleCalendarEventId === eventKey)) return;
 
         const start = event.start?.dateTime || event.start?.date;
-        if (!start) return count;
-
-        const eventDate = start.slice(0, 10);
-        const eventTime = event.start?.dateTime ? start.slice(11, 16) : '09:00';
+        if (!start) return;
 
         addReminder({
           message: event.summary || 'Google Event',
           description: event.description || '',
-          date: eventDate,
-          time: eventTime,
+          date: start.slice(0, 10),
+          time: event.start?.dateTime ? start.slice(11, 16) : '09:00',
           durationMinutes: 60,
           allDay: !event.start?.dateTime,
           category: 'Study',
@@ -96,27 +102,22 @@ const GoogleCalendarSettings = () => {
           relatedVideoId: '',
           googleCalendarEventId: eventKey
         });
+        importedCount += 1;
+      });
 
-        return count + 1;
-      }, 0);
-
-      const importedTasks = tasks.reduce((count, task) => {
-        if (!task?.id || !task.title) return count;
+      tasks.forEach((task) => {
+        if (!task?.id || !task.title) return;
         const taskKey = `task:${task.id}`;
-        const alreadyImported = reminders.some((r) => r.googleCalendarEventId === taskKey);
-        if (alreadyImported) return count;
+        if (reminders.some((r) => r.googleCalendarEventId === taskKey)) return;
 
         const due = task.due || task.updated || task.created;
-        if (!due) return count;
-
-        const taskDate = due.slice(0, 10);
-        const taskTime = due.includes('T') ? due.slice(11, 16) : '09:00';
+        if (!due) return;
 
         addReminder({
           message: task.title,
           description: task.notes || '',
-          date: taskDate,
-          time: taskTime,
+          date: due.slice(0, 10),
+          time: due.includes('T') ? due.slice(11, 16) : '09:00',
           durationMinutes: 60,
           allDay: !due.includes('T'),
           category: 'Study',
@@ -132,15 +133,13 @@ const GoogleCalendarSettings = () => {
           relatedVideoId: '',
           googleCalendarEventId: taskKey
         });
+        importedCount += 1;
+      });
 
-        return count + 1;
-      }, 0);
-
-      const totalImported = importedEvents + importedTasks;
-      if (totalImported === 0) {
+      if (importedCount === 0) {
         toast('No new Google Calendar events or tasks found to import');
       } else {
-        toast.success(`Imported ${totalImported} item${totalImported > 1 ? 's' : ''} from Google`);
+        toast.success(`Imported ${importedCount} item${importedCount > 1 ? 's' : ''} from Google`);
       }
     } catch (error) {
       console.error(error);
@@ -154,16 +153,6 @@ const GoogleCalendarSettings = () => {
     if (window.confirm('Disconnect from Google Calendar?')) {
       disconnect();
       toast.success('Google Calendar disconnected');
-    }
-  };
-
-  const handleToggleSync = () => {
-    const newState = !syncEnabled;
-    const success = toggleSync(newState);
-    if (success) {
-      toast.success(newState ? 'Calendar sync enabled' : 'Calendar sync disabled');
-    } else {
-      toast.error('Please connect Google Calendar first');
     }
   };
 
@@ -206,6 +195,7 @@ const GoogleCalendarSettings = () => {
             </div>
             <Link2 size={16} className="text-emerald-600 dark:text-emerald-400" />
           </div>
+
           {tokenExpired && (
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/30">
               Session expired. Reconnect Google Calendar to continue syncing.
@@ -259,6 +249,40 @@ const GoogleCalendarSettings = () => {
       )}
     </div>
   );
+};
+
+const GoogleCalendarSettings = () => {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  if (!googleClientId) {
+    return (
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300">
+            <Calendar size={20} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-black text-slate-800 dark:text-white">Google Calendar</h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-slate-800 text-slate-500">
+                Optional
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              This integration is not enabled in the current build. You can still use StudyOS normally, including GitHub sign-in and project management.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-dashed border-slate-200 dark:border-slate-700 p-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            When Google Calendar is configured later, this panel will let you connect your calendar and import reminders.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <GoogleCalendarPanel />;
 };
 
 export default GoogleCalendarSettings;

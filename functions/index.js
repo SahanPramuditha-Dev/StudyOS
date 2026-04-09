@@ -1,10 +1,14 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "YOUR_STRIPE_SECRET_KEY");
+
+// Define secrets
+const githubClientSecret = defineSecret("GITHUB_CLIENT_SECRET");
 
 admin.initializeApp();
 
@@ -110,6 +114,14 @@ const createEmailTransporter = () => {
 
 const APP_URL = "https://studyos.sahanpramuditha.me/";
 const LOGO_URL = `${APP_URL}logo.svg`;
+const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.FUNCTIONS_EMULATOR === "true"
+  ? "http://localhost:5173"
+  : APP_URL);
+
+const buildFrontendUrl = (path = "") => {
+  const base = FRONTEND_URL.replace(/\/$/, "");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+};
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -478,4 +490,115 @@ exports.scheduledUsageAudit = onSchedule("every monday 03:00", async (event) => 
 
   await Promise.all(auditTasks);
   console.log(`[UsageAudit] Audited ${auditTasks.length} users.`);
+});
+
+/**
+ * GitHub OAuth Callback Handler
+ * Exchanges GitHub authorization code for access token
+ * Called by GitHub after user approves authorization
+ */
+exports.githubCallback = onRequest({ secrets: [githubClientSecret] }, async (req, res) => {
+  // Enable CORS
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).send('');
+    return;
+  }
+
+  try {
+    const code = req.query.code;
+    const state = req.query.state;
+    let returnPath = '/';
+
+    if (!code) {
+      console.error('[GitHub] Missing authorization code');
+      return res.redirect(buildFrontendUrl(`?github_error=no_code`));
+    }
+
+    if (typeof state === 'string') {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(state));
+        if (parsed.returnPath && typeof parsed.returnPath === 'string') {
+          returnPath = parsed.returnPath;
+        }
+      } catch (err) {
+        console.warn('[GitHub] Could not parse state:', err.message);
+      }
+    }
+
+    console.log('[GitHub] Parsed state returnPath:', returnPath);
+
+    // Get GitHub OAuth credentials with fallbacks
+    const clientId = process.env.GITHUB_CLIENT_ID || 'Ov23liYRLyDZomfqM8DG';
+    const clientSecret = githubClientSecret.value() || process.env.GITHUB_CLIENT_SECRET;
+
+    if (!clientSecret) {
+      console.error('[GitHub] Missing GitHub Client Secret - secret not available');
+      return res.status(500).send('GitHub OAuth Client Secret not configured.');
+    }
+
+    console.log('[GitHub] Using Client ID:', clientId);
+    console.log('[GitHub] GitHub client secret available:', !!clientSecret);
+    console.log('[GitHub] Exchanging code for access token...');
+
+    // Exchange code for access token
+    const tokenBody = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: buildFrontendUrl(`/oauth/github/callback`)
+    });
+
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: tokenBody.toString()
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (tokenData.error) {
+      console.error('[GitHub] Token exchange failed:', tokenData.error_description);
+      return res.redirect(buildFrontendUrl(`?github_error=${encodeURIComponent(tokenData.error)}`));
+    }
+
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+      console.error('[GitHub] No access token in response');
+      return res.redirect(buildFrontendUrl(`?github_error=no_token`));
+    }
+
+    console.log('[GitHub] Access token obtained successfully');
+
+    // Verify token by fetching user info
+    const userResponse = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    const userData = await userResponse.json();
+    if (!userData.login) {
+      console.error('[GitHub] Failed to verify token');
+      return res.redirect(buildFrontendUrl(`?github_error=verification_failed`));
+    }
+
+    console.log(`[GitHub] Successfully authenticated user: ${userData.login}`);
+    console.log('[GitHub] Redirecting back to app path:', returnPath);
+
+    // Redirect back to frontend callback route with token in query
+    // Preserve the original page path from state so the app can return there.
+    return res.redirect(buildFrontendUrl(`/oauth/github/callback?github_token=${encodeURIComponent(accessToken)}&github_user=${encodeURIComponent(userData.login)}&returnPath=${encodeURIComponent(returnPath)}`));
+
+  } catch (error) {
+    console.error('[GitHub] Callback error:', error);
+    return res.redirect(buildFrontendUrl(`?github_error=server_error`));
+  }
 });

@@ -65,7 +65,7 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
 
   const sidebarContent = (
     <div className="flex flex-col h-full dark:bg-slate-900 transition-colors duration-300">
-      <div className="p-6 flex items-center justify-between">
+      <div className="p-6 flex items-center justify-between gap-3">
         {(isOpen || isMobileOpen) && (
           <motion.div 
             initial={{ opacity: 0 }} 
@@ -94,7 +94,7 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
         {!isMobileOpen && (
           <button 
             onClick={() => setIsOpen(!isOpen)}
-            className="hidden lg:flex p-1.5 hover:bg-slate-100 rounded-lg transition-colors absolute -right-3 top-7 bg-white border border-slate-200 shadow-sm z-50 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+            className="hidden lg:inline-flex ml-auto p-1.5 hover:bg-slate-100 rounded-lg transition-colors bg-white border border-slate-200 shadow-sm z-10 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
           >
             {isOpen ? <X size={14} /> : <Menu size={14} />}
           </button>
