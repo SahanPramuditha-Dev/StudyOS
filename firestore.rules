@@ -58,6 +58,33 @@ service cloud.firestore {
       );
     }
 
+    function chatRoomPath(roomId) {
+      return /databases/$(database)/documents/chat_rooms/$(roomId);
+    }
+
+    function chatRoomExists(roomId) {
+      return exists(chatRoomPath(roomId));
+    }
+
+    function isChatRoomMember(roomId) {
+      return isAuthenticated() &&
+        ownProfileExists() &&
+        isActive() &&
+        isVerified() &&
+        chatRoomExists(roomId) &&
+        (
+          get(chatRoomPath(roomId)).data.get('createdByUid', '') == request.auth.uid ||
+          get(chatRoomPath(roomId)).data.get('memberEmails', []).hasAny([request.auth.token.email])
+        );
+    }
+
+    function isReactionOnlyMessageUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'reactions',
+        'updatedAt'
+      ]);
+    }
+
     function hasModuleAccess(document) {
       let perms = getOwnProfile().get('permissions', {});
       let modules = perms.get('modules', {});
@@ -136,6 +163,40 @@ service cloud.firestore {
     match /settings/{document} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+
+    match /chat_rooms/{roomId} {
+      allow read: if isChatRoomMember(roomId) || isAdmin();
+      allow create: if isAuthenticated() &&
+        ownProfileExists() &&
+        isActive() &&
+        isVerified() &&
+        request.resource.data.createdByUid == request.auth.uid &&
+        request.resource.data.createdByEmail == request.auth.token.email &&
+        request.resource.data.memberEmails is list &&
+        request.resource.data.memberEmails.hasAny([request.auth.token.email]) &&
+        request.resource.data.title is string;
+      allow update: if isChatRoomMember(roomId) || isAdmin();
+      allow delete: if isChatRoomMember(roomId) || isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isChatRoomMember(roomId) || isAdmin();
+        allow create: if isChatRoomMember(roomId) &&
+          request.resource.data.senderUid == request.auth.uid &&
+          request.resource.data.senderEmail == request.auth.token.email &&
+          request.resource.data.text is string;
+        allow update: if (
+          isChatRoomMember(roomId) &&
+          (
+            resource.data.senderUid == request.auth.uid ||
+            isReactionOnlyMessageUpdate()
+          )
+        ) || isAdmin();
+        allow delete: if (
+          isChatRoomMember(roomId) &&
+          resource.data.senderUid == request.auth.uid
+        ) || isAdmin();
+      }
     }
 
     match /audit_logs/{logId} {

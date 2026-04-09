@@ -43,6 +43,18 @@ const defaultSchemas = {
     deadlines: true,
     streaks: true,
     method: 'browser',
+    deliveryMode: 'server',
+    defaultSnoozeMinutes: 10,
+    alarm: {
+      enabled: true,
+      muted: false,
+      volume: 0.8,
+      repeatCount: 1,
+      soundUrl: '',
+      soundPath: '',
+      soundName: '',
+      soundType: 'default'
+    },
     channels: {
       reminder: { web: true, email: true },
       deadline: { web: true, email: false },
@@ -100,6 +112,8 @@ const normalizeBySchema = (key, value) => {
     merged.deadlines = Boolean(merged.deadlines);
     merged.streaks = Boolean(merged.streaks);
     merged.method = ['browser', 'email', 'both'].includes(merged.method) ? merged.method : schema.method;
+    merged.deliveryMode = ['server', 'local'].includes(merged.deliveryMode) ? merged.deliveryMode : schema.deliveryMode;
+    merged.defaultSnoozeMinutes = boundedNumber(merged.defaultSnoozeMinutes, schema.defaultSnoozeMinutes, 1, 240);
     merged.emailNotifications = {
       ...schema.emailNotifications,
       ...(merged.emailNotifications || {})
@@ -118,6 +132,18 @@ const normalizeBySchema = (key, value) => {
       ...schema.silentHours,
       ...(merged.silentHours || {})
     };
+    merged.alarm = {
+      ...schema.alarm,
+      ...(merged.alarm || {})
+    };
+    merged.alarm.enabled = Boolean(merged.alarm.enabled);
+    merged.alarm.muted = Boolean(merged.alarm.muted);
+    merged.alarm.volume = Math.max(0, Math.min(1, Number(merged.alarm.volume ?? schema.alarm.volume) || schema.alarm.volume));
+    merged.alarm.repeatCount = boundedNumber(merged.alarm.repeatCount, schema.alarm.repeatCount, 1, 5);
+    merged.alarm.soundType = ['default', 'custom'].includes(merged.alarm.soundType) ? merged.alarm.soundType : schema.alarm.soundType;
+    merged.alarm.soundUrl = typeof merged.alarm.soundUrl === 'string' ? merged.alarm.soundUrl : schema.alarm.soundUrl;
+    merged.alarm.soundPath = typeof merged.alarm.soundPath === 'string' ? merged.alarm.soundPath : schema.alarm.soundPath;
+    merged.alarm.soundName = typeof merged.alarm.soundName === 'string' ? merged.alarm.soundName : schema.alarm.soundName;
   }
 
   if (key === STORAGE_KEYS.PRIVACY) {

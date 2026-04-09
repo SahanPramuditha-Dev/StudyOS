@@ -8,6 +8,7 @@ import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import { EmailService } from '../services/email';
 import { formatDateKey, formatTimeKey, toReminderDateTime } from '../utils/reminderDate';
+import { stopAlarmSound } from '../utils/alarmAudio';
 
 const ReminderContext = createContext();
 
@@ -37,6 +38,11 @@ export const ReminderProvider = ({ children }) => {
     completed: reminder.completed ?? false,
     snoozeEnabled: reminder.snoozeEnabled ?? true,
     snoozeMinutes: Number(reminder.snoozeMinutes || 10),
+    soundMode: ['inherit', 'custom', 'mute'].includes(reminder.soundMode) ? reminder.soundMode : 'inherit',
+    soundUrl: reminder.soundUrl || '',
+    soundPath: reminder.soundPath || '',
+    soundName: reminder.soundName || '',
+    soundVolume: Number(reminder.soundVolume ?? 0.8),
     lastTriggered: reminder.lastTriggered || [],
     missed: reminder.missed ?? false,
     missedCount: Number(reminder.missedCount || 0)
@@ -71,6 +77,18 @@ export const ReminderProvider = ({ children }) => {
     deadlines: true,
     streaks: true,
     method: 'browser',
+    deliveryMode: 'server',
+    defaultSnoozeMinutes: 10,
+    alarm: {
+      enabled: true,
+      muted: false,
+      volume: 0.8,
+      repeatCount: 1,
+      soundUrl: '',
+      soundPath: '',
+      soundName: '',
+      soundType: 'default'
+    },
     channels: {
       reminder: { web: true, email: true },
       deadline: { web: true, email: false },
@@ -204,6 +222,12 @@ export const ReminderProvider = ({ children }) => {
     setNotifications(prev => [{ id: nanoid(), ...notif, time: 'Just now', timestamp: new Date().toISOString(), read: false }, ...prev]);
   }, [setNotifications, notificationSettings]);
 
+  const markNotificationAsPresented = useCallback((id, updates = {}) => {
+    setNotifications((prev) => prev.map((n) => (
+      n.id === id ? { ...n, ...updates } : n
+    )));
+  }, [setNotifications]);
+
   const isWithinSilentHours = useCallback((now, silentHours) => {
     if (!silentHours?.enabled) return false;
     const [startHour, startMin] = String(silentHours.start || '22:00').split(':').map(Number);
@@ -251,6 +275,44 @@ export const ReminderProvider = ({ children }) => {
     toast.success(`Alert snoozed for ${snoozeMinutes} minutes`);
   }, [reminders, setReminders, setNotifications]);
 
+  const muteReminder = useCallback((notifId, reminderId) => {
+    const target = reminders.find(r => r.id === reminderId);
+    if (!target) return;
+
+    stopAlarmSound();
+
+    setReminders(prev => prev.map(r =>
+      r.id === reminderId
+        ? { ...r, soundMode: 'mute', updatedAt: new Date().toISOString() }
+        : r
+    ));
+
+    if (notifId) {
+      setNotifications(prev => prev.filter(n => n.id !== notifId));
+    }
+
+    toast.success('Muted this reminder');
+  }, [reminders, setReminders, setNotifications]);
+
+  const unmuteReminder = useCallback((notifId, reminderId) => {
+    const target = reminders.find(r => r.id === reminderId);
+    if (!target) return;
+
+    stopAlarmSound();
+
+    setReminders(prev => prev.map(r =>
+      r.id === reminderId
+        ? { ...r, soundMode: 'inherit', updatedAt: new Date().toISOString() }
+        : r
+    ));
+
+    if (notifId) {
+      setNotifications(prev => prev.filter(n => n.id !== notifId));
+    }
+
+    toast.success('Unmuted this reminder');
+  }, [reminders, setReminders, setNotifications]);
+
   // Keep a ref of the latest reminders to avoid effect loops and stale closures
   const remindersRef = useRef(reminders);
   useEffect(() => { remindersRef.current = reminders; }, [reminders]);
@@ -268,6 +330,10 @@ export const ReminderProvider = ({ children }) => {
 
       const snapshot = remindersRef.current || [];
       const todayKey = formatDateKey(now);
+
+      if ((notificationSettings || {}).deliveryMode === 'server') {
+        return;
+      }
 
       // Filter reminders that should trigger NOW
       const triggeredReminders = snapshot.map(normalizeReminder).filter(r => {
@@ -287,7 +353,7 @@ export const ReminderProvider = ({ children }) => {
         const allowsInApp = prefs.enabled !== false && prefs.reminders !== false;
         const reminderChannels = prefs.channels?.reminder || { web: true, email: true };
         const allowsBrowser = allowsInApp && !isMuted && reminderChannels.web !== false && (prefs.method === 'browser' || prefs.method === 'both');
-        const allowsEmail = allowsInApp && !isMuted && reminderChannels.email !== false && (prefs.method === 'email' || prefs.method === 'both') && prefs.emailNotifications?.reminders !== false;
+        const allowsEmail = allowsInApp && !isMuted && reminderChannels.email !== false && prefs.emailNotifications?.reminders !== false;
         console.log(`[ReminderContext] TRIGERRED: ${triggeredReminders.length} reminders at ${currentDateStr} ${currentTimeStr}`);
         
         triggeredReminders.forEach(async (r) => {
@@ -298,7 +364,10 @@ export const ReminderProvider = ({ children }) => {
                 title: 'Event Reminder: ' + (r.category || 'Reminder'),
                 message: r.message || 'Untitled event',
                 type: 'reminder',
-                reminderId: r.id
+                reminderId: r.id,
+                soundMode: r.soundMode || 'inherit',
+                soundUrl: r.soundUrl || '',
+                soundVolume: Number(r.soundVolume ?? 0.8)
               });
             }
 
@@ -470,7 +539,10 @@ export const ReminderProvider = ({ children }) => {
     markAllNotificationsAsRead,
     clearReadNotifications,
     snoozeReminder,
-    addNotification
+    muteReminder,
+    unmuteReminder,
+    addNotification,
+    markNotificationAsPresented
   };
 
   return (

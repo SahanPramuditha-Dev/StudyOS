@@ -10,6 +10,7 @@ import {
   BarChart, 
   Bell, 
   Search,
+  MessageSquare,
   Settings,
   Menu,
   X,
@@ -49,6 +50,7 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
     { id: 'goals', icon: Target, label: 'Goals' },
     { id: 'planner', icon: CalendarClock, label: 'Planner' },
     { id: 'review', icon: Inbox, label: 'Review Hub' },
+    { id: 'chat', icon: MessageSquare, label: 'Chat' },
     { id: 'reminders', icon: Bell, label: 'Calendar', permission: 'reminders' },
   ];
 

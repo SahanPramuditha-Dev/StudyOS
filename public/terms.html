@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StudyOS Terms of Service</title>
+    <meta
+      name="description"
+      content="StudyOS Terms of Service covering account use, integrations, limits, and responsibilities."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #020617;
+        --panel: rgba(15, 23, 42, 0.86);
+        --border: rgba(148, 163, 184, 0.2);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #a855f7;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(168, 85, 247, 0.18), transparent 28%),
+          radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 24%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      .wrap {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 56px 20px 72px;
+      }
+      .hero, .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        box-shadow: 0 24px 80px rgba(2, 6, 23, 0.4);
+        backdrop-filter: blur(24px);
+      }
+      .hero {
+        padding: 32px;
+        margin-bottom: 24px;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(168, 85, 247, 0.12);
+        color: #d8b4fe;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+      }
+      h1 {
+        margin: 18px 0 10px;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        line-height: 1.05;
+      }
+      p { color: var(--muted); }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.5);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .card {
+        padding: 28px;
+        margin-top: 18px;
+      }
+      h2 {
+        margin: 0 0 14px;
+        font-size: 1.25rem;
+      }
+      ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      li { margin: 8px 0; color: var(--text); }
+      a {
+        color: #d8b4fe;
+        text-decoration: none;
+      }
+      a:hover { text-decoration: underline; }
+      .footer {
+        margin-top: 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #a855f7, #2563eb);
+        color: white;
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <span class="eyebrow">StudyOS Terms</span>
+        <h1>Terms of Service</h1>
+        <p>
+          These terms explain how StudyOS may be used, what responsibilities you have, and how third-party integrations are handled.
+        </p>
+        <div class="chips">
+          <span class="chip">Account use</span>
+          <span class="chip">Acceptable use</span>
+          <span class="chip">Integrations</span>
+          <span class="chip">Limits</span>
+          <span class="chip">Liability</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Acceptance</h2>
+        <p>
+          By using StudyOS, you agree to these terms and the Privacy Policy. If you do not agree, do not use the service.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Account responsibility</h2>
+        <p>
+          You are responsible for your account activity and for keeping connected services, passwords, and access tokens secure.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Third-party services</h2>
+        <p>
+          StudyOS can connect to services such as Firebase, GitHub, and Google Calendar. Those services are governed by their own terms and policies.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Contact</h2>
+        <p>
+          Questions about these terms? Email <a href="mailto:sahan.dev.tech@gmail.com">sahan.dev.tech@gmail.com</a>.
+          You can also return to the <a href="/">StudyOS homepage</a>.
+        </p>
+      </section>
+
+      <div class="footer">
+        <span>Last updated April 9, 2026</span>
+        <a class="btn" href="/">Back to StudyOS</a>
+      </div>
+    </main>
+  </body>
+</html>

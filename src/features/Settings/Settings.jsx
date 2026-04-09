@@ -40,7 +40,12 @@ import {
   Database,
   CreditCard,
   Crown,
-  Zap
+  Zap,
+  Volume2,
+  BellOff,
+  Music,
+  Play,
+  Info
 } from 'lucide-react';
 import { StorageService, STORAGE_KEYS } from '../../services/storage';
 import { computeUsageMetrics } from '../../services/usageMetrics';
@@ -51,6 +56,8 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
 import GoogleCalendarSettings from '../../components/GoogleCalendarSettings';
+import { playAlarmSound } from '../../utils/alarmAudio';
+import { uploadAlarmSound, isValidAlarmSoundFile, getAlarmSoundLimitBytes } from '../../services/alarmSound';
 
 const Settings = () => {
   const { user, profile, logout, updateUserProfile, uploadProfileImage, resetPassword, deleteAccount } = useAuth();
@@ -61,6 +68,12 @@ const Settings = () => {
   const [activeSection, setActiveSection] = useState('profile');
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
+  const [alarmUploadState, setAlarmUploadState] = useState({ uploading: false, error: '' });
+  const [emailDeliveryStatus, setEmailDeliveryStatus] = useState({
+    loading: true,
+    configured: false,
+    fromConfigured: false
+  });
 
   // Confirm Modal State
   const [confirmConfig, setConfirmConfig] = useState({
@@ -93,6 +106,38 @@ const Settings = () => {
       setIsUpgrading(false);
     }
   };
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadStatus = async () => {
+      try {
+        const getStatus = httpsCallable(functions, 'getEmailDeliveryStatus');
+        const { data } = await getStatus();
+        if (!cancelled) {
+          setEmailDeliveryStatus({
+            loading: false,
+            configured: Boolean(data?.configured),
+            fromConfigured: Boolean(data?.fromConfigured)
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setEmailDeliveryStatus({
+            loading: false,
+            configured: false,
+            fromConfigured: false
+          });
+        }
+        console.warn('[Settings] Email delivery status unavailable:', error);
+      }
+    };
+
+    loadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -175,6 +220,18 @@ const Settings = () => {
     deadlines: true,
     streaks: true,
     method: 'browser',
+    deliveryMode: 'server',
+    defaultSnoozeMinutes: 10,
+    alarm: {
+      enabled: true,
+      muted: false,
+      volume: 0.8,
+      repeatCount: 1,
+      soundUrl: '',
+      soundPath: '',
+      soundName: '',
+      soundType: 'default'
+    },
     silentHours: { enabled: false, start: '22:00', end: '07:00' },
     emailNotifications: { roleChanges: true, reminders: true }
   });
@@ -192,6 +249,18 @@ const Settings = () => {
         roleChanges: { web: true, email: true }
       },
       silentHours: { enabled: false, start: '22:00', end: '07:00' },
+      deliveryMode: 'server',
+      defaultSnoozeMinutes: 10,
+      alarm: {
+        enabled: true,
+        muted: false,
+        volume: 0.8,
+        repeatCount: 1,
+        soundUrl: '',
+        soundPath: '',
+        soundName: '',
+        soundType: 'default'
+      },
       emailNotifications: { roleChanges: true, reminders: true }
     };
     const candidate = (rawNotifSettings && typeof rawNotifSettings === 'object') ? rawNotifSettings : {};
@@ -201,6 +270,10 @@ const Settings = () => {
       silentHours: {
         ...defaults.silentHours,
         ...(candidate.silentHours || {})
+      },
+      alarm: {
+        ...defaults.alarm,
+        ...(candidate.alarm || {})
       },
       emailNotifications: {
         ...defaults.emailNotifications,
@@ -491,6 +564,64 @@ const Settings = () => {
     };
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleAlarmSoundUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!isValidAlarmSoundFile(file)) {
+      toast.error('Upload an MP3, WAV, or OGG audio file');
+      return;
+    }
+    if (!user?.id) {
+      toast.error('Please sign in to upload a sound');
+      return;
+    }
+    const maxBytes = getAlarmSoundLimitBytes(profile?.plan, profile?.role);
+    if (file.size > maxBytes) {
+      toast.error(`Sound file is too large. Your account limit is ${(maxBytes / (1024 * 1024)).toFixed(0)} MB.`);
+      return;
+    }
+
+    try {
+      setAlarmUploadState({ uploading: true, error: '' });
+      const upload = await uploadAlarmSound({ file, userId: user.id, scope: 'settings' });
+      setNotificationSettings({
+        ...notifSettings,
+        alarm: {
+          ...notifSettings.alarm,
+          enabled: true,
+          soundType: 'custom',
+          muted: false,
+          soundUrl: upload.downloadURL,
+          soundPath: upload.storagePath,
+          soundName: upload.fileName
+        }
+      });
+      toast.success('Alarm sound uploaded');
+    } catch (error) {
+      const message = error?.message || 'Sound upload failed';
+      setAlarmUploadState({ uploading: false, error: message });
+      toast.error(message);
+      return;
+    }
+
+    setAlarmUploadState({ uploading: false, error: '' });
+  };
+
+  const handleTestAlarmSound = async () => {
+    try {
+      await playAlarmSound({
+        soundUrl: notifSettings.alarm?.soundUrl || '',
+        volume: notifSettings.alarm?.volume ?? 0.8,
+        repeatCount: notifSettings.alarm?.repeatCount ?? 1,
+        muted: Boolean(notifSettings.alarm?.muted || notifSettings.alarm?.enabled === false)
+      });
+      toast.success('Alarm preview played');
+    } catch (error) {
+      toast.error(error?.message || 'Could not play alarm preview');
+    }
   };
 
   const handleUpdateProfile = async (e) => {
@@ -1061,6 +1192,9 @@ const Settings = () => {
                       </div>
                       Notification Preferences
                     </h3>
+                    <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest">
+                      {notifSettings.deliveryMode === 'server' ? 'Server-backed' : 'Local fallback'}
+                    </span>
                   </div>
 
                   <div className="space-y-6">
@@ -1146,6 +1280,24 @@ const Settings = () => {
                       <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
                         <Mail size={14} /> Transactional Email
                       </h4>
+                      <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs font-bold">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest ${
+                            emailDeliveryStatus.loading
+                              ? 'bg-slate-200 text-slate-600'
+                              : emailDeliveryStatus.configured
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {emailDeliveryStatus.loading ? 'Checking' : (emailDeliveryStatus.configured ? 'Configured' : 'Missing SMTP')}
+                        </span>
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">
+                          {emailDeliveryStatus.configured
+                            ? 'Email delivery is ready on the backend.'
+                            : 'Reminder emails will fail until SMTP secrets are added to Firebase Functions.'}
+                        </span>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button 
                           onClick={() => setNotificationSettings({
@@ -1188,6 +1340,208 @@ const Settings = () => {
                           </div>
                           <CheckCircle2 size={20} className={notifSettings.emailNotifications.reminders ? 'text-primary-500' : 'text-slate-300'} />
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Alarm Sound Controls */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
+                        <Music size={14} /> Alarm Sound
+                      </h4>
+                      <div className="p-5 rounded-[1.75rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50 space-y-5">
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: 'server', label: 'Server-backed' },
+                            { key: 'local', label: 'Local fallback' }
+                          ].map((item) => (
+                            <button
+                              key={item.key}
+                              type="button"
+                              onClick={() => setNotificationSettings({
+                                ...notifSettings,
+                                deliveryMode: item.key
+                              })}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                notifSettings.deliveryMode === item.key
+                                  ? 'bg-primary-500 text-white border-primary-500'
+                                  : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-100 dark:border-slate-700'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <button
+                            type="button"
+                            onClick={() => setNotificationSettings({
+                              ...notifSettings,
+                              alarm: {
+                                ...notifSettings.alarm,
+                                enabled: !notifSettings.alarm.enabled
+                              }
+                            })}
+                            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                              notifSettings.alarm?.enabled
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20'
+                                : 'bg-slate-50 dark:bg-slate-800 border-transparent'
+                            }`}
+                          >
+                            <div className="text-left">
+                              <p className="font-bold text-sm">Alarm enabled</p>
+                              <p className="text-[10px] text-slate-400">Turn reminder audio on or off</p>
+                            </div>
+                            <CheckCircle2 size={20} className={notifSettings.alarm?.enabled ? 'text-emerald-500' : 'text-slate-300'} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setNotificationSettings({
+                              ...notifSettings,
+                              alarm: {
+                                ...notifSettings.alarm,
+                                muted: !notifSettings.alarm.muted
+                              }
+                            })}
+                            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                              notifSettings.alarm?.muted
+                                ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
+                                : 'bg-slate-50 dark:bg-slate-800 border-transparent'
+                            }`}
+                          >
+                            <div className="text-left">
+                              <p className="font-bold text-sm">Mute when triggered</p>
+                              <p className="text-[10px] text-slate-400">Useful for silent study sessions</p>
+                            </div>
+                            <BellOff size={20} className={notifSettings.alarm?.muted ? 'text-amber-500' : 'text-slate-300'} />
+                          </button>
+                        </div>
+
+                          <div className="space-y-3">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Upload sound</label>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 ml-1">
+                              Max size: {((getAlarmSoundLimitBytes(profile?.plan, profile?.role)) / (1024 * 1024)).toFixed(0)} MB for your account
+                            </p>
+                            <label className="flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 cursor-pointer hover:border-primary-300 transition">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-500">
+                                <Upload size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">
+                                  {notifSettings.alarm?.soundName || 'Upload MP3, WAV, or OGG'}
+                                </p>
+                                <p className="text-[10px] text-slate-400">Saved in Firebase Storage, not localStorage</p>
+                              </div>
+                            </div>
+                            <input
+                              type="file"
+                              accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg"
+                              className="hidden"
+                              onChange={handleAlarmSoundUpload}
+                            />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-primary-500 whitespace-nowrap">
+                              Choose file
+                            </span>
+                          </label>
+                          {alarmUploadState.uploading && (
+                            <p className="text-[10px] font-bold text-primary-500">Uploading alarm sound...</p>
+                          )}
+                          {alarmUploadState.error && (
+                            <p className="text-[10px] font-bold text-red-500">{alarmUploadState.error}</p>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
+                              <Volume2 size={14} /> Volume
+                            </label>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1"
+                              step="0.05"
+                              value={notifSettings.alarm?.volume ?? 0.8}
+                              onChange={(e) => setNotificationSettings({
+                                ...notifSettings,
+                                alarm: {
+                                  ...notifSettings.alarm,
+                                  volume: Number(e.target.value)
+                                }
+                              })}
+                              className="w-full"
+                            />
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                              <span>Quiet</span>
+                              <span>{Math.round((notifSettings.alarm?.volume ?? 0.8) * 100)}%</span>
+                              <span>Loud</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
+                              <Play size={14} /> Repeat
+                            </label>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[1, 2, 3].map((count) => (
+                                <button
+                                  key={count}
+                                  type="button"
+                                  onClick={() => setNotificationSettings({
+                                    ...notifSettings,
+                                    alarm: {
+                                      ...notifSettings.alarm,
+                                      repeatCount: count
+                                    }
+                                  })}
+                                  className={`py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                    Number(notifSettings.alarm?.repeatCount || 1) === count
+                                      ? 'bg-indigo-500 text-white border-indigo-500'
+                                      : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-100 dark:border-slate-700'
+                                  }`}
+                                >
+                                  {count}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Default snooze minutes</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={240}
+                              value={notifSettings.defaultSnoozeMinutes ?? 10}
+                              onChange={(e) => setNotificationSettings({
+                                ...notifSettings,
+                                defaultSnoozeMinutes: Math.max(1, Math.min(240, Number(e.target.value) || 10))
+                              })}
+                              className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 font-bold outline-none"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Preview</label>
+                            <button
+                              type="button"
+                              onClick={handleTestAlarmSound}
+                              className="w-full px-4 py-3 rounded-2xl bg-slate-900 text-white font-black flex items-center justify-center gap-2 hover:bg-slate-800 transition"
+                            >
+                              <Play size={16} /> Test sound
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-3 p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20">
+                          <Info size={16} className="text-blue-500 mt-0.5" />
+                          <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                            Server-backed delivery is recommended. It lets Firebase send reminder records and emails even if your browser is closed, while the app handles browser alerts and sound when you are online.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>

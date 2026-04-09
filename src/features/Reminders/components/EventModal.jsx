@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { X, Calendar, Clock, Zap, Tag, Bell, Repeat, Link as LinkIcon, FileText, AlertCircle } from 'lucide-react';
+import { X, Calendar, Clock, Zap, Tag, Bell, Repeat, Link as LinkIcon, FileText, AlertCircle, Volume2, Upload, BellOff, Music } from 'lucide-react';
 
 const categoryOptions = ['Study', 'Assignment', 'Exam', 'Project', 'Personal'];
 const reminderOptions = [5, 15, 60, 120];
@@ -27,7 +27,9 @@ const EventModal = ({
   courses,
   projects,
   assignments,
-  videos
+  videos,
+  onSoundUpload,
+  soundUploadState
 }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -262,6 +264,118 @@ const EventModal = ({
             </label>
           </div>
 
+          <div className="space-y-4 p-5 rounded-[2rem] bg-slate-50/70 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Alarm Sound Override</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Choose a custom sound, mute this reminder, or inherit the global alarm sound.</p>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                <Music size={14} />
+                Per reminder
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: 'inherit', label: 'Inherit' },
+                { key: 'custom', label: 'Custom' },
+                { key: 'mute', label: 'Mute' }
+              ].map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, soundMode: option.key })}
+                  className={`py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all active:scale-95 ${
+                    formData.soundMode === option.key
+                      ? 'bg-primary-500 text-white border-primary-500 shadow-lg shadow-primary-500/20'
+                      : 'bg-white dark:bg-slate-900 border-transparent text-slate-400 hover:border-slate-200'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {formData.soundMode === 'custom' && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                <label className="flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 cursor-pointer hover:border-primary-300 transition">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-500">
+                      <Upload size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">
+                        {formData.soundName || 'Upload MP3, WAV, or OGG'}
+                      </p>
+                      <p className="text-[10px] text-slate-400">Stored securely in Firebase Storage</p>
+                    </div>
+                  </div>
+                  <input
+                    type="file"
+                    accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg"
+                    className="hidden"
+                    onChange={(e) => onSoundUpload?.(e.target.files?.[0])}
+                  />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-primary-500 whitespace-nowrap">
+                    Upload
+                  </span>
+                </label>
+
+                {soundUploadState?.uploading && (
+                  <p className="text-[10px] font-bold text-primary-500">Uploading sound...</p>
+                )}
+                {soundUploadState?.error && (
+                  <p className="text-[10px] font-bold text-red-500">{soundUploadState.error}</p>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Volume2 size={14} /> Volume
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={Number(formData.soundVolume ?? 0.8)}
+                  onChange={(e) => setFormData({ ...formData, soundVolume: Number(e.target.value) })}
+                  className="w-full"
+                  title="Set the alarm volume"
+                />
+                <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                  <span>Quiet</span>
+                  <span>{Math.round(Number(formData.soundVolume ?? 0.8) * 100)}%</span>
+                  <span>Loud</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Bell size={14} /> Repeat
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, soundRepeatCount: count })}
+                      className={`py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all active:scale-95 ${
+                        Number(formData.soundRepeatCount || 1) === count
+                          ? 'bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/20'
+                          : 'bg-white dark:bg-slate-900 border-transparent text-slate-400 hover:border-slate-200'
+                      }`}
+                    >
+                      {count}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-3 pt-2">
             {isEditing && (
               <button
@@ -293,4 +407,3 @@ const EventModal = ({
 };
 
 export default EventModal;
-

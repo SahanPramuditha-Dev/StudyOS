@@ -11,12 +11,15 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { useReminders } from '../../context/ReminderContext';
 import { useGoogleCalendarContext } from '../../context/GoogleCalendarContext';
 import { formatDateKey, toReminderDateTime } from '../../utils/reminderDate';
 import { createGoogleCalendarEvent, updateGoogleCalendarEvent, deleteGoogleCalendarEvent } from '../../services/googleCalendar';
+import { uploadAlarmSound, isValidAlarmSoundFile, getAlarmSoundLimitBytes } from '../../services/alarmSound';
+import { stopAlarmSound } from '../../utils/alarmAudio';
 import ConfirmModal from '../../components/ConfirmModal';
 import CalendarView from './components/CalendarView';
 import EventModal from './components/EventModal';
@@ -42,6 +45,12 @@ const defaultFormData = () => ({
   snoozeMinutes: 10,
   reminderOffsetMinutes: 15,
   sendEmail: false,
+  soundMode: 'inherit',
+  soundUrl: '',
+  soundPath: '',
+  soundName: '',
+  soundVolume: 0.8,
+  soundRepeatCount: 1,
   relatedCourseId: '',
   relatedProjectId: '',
   relatedAssignmentId: '',
@@ -52,6 +61,7 @@ const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.
 
 const Reminders = () => {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
   const {
     reminders,
     notifications,
@@ -60,7 +70,9 @@ const Reminders = () => {
     deleteReminder,
     markReminderAsDone,
     markNotificationAsRead,
-    snoozeReminder
+    snoozeReminder,
+    muteReminder,
+    unmuteReminder
   } = useReminders();
 
   const { googleAccessToken, syncEnabled } = useGoogleCalendarContext();
@@ -78,6 +90,7 @@ const Reminders = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [soundUploadState, setSoundUploadState] = useState({ uploading: false, error: '' });
   const [confirmConfig, setConfirmConfig] = useState({
     isOpen: false,
     title: '',
@@ -232,6 +245,47 @@ const Reminders = () => {
       addReminder(formData);
     }
     closeModal();
+  };
+
+  const handleSoundUpload = async (file) => {
+    if (!file) return;
+    if (!isValidAlarmSoundFile(file)) {
+      toast.error('Upload an MP3, WAV, or OGG audio file');
+      return;
+    }
+    if (!user?.id) {
+      toast.error('Please sign in to upload a custom alarm sound');
+      return;
+    }
+    const maxBytes = getAlarmSoundLimitBytes(profile?.plan, profile?.role);
+    if (file.size > maxBytes) {
+      toast.error(`Sound file is too large. Your account limit is ${(maxBytes / (1024 * 1024)).toFixed(0)} MB.`);
+      return;
+    }
+
+    try {
+      setSoundUploadState({ uploading: true, error: '' });
+      const upload = await uploadAlarmSound({
+        file,
+        userId: user.id,
+        scope: editingEvent?.id || 'reminder'
+      });
+      setFormData((prev) => ({
+        ...prev,
+        soundMode: 'custom',
+        soundUrl: upload.downloadURL,
+        soundPath: upload.storagePath,
+        soundName: upload.fileName
+      }));
+      toast.success('Custom sound uploaded');
+    } catch (error) {
+      const message = error?.message || 'Sound upload failed';
+      setSoundUploadState({ uploading: false, error: message });
+      toast.error(message);
+      return;
+    }
+
+    setSoundUploadState({ uploading: false, error: '' });
   };
 
   const handleDelete = (eventId) => {
@@ -413,7 +467,19 @@ const Reminders = () => {
           />
           <ReminderPanel
             notifications={notifications}
-            onSnooze={(notification) => snoozeReminder(notification.id, notification.reminderId)}
+            onSnooze={(notification, minutesOverride = 5) => {
+              stopAlarmSound();
+              snoozeReminder(notification.id, notification.reminderId, minutesOverride);
+            }}
+            onMute={(notification) => {
+              stopAlarmSound();
+              muteReminder(notification.id, notification.reminderId);
+            }}
+            onUnmute={(notification) => {
+              stopAlarmSound();
+              unmuteReminder(notification.id, notification.reminderId);
+            }}
+            onStopAlarm={() => stopAlarmSound()}
             onMarkRead={markNotificationAsRead}
           />
         </div>
@@ -466,6 +532,8 @@ const Reminders = () => {
           <EventModal
             formData={formData}
             setFormData={setFormData}
+            onSoundUpload={handleSoundUpload}
+            soundUploadState={soundUploadState}
             onSubmit={handleSubmit}
             onClose={closeModal}
             onDelete={handleDeleteFromModal}

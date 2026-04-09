@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import posthog from 'posthog-js';
@@ -17,6 +17,7 @@ import Analytics from './features/Analytics/Analytics';
 import Goals from './features/Goals/Goals';
 import WeeklyPlanner from './features/Planner/WeeklyPlanner';
 import ReviewHub from './features/Review/ReviewHub';
+import Chat from './features/Chat/Chat';
 import Reminders from './features/Reminders/Reminders';
 import GlobalSearch from './features/Search/Search';
 import Auth from './features/Auth/Auth';
@@ -31,6 +32,7 @@ import { useTheme } from './context/ThemeContext';
 import { useReminders } from './context/ReminderContext';
 import { useStorage } from './hooks/useStorage';
 import { STORAGE_KEYS } from './services/storage';
+import { playAlarmSound, stopAlarmSound } from './utils/alarmAudio';
 import toast from 'react-hot-toast';
 
 const App = () => {
@@ -44,8 +46,11 @@ const App = () => {
     markAllNotificationsAsRead,
     clearReadNotifications,
     snoozeReminder,
+    muteReminder,
+    unmuteReminder,
     markReminderAsDone,
-    addNotification
+    addNotification,
+    markNotificationAsPresented
   } = useReminders();
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -53,6 +58,34 @@ const App = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [streak, setStreak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
   const [activeProjectId, setActiveProjectId] = useStorage('active_workspace_project', null);
+  const [notificationSettings] = useStorage(STORAGE_KEYS.NOTIF_SETTINGS, {
+    enabled: true,
+    reminders: true,
+    deadlines: true,
+    streaks: true,
+    method: 'browser',
+    deliveryMode: 'server',
+    defaultSnoozeMinutes: 10,
+    alarm: {
+      enabled: true,
+      muted: false,
+      volume: 0.8,
+      repeatCount: 1,
+      soundUrl: '',
+      soundPath: '',
+      soundName: '',
+      soundType: 'default'
+    },
+    channels: {
+      reminder: { web: true, email: true },
+      deadline: { web: true, email: false },
+      streak: { web: true, email: false },
+      roleChanges: { web: true, email: true }
+    },
+    silentHours: { enabled: false, start: '22:00', end: '07:00' },
+    emailNotifications: { roleChanges: true, reminders: true }
+  });
+  const browserDeliveredRef = useRef(new Set());
 
   const currentTabFromPath = (() => {
     const firstSegment = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
@@ -83,6 +116,51 @@ const App = () => {
       });
     }
   }, []);
+
+  useEffect(() => {
+    if (!notifications.length) return;
+
+    const alarm = notificationSettings?.alarm || {};
+    const shouldNotify = (notification) => {
+      if (!notification) return false;
+      if (!['reminder', 'deadline'].includes(notification.type)) return false;
+      if (notification.browserDeliveredAt) return false;
+      if (browserDeliveredRef.current.has(notification.id)) return false;
+      return true;
+    };
+
+    const deliver = async () => {
+      const pending = notifications.filter(shouldNotify);
+      if (!pending.length) return;
+
+      for (const notification of pending) {
+        browserDeliveredRef.current.add(notification.id);
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification(notification.title || 'StudyOs Alert', {
+            body: notification.message || 'You have a reminder',
+            icon: '/favicon.svg'
+          });
+        }
+
+        await playAlarmSound({
+          soundUrl: notification.soundUrl || alarm.soundUrl || '',
+          volume: Number(notification.soundVolume ?? alarm.volume ?? 0.8),
+          repeatCount: Number(notification.soundRepeatCount ?? alarm.repeatCount ?? 1),
+          muted: Boolean(alarm.muted || notification.soundMode === 'mute' || alarm.enabled === false)
+        }).catch((error) => {
+          console.warn('[App] Alarm sound playback failed:', error);
+        });
+
+        markNotificationAsPresented(notification.id, {
+          browserDeliveredAt: new Date().toISOString(),
+          browserDeliveredBy: 'client'
+        });
+      }
+    };
+
+    deliver();
+  }, [notifications, notificationSettings, markNotificationAsPresented]);
 
   // When logged out, keep the URL honest (avoid /dashboard in bar while showing Sign In)
   useEffect(() => {
@@ -236,17 +314,35 @@ const App = () => {
     setActiveTab(tab);
   };
 
-  const handleSnoozeClick = (event, notificationId, reminderId) => {
+  const handleSnoozeClick = (event, notificationId, reminderId, minutesOverride = 5) => {
     event.stopPropagation();
-    snoozeReminder(notificationId, reminderId);
+    stopAlarmSound();
+    snoozeReminder(notificationId, reminderId, minutesOverride);
+  };
+
+  const handleStopAlarmClick = (event) => {
+    event.stopPropagation();
+    stopAlarmSound();
+    toast.success('Alarm stopped');
   };
 
   const handleReminderDoneClick = (event, notification) => {
     event.stopPropagation();
+    stopAlarmSound();
     if (notification.reminderId) {
       markReminderAsDone(notification.reminderId);
     }
     handleNotificationClick(notification.id);
+  };
+
+  const handleMuteReminderClick = (event, notification) => {
+    event.stopPropagation();
+    muteReminder(notification.id, notification.reminderId);
+  };
+
+  const handleUnmuteReminderClick = (event, notification) => {
+    event.stopPropagation();
+    unmuteReminder(notification.id, notification.reminderId);
   };
 
   const RestrictedModule = ({ name }) => (
@@ -298,6 +394,7 @@ const App = () => {
         <Route path="/goals" element={<Goals />} />
         <Route path="/planner" element={<WeeklyPlanner />} />
         <Route path="/review" element={<ReviewHub />} />
+        <Route path="/chat" element={<Chat />} />
         <Route path="/reminders" element={(hasPermission('reminders') || hasPermission('calendarAccess')) ? <Reminders /> : <RestrictedModule name="Calendar" />} />
         <Route path="/admin" element={isAdmin ? <Admin /> : <Dashboard setActiveTab={setActiveTab} />} />
         <Route path="/settings" element={<Settings />} />
@@ -412,10 +509,28 @@ const App = () => {
                                   {notification.type === 'reminder' && (
                                     <div className="flex gap-2 mt-2">
                                       <button
-                                        onClick={(e) => handleSnoozeClick(e, notification.id, notification.reminderId)}
+                                        onClick={(e) => handleSnoozeClick(e, notification.id, notification.reminderId, 5)}
                                         className="text-[11px] px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 font-bold hover:opacity-90"
                                       >
-                                        Snooze
+                                        Snooze 5m
+                                      </button>
+                                      <button
+                                        onClick={handleStopAlarmClick}
+                                        className="text-[11px] px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-bold hover:opacity-90"
+                                      >
+                                        Stop Alarm
+                                      </button>
+                                      <button
+                                        onClick={(e) => handleMuteReminderClick(e, notification)}
+                                        className="text-[11px] px-2 py-1 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300 font-bold hover:opacity-90"
+                                      >
+                                        Mute Reminder
+                                      </button>
+                                      <button
+                                        onClick={(e) => handleUnmuteReminderClick(e, notification)}
+                                        className="text-[11px] px-2 py-1 rounded-lg bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-bold hover:opacity-90"
+                                      >
+                                        Unmute
                                       </button>
                                       <button
                                         onClick={(e) => handleReminderDoneClick(e, notification)}

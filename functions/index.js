@@ -2,6 +2,7 @@ const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const { randomUUID } = require("crypto");
 const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
@@ -92,6 +93,202 @@ exports.ensureMyUserProfileDoc = onCall(async (request) => {
   await ref.set(buildUserProfilePayloadFromAuthRecord(userRecord));
   return { created: true };
 });
+
+const formatDateKey = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatTimeKey = (date) => {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+const toReminderDateTime = (dateStr, timeStr = "00:00") => {
+  if (!dateStr) return null;
+  const [year, month, day] = String(dateStr).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const [hours, minutes] = String(timeStr || "00:00").split(":").map(Number);
+  const date = new Date(year, month - 1, day, Number.isFinite(hours) ? hours : 0, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const normalizeNotificationSettings = (settings = {}) => {
+  const defaults = {
+    enabled: true,
+    reminders: true,
+    deadlines: true,
+    streaks: true,
+    method: "browser",
+    deliveryMode: "server",
+    defaultSnoozeMinutes: 10,
+    alarm: {
+      enabled: true,
+      muted: false,
+      volume: 0.8,
+      repeatCount: 1,
+      soundUrl: "",
+      soundPath: "",
+      soundName: "",
+      soundType: "default"
+    },
+    channels: {
+      reminder: { web: true, email: true },
+      deadline: { web: true, email: false },
+      streak: { web: true, email: false },
+      roleChanges: { web: true, email: true }
+    },
+    silentHours: { enabled: false, start: "22:00", end: "07:00" },
+    emailNotifications: { roleChanges: true, reminders: true }
+  };
+
+  const merged = {
+    ...defaults,
+    ...settings,
+    alarm: {
+      ...defaults.alarm,
+      ...(settings.alarm || {})
+    },
+    channels: {
+      ...defaults.channels,
+      ...(settings.channels || {})
+    },
+    silentHours: {
+      ...defaults.silentHours,
+      ...(settings.silentHours || {})
+    },
+    emailNotifications: {
+      ...defaults.emailNotifications,
+      ...(settings.emailNotifications || {})
+    }
+  };
+
+  merged.method = ["browser", "email", "both"].includes(merged.method) ? merged.method : defaults.method;
+  merged.deliveryMode = ["server", "local"].includes(merged.deliveryMode) ? merged.deliveryMode : defaults.deliveryMode;
+  merged.defaultSnoozeMinutes = Math.max(1, Math.min(240, Number(merged.defaultSnoozeMinutes) || defaults.defaultSnoozeMinutes));
+  merged.alarm.enabled = Boolean(merged.alarm.enabled);
+  merged.alarm.muted = Boolean(merged.alarm.muted);
+  merged.alarm.volume = Math.max(0, Math.min(1, Number(merged.alarm.volume) || defaults.alarm.volume));
+  merged.alarm.repeatCount = Math.max(1, Math.min(5, Number(merged.alarm.repeatCount) || defaults.alarm.repeatCount));
+  merged.alarm.soundType = ["default", "custom"].includes(merged.alarm.soundType) ? merged.alarm.soundType : defaults.alarm.soundType;
+  merged.alarm.soundUrl = typeof merged.alarm.soundUrl === "string" ? merged.alarm.soundUrl : "";
+  merged.alarm.soundPath = typeof merged.alarm.soundPath === "string" ? merged.alarm.soundPath : "";
+  merged.alarm.soundName = typeof merged.alarm.soundName === "string" ? merged.alarm.soundName : "";
+
+  return merged;
+};
+
+const normalizeReminder = (reminder = {}) => ({
+  ...reminder,
+  title: reminder.title || reminder.message || "",
+  message: reminder.message || reminder.title || "",
+  date: reminder.date || formatDateKey(new Date()),
+  time: reminder.time || "09:00",
+  allDay: reminder.allDay ?? false,
+  durationMinutes: Number(reminder.durationMinutes || 60),
+  reminderOffsetMinutes: Number(reminder.reminderOffsetMinutes ?? 15),
+  recurring: reminder.recurring || "None",
+  recurringIntervalDays: Number(reminder.recurringIntervalDays || 1),
+  enabled: reminder.enabled ?? true,
+  completed: reminder.completed ?? false,
+  snoozeEnabled: reminder.snoozeEnabled ?? true,
+  snoozeMinutes: Number(reminder.snoozeMinutes || 10),
+  sendEmail: reminder.sendEmail ?? false,
+  soundMode: ["inherit", "custom", "mute"].includes(reminder.soundMode) ? reminder.soundMode : "inherit",
+  soundUrl: reminder.soundUrl || "",
+  soundPath: reminder.soundPath || "",
+  soundName: reminder.soundName || "",
+  soundVolume: Number(reminder.soundVolume ?? 0.8),
+  soundRepeatCount: Number(reminder.soundRepeatCount ?? 1),
+  lastTriggered: reminder.lastTriggered || [],
+  missed: reminder.missed ?? false,
+  missedCount: Number(reminder.missedCount || 0)
+});
+
+const getTriggerDateTime = (reminder) => {
+  const eventAt = toReminderDateTime(reminder.date, reminder.time);
+  if (!eventAt) return null;
+  const triggerAt = new Date(eventAt);
+  triggerAt.setMinutes(triggerAt.getMinutes() - Number(reminder.reminderOffsetMinutes || 0));
+  return triggerAt;
+};
+
+const getNextRecurringDate = (date, recurring, customDays = 1) => {
+  const next = new Date(date);
+  if (recurring === "Daily") next.setDate(next.getDate() + 1);
+  if (recurring === "Weekly") next.setDate(next.getDate() + 7);
+  if (recurring === "Monthly") next.setMonth(next.getMonth() + 1);
+  if (recurring === "Custom") next.setDate(next.getDate() + Number(customDays || 1));
+  return next;
+};
+
+const prependNotification = (existing = [], notification = [], cap = 100) => {
+  const merged = [...notification, ...existing];
+  return merged.slice(0, cap);
+};
+
+const queueUserNotification = async (db, userId, notification) => {
+  const docRef = db.collection("users").doc(userId).collection("data").doc("studyos_notifications");
+  const snap = await docRef.get();
+  const existing = Array.isArray(snap.data()?.data) ? snap.data().data : [];
+  const next = prependNotification(existing, [notification], 100);
+  await docRef.set({
+    data: next,
+    updatedAt: new Date().toISOString()
+  });
+};
+
+const sendTransactionalEmail = async ({ to, subject, body, category = "General", performedBy = null }) => {
+  const db = admin.firestore();
+  const transporter = createEmailTransporter();
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
+  if (!fromAddress) {
+    throw new Error("SMTP_FROM / SMTP_USER is not configured.");
+  }
+
+  const info = await transporter.sendMail({
+    from: `"StudyOs" <${fromAddress}>`,
+    to,
+    subject,
+    text: body,
+    html: buildEmailHtml({ subject, body, category })
+  });
+
+  await db.collection("audit_logs").add({
+    type: "email_sent",
+    to,
+    subject,
+    category: category || "General",
+    performedBy,
+    performedAt: admin.firestore.FieldValue.serverTimestamp(),
+    messageId: info.messageId
+  });
+
+  return info;
+};
+
+const buildReminderEmailContent = (reminder = {}) => {
+  const subject = `Study Alert: ${reminder.category || "Reminder"}`;
+  const body = `
+      Hello!
+
+      This is a reminder from StudyOs:
+
+      "${reminder.message}"
+
+      Category: ${reminder.category || "General"}
+      Priority: ${reminder.priority || "Medium"}
+      Time: ${reminder.time}
+
+      Happy studying!
+      - The StudyOs Team
+    `.trim();
+
+  return { subject, body };
+};
 
 const createEmailTransporter = () => {
   const smtpUser = process.env.SMTP_USER;
@@ -339,36 +536,14 @@ exports.sendEmail = onCall({
   }
 
   const { to, subject, body, templateId, category } = request.data;
-  const db = admin.firestore();
 
   try {
-    // 2. Gmail SMTP transporter (requires App Password)
-    const transporter = createEmailTransporter();
-    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER;
-    if (!fromAddress) {
-      throw new Error("SMTP_FROM / SMTP_USER is not configured.");
-    }
-
-    const mailOptions = {
-      from: `"StudyOs" <${fromAddress}>`,
+    const info = await sendTransactionalEmail({
       to,
       subject,
-      text: body,
-      html: buildEmailHtml({ subject, body, category })
-    };
-
-    // 3. Send the email
-    const info = await transporter.sendMail(mailOptions);
-
-    // 4. Audit Log
-    await db.collection("audit_logs").add({
-      type: "email_sent",
-      to,
-      subject,
+      body,
       category: category || "General",
-      performedBy: request.auth.uid,
-      performedAt: admin.firestore.FieldValue.serverTimestamp(),
-      messageId: info.messageId
+      performedBy: request.auth.uid
     });
 
     return { success: true, messageId: info.messageId };
@@ -376,6 +551,194 @@ exports.sendEmail = onCall({
     console.error("[EmailSender] Failed to send email:", error);
     const message = error?.message || "Failed to send email.";
     throw new HttpsError("internal", message);
+  }
+});
+
+exports.getEmailDeliveryStatus = onCall({
+  secrets: ["SMTP_USER", "SMTP_PASS", "SMTP_FROM"]
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in.");
+  }
+
+  return {
+    configured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS && (process.env.SMTP_FROM || process.env.SMTP_USER)),
+    fromConfigured: Boolean(process.env.SMTP_FROM || process.env.SMTP_USER)
+  };
+});
+
+/**
+ * Scheduled reminder dispatcher.
+ * Scans server-synced reminder data and queues notifications/emails when due.
+ */
+exports.dispatchDueReminders = onSchedule("every 1 minutes", async () => {
+  const db = admin.firestore();
+  const usersSnap = await db.collection("users").get();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const todayKey = formatDateKey(now);
+
+  for (const userDoc of usersSnap.docs) {
+    try {
+      const userId = userDoc.id;
+      const userDataCol = userDoc.ref.collection("data");
+      const [remindersSnap, notifSettingsSnap, notificationsSnap] = await Promise.all([
+        userDataCol.doc("studyos_reminders").get(),
+        userDataCol.doc("studyos_notif_settings").get(),
+        userDataCol.doc("studyos_notifications").get()
+      ]);
+
+      const reminders = Array.isArray(remindersSnap.data()?.data) ? remindersSnap.data().data : [];
+      const prefs = normalizeNotificationSettings(notifSettingsSnap.data()?.data || {});
+      if (prefs.deliveryMode !== "server") {
+        continue;
+      }
+
+      const existingNotifications = Array.isArray(notificationsSnap.data()?.data) ? notificationsSnap.data().data : [];
+      const updatedNotifications = [];
+      const updatedReminders = [];
+      let remindersChanged = false;
+      let notificationsChanged = false;
+
+      for (const rawReminder of reminders) {
+        const reminder = normalizeReminder(rawReminder);
+        const triggerAt = getTriggerDateTime(reminder);
+        let updatedReminder = rawReminder;
+
+        const triggerKey = triggerAt ? `${formatDateKey(triggerAt)} ${formatTimeKey(triggerAt)}` : null;
+        const eventAt = toReminderDateTime(reminder.date, reminder.time);
+        const hasTriggered = triggerKey ? reminder.lastTriggered?.includes(triggerKey) : true;
+
+        const reminderEligible = reminder.enabled && !reminder.completed && triggerAt && triggerAt <= now && !hasTriggered;
+        if (reminderEligible) {
+          const lastTriggered = [...(reminder.lastTriggered || []), triggerKey];
+          let nextDate = reminder.date;
+          let enabled = reminder.enabled;
+          let missed = false;
+          let missedCount = reminder.missedCount || 0;
+
+          if (["Daily", "Weekly", "Monthly", "Custom"].includes(reminder.recurring)) {
+            const nextEventDate = getNextRecurringDate(eventAt || now, reminder.recurring, reminder.recurringIntervalDays);
+            nextDate = formatDateKey(nextEventDate);
+            enabled = true;
+          } else {
+            enabled = false;
+          }
+
+          if (!reminder.completed && eventAt && eventAt < now && !reminder.missed) {
+            missed = true;
+            missedCount += 1;
+          }
+
+          updatedReminder = {
+            ...rawReminder,
+            lastTriggered,
+            date: nextDate,
+            enabled,
+            missed,
+            missedCount,
+            lastReminderAt: nowIso,
+            updatedAt: nowIso
+          };
+
+          const reminderSoundUrl = reminder.soundMode === "custom" ? reminder.soundUrl : (prefs.alarm?.soundUrl || "");
+          const reminderSoundVolume = reminder.soundMode === "custom"
+            ? Number(reminder.soundVolume ?? prefs.alarm?.volume ?? 0.8)
+            : Number(prefs.alarm?.volume ?? 0.8);
+          const reminderSoundRepeatCount = reminder.soundMode === "custom"
+            ? Number(reminder.soundRepeatCount ?? prefs.alarm?.repeatCount ?? 1)
+            : Number(prefs.alarm?.repeatCount ?? 1);
+
+          updatedNotifications.unshift({
+            id: randomUUID(),
+            title: `Event Reminder: ${reminder.category || "Reminder"}`,
+            message: reminder.message || "Untitled event",
+            type: "reminder",
+            reminderId: reminder.id,
+            route: "/reminders",
+            timestamp: nowIso,
+            read: false,
+            soundMode: reminder.soundMode || "inherit",
+            soundUrl: reminderSoundUrl,
+            soundVolume: reminderSoundVolume,
+            soundRepeatCount: reminderSoundRepeatCount,
+            browserDeliveredAt: null
+          });
+
+          if (prefs.enabled !== false && prefs.reminders !== false && reminder.sendEmail && userDoc.data()?.email) {
+            const allowsEmail = prefs.channels?.reminder?.email !== false && prefs.emailNotifications?.reminders !== false;
+            if (allowsEmail) {
+              const { subject, body } = buildReminderEmailContent(reminder);
+              try {
+                await sendTransactionalEmail({
+                  to: userDoc.data().email,
+                  subject,
+                  body,
+                  category: "Reminder",
+                  performedBy: "scheduled-reminder-dispatch"
+                });
+              } catch (emailError) {
+                console.error(`[ReminderDispatcher] Email failed for ${userId}/${reminder.id}:`, emailError);
+              }
+            }
+          }
+
+          remindersChanged = true;
+        }
+
+        const upcomingDeadline = reminder.enabled && !reminder.completed && eventAt
+          ? (eventAt.getTime() - now.getTime()) > 0 && (eventAt.getTime() - now.getTime()) <= 24 * 60 * 60 * 1000 && reminder.deadlineNotifiedAt !== todayKey
+          : false;
+
+        if (upcomingDeadline) {
+          updatedNotifications.unshift({
+            id: randomUUID(),
+            title: "Upcoming Deadline",
+            message: `${reminder.title || reminder.message || "Reminder"} is due within 24h`,
+            type: "deadline",
+            reminderId: reminder.id,
+            route: "/reminders",
+            timestamp: nowIso,
+            read: false,
+            browserDeliveredAt: null
+          });
+          updatedReminder = {
+            ...updatedReminder,
+            deadlineNotifiedAt: todayKey,
+            updatedAt: nowIso
+          };
+          remindersChanged = true;
+        }
+
+        if (updatedReminder !== rawReminder) {
+          updatedReminders.push(updatedReminder);
+        } else {
+          updatedReminders.push(rawReminder);
+        }
+      }
+
+      if (updatedNotifications.length > 0) {
+        const nextNotifications = prependNotification(existingNotifications, updatedNotifications, 100);
+        await userDataCol.doc("studyos_notifications").set({
+          data: nextNotifications,
+          updatedAt: nowIso
+        });
+        notificationsChanged = true;
+      }
+
+      if (remindersChanged) {
+        await userDataCol.doc("studyos_reminders").set({
+          data: updatedReminders,
+          updatedAt: nowIso
+        });
+      }
+
+      if (notificationsChanged || remindersChanged) {
+        console.log(`[ReminderDispatcher] Processed ${userId}: reminders=${remindersChanged}, notifications=${notificationsChanged}`);
+      }
+    } catch (error) {
+      console.error(`[ReminderDispatcher] Failed for user ${userDoc.id}:`, error);
+    }
   }
 });
 

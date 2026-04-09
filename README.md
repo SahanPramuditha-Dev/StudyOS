@@ -95,19 +95,26 @@ npm run preview   # Local prod server
 npm run test      # Vitest
 ```
 
-## ☁️ Deployment (Firebase)
+## Deployment
+
+### Cloudflare Pages frontend
 
 1. `npm run build`
-2. `firebase deploy --only hosting`
-3. Deploy Functions: `firebase deploy --only functions`
-4. Update Firestore rules: `firebase deploy --only firestore:rules`
-5. Config Auth providers/domains in Firebase Console.
+2. Deploy the generated `dist/` folder to Cloudflare Pages.
+3. Keep `public/_redirects` in place so React Router routes resolve on refresh.
+
+### Firebase backend
+
+1. `firebase deploy --only functions`
+2. `firebase deploy --only firestore:rules`
+3. Configure Auth providers/domains in Firebase Console.
 
 See [firebase.json](firebase.json), [firestore.rules](firestore.rules).
 
 **Production Notes**:
 - Role-based access via Firestore rules (no hardcoded emails).
 - Email via Functions `sendEmail` (SMTP secrets).
+- Reminder scheduling via Cloud Functions.
 - Profile/account ops via shared services.
 
 ## 🤝 Contributing
@@ -143,4 +150,3 @@ MIT License - see [LICENSE](LICENSE) (add if missing).
 ---
 
 Built with ❤️ for students worldwide.
-

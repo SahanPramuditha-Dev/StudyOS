@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StudyOS Privacy Policy</title>
+    <meta
+      name="description"
+      content="StudyOS Privacy Policy covering account data, integrations, storage, and user rights."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #020617;
+        --panel: rgba(15, 23, 42, 0.86);
+        --border: rgba(148, 163, 184, 0.2);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-2: #22c55e;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 28%),
+          radial-gradient(circle at top right, rgba(34, 197, 94, 0.16), transparent 24%),
+          var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      .wrap {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 56px 20px 72px;
+      }
+      .hero, .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        box-shadow: 0 24px 80px rgba(2, 6, 23, 0.4);
+        backdrop-filter: blur(24px);
+      }
+      .hero {
+        padding: 32px;
+        margin-bottom: 24px;
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(56, 189, 248, 0.12);
+        color: #7dd3fc;
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+      }
+      h1 {
+        margin: 18px 0 10px;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        line-height: 1.05;
+      }
+      p { color: var(--muted); }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .chip {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.5);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .card {
+        padding: 28px;
+        margin-top: 18px;
+      }
+      h2 {
+        margin: 0 0 14px;
+        font-size: 1.25rem;
+      }
+      ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      li { margin: 8px 0; color: var(--text); }
+      a {
+        color: #7dd3fc;
+        text-decoration: none;
+      }
+      a:hover { text-decoration: underline; }
+      .footer {
+        margin-top: 24px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #38bdf8, #2563eb);
+        color: white;
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <span class="eyebrow">StudyOS Privacy</span>
+        <h1>Privacy Policy</h1>
+        <p>
+          This page describes how StudyOS collects, uses, stores, and protects your account, project, and integration data.
+        </p>
+        <div class="chips">
+          <span class="chip">Firebase Auth</span>
+          <span class="chip">GitHub integration</span>
+          <span class="chip">Google Calendar</span>
+          <span class="chip">Local storage</span>
+          <span class="chip">User rights</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>What we collect</h2>
+        <ul>
+          <li>Account details such as your name, email address, and provider metadata.</li>
+          <li>Study content like notes, projects, courses, reminders, tasks, and uploads.</li>
+          <li>Optional integration data when you connect GitHub or Google Calendar.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>How we use data</h2>
+        <ul>
+          <li>To run StudyOS features and sync your workspace across devices.</li>
+          <li>To connect optional services such as GitHub repo sync or calendar import.</li>
+          <li>To improve performance, reliability, and support workflows.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Contact</h2>
+        <p>
+          Questions about privacy? Email <a href="mailto:sahan.dev.tech@gmail.com">sahan.dev.tech@gmail.com</a>.
+          You can also return to the <a href="/">StudyOS homepage</a>.
+        </p>
+      </section>
+
+      <div class="footer">
+        <span>Last updated April 9, 2026</span>
+        <a class="btn" href="/">Back to StudyOS</a>
+      </div>
+    </main>
+  </body>
+</html>

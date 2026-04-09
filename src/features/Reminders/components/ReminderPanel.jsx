@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bell, Clock3 } from 'lucide-react';
 
-const ReminderPanel = ({ notifications, onSnooze, onMarkRead }) => {
+const ReminderPanel = ({ notifications, onSnooze, onMute, onUnmute, onStopAlarm, onMarkRead }) => {
   const reminderNotifications = notifications.filter((n) => n.type === 'reminder').slice(0, 8);
 
   return (
@@ -26,10 +26,34 @@ const ReminderPanel = ({ notifications, onSnooze, onMarkRead }) => {
             </p>
             <div className="flex gap-2 mt-2">
               <button
-                onClick={() => onSnooze(notification)}
+                onClick={() => onSnooze(notification, 5)}
                 className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 dark:bg-blue-500/10"
               >
-                Snooze
+                Snooze 5m
+              </button>
+              <button
+                onClick={() => onSnooze(notification, 10)}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 dark:bg-indigo-500/10"
+              >
+                Snooze 10m
+              </button>
+              <button
+                onClick={() => onStopAlarm(notification)}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 dark:bg-amber-500/10"
+              >
+                Stop
+              </button>
+              <button
+                onClick={() => onMute?.(notification)}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-fuchsia-700 bg-fuchsia-50 dark:bg-fuchsia-500/10"
+              >
+                Mute
+              </button>
+              <button
+                onClick={() => onUnmute?.(notification)}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest text-violet-700 bg-violet-50 dark:bg-violet-500/10"
+              >
+                Unmute
               </button>
               <button
                 onClick={() => onMarkRead(notification.id)}
@@ -51,4 +75,3 @@ const ReminderPanel = ({ notifications, onSnooze, onMarkRead }) => {
 };
 
 export default ReminderPanel;
-
