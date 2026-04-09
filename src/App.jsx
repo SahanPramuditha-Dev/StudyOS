@@ -59,6 +59,13 @@ const App = () => {
     if (firstSegment === 'support') return 'legal';
     return firstSegment;
   })();
+  const isPublicLegalRoute = [
+    '/legal',
+    '/legal/privacy',
+    '/legal/terms',
+    '/legal/support',
+    '/support'
+  ].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
 
   const setActiveTab = (tab) => {
     const nextPath = tab === 'dashboard' ? '/dashboard' : `/${tab}`;
@@ -79,13 +86,13 @@ const App = () => {
 
   // When logged out, keep the URL honest (avoid /dashboard in bar while showing Sign In)
   useEffect(() => {
-    if (loading || user) return;
+    if (loading || user || isPublicLegalRoute) return;
     if (location.pathname === '/login') return;
     navigate('/login', {
       replace: true,
       state: { from: location.pathname }
     });
-  }, [loading, user, location.pathname, navigate]);
+  }, [loading, user, isPublicLegalRoute, location.pathname, navigate]);
 
   // After auth, leave /login so the shell + Routes match the real page
   useEffect(() => {
@@ -98,6 +105,21 @@ const App = () => {
         : '/dashboard';
     navigate(dest, { replace: true });
   }, [loading, user, location.pathname, location.state, navigate]);
+
+  const renderPublicLegalRoutes = () => (
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <Routes>
+          <Route path="/legal" element={<Legal />} />
+          <Route path="/legal/privacy" element={<Privacy />} />
+          <Route path="/legal/terms" element={<Terms />} />
+          <Route path="/legal/support" element={<Support />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="*" element={<Navigate to="/legal" replace />} />
+        </Routes>
+      </div>
+    </div>
+  );
 
   // 1. Manual Pageview Capture for PostHog
   useEffect(() => {
@@ -171,6 +193,9 @@ const App = () => {
   }
 
   if (!user) {
+    if (isPublicLegalRoute) {
+      return renderPublicLegalRoutes();
+    }
     return <Auth />;
   }
 
@@ -279,6 +304,7 @@ const App = () => {
         <Route path="/legal" element={<Legal />} />
         <Route path="/legal/privacy" element={<Privacy />} />
         <Route path="/legal/terms" element={<Terms />} />
+        <Route path="/legal/support" element={<Support />} />
         <Route path="/support" element={<Support />} />
         <Route path="*" element={<Dashboard setActiveTab={setActiveTab} />} /> {/* Catch-all for unknown routes */}
       </Routes>

@@ -157,6 +157,16 @@ body {
   @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
 }
 
+.settings-tabbar {
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.settings-tabbar::-webkit-scrollbar {
+  display: none;
+}
+
 .fade-in {
   animation-name: fade-in;
 }

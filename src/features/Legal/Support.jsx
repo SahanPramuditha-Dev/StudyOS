@@ -23,7 +23,7 @@ const Support = () => {
           <p className="text-slate-600 dark:text-slate-300 mb-4">
             For general inquiries, technical support, or feedback.
           </p>
-          <a href="mailto:support@studyos.com" className="px-6 py-2 bg-primary-500 text-white rounded-full hover:bg-primary-600 transition-colors">
+          <a href="mailto:sahan.dev.tech@gmail.com" className="px-6 py-2 bg-primary-500 text-white rounded-full hover:bg-primary-600 transition-colors">
             Email Us
           </a>
         </div>

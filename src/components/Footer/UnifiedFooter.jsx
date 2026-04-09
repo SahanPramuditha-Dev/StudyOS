@@ -102,7 +102,7 @@ const UnifiedFooter = ({ profile, isAdmin, hasPermission, setActiveTab }) => {
               <a href="https://www.linkedin.com/in/sahanpramuditha" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-primary-600 transition-colors">
                 <Linkedin size={16} />
               </a>
-              <a href="mailto:sahanpramuditha91@gmail.com" className="text-slate-400 hover:text-primary-600 transition-colors">
+              <a href="mailto:sahan.dev.tech@gmail.com" className="text-slate-400 hover:text-primary-600 transition-colors">
                 <Mail size={16} />
               </a>
             </div>

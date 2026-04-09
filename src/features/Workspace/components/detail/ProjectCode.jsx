@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Github, 
   Code, 
@@ -21,31 +21,21 @@ const ProjectCode = ({ project, onUpdate }) => {
   const [snippets, setSnippets] = useState(project.snippets || []);
   const [isAddingSnippet, setIsAddingSnippet] = useState(false);
   const [newSnippet, setNewSnippet] = useState({ title: '', code: '', language: 'javascript' });
-  const [githubData, setGithubData] = useState(null);
-  const [loadingGithub, setLoadingGithub] = useState(false);
-
-  // Mock GitHub Fetch
-  useEffect(() => {
-    if (project.repo) {
-      setLoadingGithub(true);
-      // Simulate API call to GitHub
-      setTimeout(() => {
-        setGithubData({
-          branch: 'main',
-          lastCommit: {
-            message: 'Refactor auth context and update storage hooks',
-            author: 'Sahan Pramuditha',
-            time: '2 hours ago'
-          },
-          stats: {
-            stars: 12,
-            forks: 4,
-            issues: 2
-          }
-        });
-        setLoadingGithub(false);
-      }, 1500);
-    }
+  const githubData = useMemo(() => {
+    if (!project.repo) return null;
+    return {
+      branch: 'main',
+      lastCommit: {
+        message: 'Refactor auth context and update storage hooks',
+        author: 'Sahan Pramuditha',
+        time: '2 hours ago'
+      },
+      stats: {
+        stars: 12,
+        forks: 4,
+        issues: 2
+      }
+    };
   }, [project.repo]);
 
   const handleAddSnippet = (e) => {
@@ -97,12 +87,7 @@ const ProjectCode = ({ project, onUpdate }) => {
               </div>
 
               {project.repo ? (
-                loadingGithub ? (
-                  <div className="py-12 flex flex-col items-center gap-4 opacity-50">
-                    <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                    <p className="text-[10px] font-black uppercase tracking-widest">Fetching Repository Data...</p>
-                  </div>
-                ) : githubData ? (
+                githubData ? (
                   <div className="space-y-8">
                     <div className="space-y-4">
                       <div className="flex items-center gap-3">
@@ -135,7 +120,11 @@ const ProjectCode = ({ project, onUpdate }) => {
                       ))}
                     </div>
                   </div>
-                ) : null
+                ) : (
+                  <div className="py-12 text-center text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    GitHub data unavailable
+                  </div>
+                )
               ) : (
                 <div className="py-12 text-center space-y-4 opacity-50">
                   <p className="text-sm font-medium text-slate-400">No repository connected to this project architectural plan.</p>

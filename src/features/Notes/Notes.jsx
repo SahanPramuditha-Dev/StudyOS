@@ -187,7 +187,7 @@ const Notes = () => {
     }, 1500);
     
     return () => clearTimeout(timeout);
-  }, [activeNote?.content, activeNote?.title, activeNote?.id]);
+  }, [activeNote]);
 
   // 5. Export Functionality
   const exportNote = (format = 'md') => {

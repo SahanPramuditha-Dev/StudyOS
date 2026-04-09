@@ -558,9 +558,33 @@ const Settings = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+      <div className="space-y-4">
+        <div className="lg:hidden -mx-1 px-1">
+          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/70 dark:border-slate-800/70 bg-white/80 dark:bg-slate-950/50 shadow-lg shadow-slate-200/40 dark:shadow-none">
+            <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-white/95 dark:from-slate-950/90 to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-white/95 dark:from-slate-950/90 to-transparent" />
+            <div className="flex gap-2 overflow-x-auto px-3 py-3 custom-scrollbar settings-tabbar snap-x snap-mandatory">
+              {sections.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveSection(item.id)}
+                  className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border snap-start backdrop-blur-sm ${
+                    activeSection === item.id
+                      ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white border-primary-300 shadow-lg shadow-primary-500/25 font-bold ring-1 ring-white/30 scale-[1.01]'
+                      : 'bg-white/75 dark:bg-slate-900/70 text-slate-500 border-slate-200/80 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-900 hover:text-slate-700 dark:hover:text-slate-200 hover:shadow-sm'
+                  }`}
+                >
+                  <item.icon size={18} strokeWidth={activeSection === item.id ? 2.5 : 2} className="opacity-90" />
+                  <span className="text-sm">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[16rem_minmax(0,1fr)] gap-8 items-start">
         {/* Navigation Sidebar */}
-        <div className="lg:col-span-1 space-y-1.5 sticky top-24">
+        <div className="hidden lg:block lg:col-span-1 space-y-1.5 sticky top-24 self-start">
           {sections.map(item => (
             <button
               key={item.id}
@@ -578,7 +602,7 @@ const Settings = () => {
         </div>
 
         {/* Main Content Area */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-1 lg:col-start-2 space-y-6 min-w-0 relative z-10">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeSection}
@@ -1241,10 +1265,14 @@ const Settings = () => {
                     <div className="p-2.5 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
                       <Globe size={24} />
                     </div>
-                    <div>
-                      <h3 className="text-xl font-black text-slate-800 dark:text-white">Integrations</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">Connect external services to StudyOS</p>
-                    </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-white">Integrations</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Connect external services to StudyOS</p>
+                  </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
+                    GitHub sign-in and Google Calendar are separate connections. You can use GitHub for StudyOS login and add Google Calendar later if you want event sync.
                   </div>
 
                   <GoogleCalendarSettings />
@@ -1570,6 +1598,7 @@ const Settings = () => {
             </motion.div>
           </AnimatePresence>
         </div>
+      </div>
       </div>
 
       <ConfirmModal 

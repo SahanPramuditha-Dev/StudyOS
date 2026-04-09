@@ -195,7 +195,7 @@ const Videos = () => {
         setIsPlaying(false);
       };
     }
-  }, [activeVideoId, activeVideo?.videoId]);
+  }, [activeVideoId, activeVideo?.videoId, activeVideo, playbackRate]);
 
   // Sync Playback Rate
   useEffect(() => {
@@ -294,7 +294,7 @@ const Videos = () => {
         }
       }
     };
-  }, [isPlaying, activeVideoId]);
+  }, [isPlaying, activeVideoId, activeVideo, playbackRate, setVideos]);
 
   const extractYouTubeId = (url) => {
     // Standard URL: https://www.youtube.com/watch?v=VIDEO_ID

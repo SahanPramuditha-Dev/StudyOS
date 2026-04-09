@@ -96,7 +96,7 @@ class EmailService {
       - Ensure your device is secure.
 
       (5) Support Information
-      If you have any questions regarding this change, please contact us at support@studyos.com.
+      If you have any questions regarding this change, please contact us at sahan.dev.tech@gmail.com.
       ---
 
       Note: This email is sent in accordance with our Privacy Policy. You can manage your notification preferences in the Settings panel.

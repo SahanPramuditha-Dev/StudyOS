@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { StorageService } from '../services/storage';
 import { FirestoreService } from '../services/firestore';
 import { useAuth } from '../context/AuthContext';
@@ -19,9 +19,14 @@ export const useStorage = (key, initialValue) => {
     return localItem !== null ? localItem : initialValue;
   });
   const [isInitialized, setIsInitialized] = useState(() => !user);
+  const storedValueRef = useRef(storedValue);
+
+  useEffect(() => {
+    storedValueRef.current = storedValue;
+  }, [storedValue]);
 
   // Check if user is active and within storage limits
-  const isActionAllowed = () => {
+  const isActionAllowed = useCallback(() => {
     if (!profile) return true; // Default if profile hasn't loaded
     if (profile.status?.isActive === false || profile.status?.isBlocked === true) {
       toast.error('Account restricted. Action blocked.');
@@ -35,26 +40,28 @@ export const useStorage = (key, initialValue) => {
       return false;
     }
     return true;
-  };
+  }, [profile, storedValue]);
 
   // Sync with Firestore (Push local changes to cloud)
   useEffect(() => {
-    if (user && isInitialized && !isSyncingFromCloud.current) {
+    const userId = user?.id || null;
+    if (userId && isInitialized && !isSyncingFromCloud.current) {
       if (!isActionAllowed()) return;
 
       const handler = setTimeout(() => {
-        FirestoreService.saveUserData(user.id, key, storedValue);
+        FirestoreService.saveUserData(userId, key, storedValueRef.current);
       }, 5000); // 5 second debounce for cloud sync
 
-      StorageService.set(key, storedValue);
+      StorageService.set(key, storedValueRef.current);
       
       return () => clearTimeout(handler);
     }
-  }, [isInitialized, key, storedValue, user, profile]);
+  }, [isInitialized, key, user?.id, profile, isActionAllowed]);
 
   // Effect to handle initial Firestore fetch and real-time subscription
   useEffect(() => {
-    if (!user) {
+    const userId = user?.id || null;
+    if (!userId) {
       isSyncingFromCloud.current = false;
       setIsInitialized(true);
       return;
@@ -64,14 +71,14 @@ export const useStorage = (key, initialValue) => {
 
     const fetchInitialData = async () => {
       try {
-        const cloudData = await FirestoreService.getUserData(user.id, key);
+        const cloudData = await FirestoreService.getUserData(userId, key);
         
         if (cloudData !== null) {
           isSyncingFromCloud.current = true;
           setStoredValue(cloudData);
           StorageService.set(key, cloudData);
         } else {
-          StorageService.set(key, storedValue);
+          StorageService.set(key, storedValueRef.current);
         }
       } catch (error) {
         console.error(`[useStorage] [Cloud Fetch Error] ${key}:`, error);
@@ -84,7 +91,7 @@ export const useStorage = (key, initialValue) => {
     fetchInitialData();
 
     // Subscribe to real-time changes
-    const unsubscribe = FirestoreService.subscribeToData(user.id, key, (data) => {
+    const unsubscribe = FirestoreService.subscribeToData(userId, key, (data) => {
       if (data !== null) {
         const currentLocal = StorageService.get(key);
         if (JSON.stringify(data) !== JSON.stringify(currentLocal)) {

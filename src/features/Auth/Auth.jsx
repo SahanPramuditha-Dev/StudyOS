@@ -18,6 +18,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const Auth = () => {
@@ -337,11 +338,16 @@ const Auth = () => {
             </div>
           </div>
           
-          <div className="mt-auto pt-4 text-center">
-            <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">
+            <div className="mt-auto pt-4 text-center">
+            <div className="mb-3 flex items-center justify-center gap-4 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400 dark:text-slate-600">
+              <Link to="/legal/privacy" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Privacy</Link>
+              <Link to="/legal/terms" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Terms</Link>
+              <Link to="/legal/support" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Support</Link>
+            </div>
+              <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">
               &copy; 2026 StudyOS System v2.0
-            </p>
-          </div>
+              </p>
+            </div>
         </div>
       </div>
     </div>

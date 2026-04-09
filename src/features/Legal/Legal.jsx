@@ -114,7 +114,7 @@ const Legal = () => {
           </div>
         </div>
         <a
-          href="mailto:support@studyos.com"
+          href="mailto:sahan.dev.tech@gmail.com"
           className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-slate-900 font-bold hover:bg-slate-100 transition-colors"
         >
           Email support

@@ -36,10 +36,6 @@ const Dashboard = ({ setActiveTab }) => {
     const submittedAssignments = assignments.filter(a => a.status === 'Submitted').length;
     const pendingAssignments = assignments.filter(a => a.status !== 'Submitted').length;
     const activeProjects = projects.filter(p => p.status === 'Active').length;
-    
-    // Calculate total watch time from videos
-    const totalSeconds = videos.reduce((acc, v) => acc + (v.lastPosition || 0), 0);
-    const hours = (totalSeconds / 3600).toFixed(1);
 
     return [
       { label: 'Active Courses', value: activeCourses, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -48,7 +44,7 @@ const Dashboard = ({ setActiveTab }) => {
       { label: 'Submitted', value: submittedAssignments, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
       { label: 'Active Projects', value: activeProjects, icon: KanbanIcon, color: 'text-slate-700', bg: 'bg-slate-100' },
     ];
-  }, [courses, notes, videos, streak, assignments, projects]);
+  }, [courses, notes, assignments, projects]);
 
   const productivityScore = useMemo(() => {
     if (courses.length === 0) return 0;

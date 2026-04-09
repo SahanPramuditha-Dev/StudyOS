@@ -49,7 +49,6 @@ const Resources = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingFolder, setEditingFolder] = useState(null);
   
-  const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadQueue, setUploadQueue] = useState([]);
@@ -72,21 +71,14 @@ const Resources = () => {
 
   const fileInputRef = useRef(null);
   const isPapersView = useMemo(() => new URLSearchParams(location.search).get('view') === 'papers', [location.search]);
-  const [viewMode, setViewMode] = useState(isPapersView ? 'papers' : 'all');
-
-  useEffect(() => {
-    setViewMode(isPapersView ? 'papers' : 'all');
-  }, [isPapersView]);
-
-  useEffect(() => {
+  const viewMode = isPapersView ? 'papers' : 'all';
+  const setViewMode = useCallback((nextMode) => {
     const params = new URLSearchParams(location.search);
-    if (viewMode === 'papers') params.set('view', 'papers');
+    if (nextMode === 'papers') params.set('view', 'papers');
     else params.delete('view');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
-    if (nextSearch !== location.search) {
-      navigate({ pathname: '/resources', search: nextSearch }, { replace: true });
-    }
-  }, [viewMode, navigate, location.search]);
+    navigate({ pathname: '/resources', search: nextSearch }, { replace: true });
+  }, [location.search, navigate]);
 
   useEffect(() => {
     if (!Array.isArray(papers) || papers.length === 0) return;
@@ -306,10 +298,7 @@ const Resources = () => {
     items.forEach((item) => startUpload(item.id, item.file));
   }, [user, startUpload]);
 
-  useEffect(() => {
-    const active = uploadQueue.some((item) => item.status === 'queued' || item.status === 'uploading');
-    setIsUploading(active);
-  }, [uploadQueue]);
+  const isUploading = uploadQueue.some((item) => item.status === 'queued' || item.status === 'uploading');
 
   const deleteResource = (id) => {
     setConfirmConfig({
