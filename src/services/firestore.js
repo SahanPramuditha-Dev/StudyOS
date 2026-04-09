@@ -14,7 +14,8 @@ import {
   orderBy,
   addDoc
 } from 'firebase/firestore';
-import { db, auth } from './firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions } from './firebase';
 import { computeUsageMetrics } from './usageMetrics';
 
 /**
@@ -23,58 +24,69 @@ import { computeUsageMetrics } from './usageMetrics';
  */
 class FirestoreService {
   /**
+   * Default user profile shape (Firestore + client fallback when cloud init fails).
+   */
+  static buildDefaultUserProfile(userId, profileData) {
+    const now = new Date().toISOString();
+    return {
+      uid: userId,
+      email: profileData.email,
+      name: profileData.name,
+      role: 'restricted',
+      status: {
+        isActive: true,
+        isBlocked: false,
+        isTrial: true
+      },
+      limits: {
+        storageMB: 5,
+        maxFiles: 10,
+        maxCourses: 2,
+        maxNotes: 20
+      },
+      usage: {
+        storageUsedMB: 0,
+        fileCount: 0,
+        courseCount: 0,
+        noteCount: 0
+      },
+      permissions: {
+        courses: false,
+        videos: false,
+        notes: true,
+        resources: true,
+        projects: false,
+        workspace: false,
+        reminders: true,
+        analytics: false,
+        adminPanel: false,
+        manageUsers: false,
+        changePermissions: false
+      },
+      features: {
+        advancedAnalytics: false,
+        aiNotes: false,
+        exportPDF: false
+      },
+      createdAt: now,
+      lastLogin: now
+    };
+  }
+
+  /**
    * Creates or updates a user profile document
    */
-  static async createUserProfile(userId, profileData) {
+  static async createUserProfile(userId, profileData, attempt = 0) {
     if (!userId) return;
     try {
+      if (auth.currentUser?.uid === userId) {
+        await auth.currentUser.getIdToken(true);
+      }
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
 
       if (!userSnap.exists()) {
-        const defaultProfile = {
-          uid: userId,
-          email: profileData.email,
-          name: profileData.name,
-          role: 'restricted',
-          status: {
-            isActive: true,
-            isBlocked: false,
-            isTrial: true
-          },
-          limits: {
-            storageMB: 5,
-            maxFiles: 10,
-            maxCourses: 2,
-            maxNotes: 20
-          },
-          usage: {
-            storageUsedMB: 0,
-            fileCount: 0,
-            courseCount: 0,
-            noteCount: 0
-          },
-          permissions: {
-            courses: false,
-            videos: false,
-            notes: true,
-            resources: true,
-            projects: false,
-            workspace: false,
-            reminders: true,
-            analytics: false,
-            adminPanel: false,
-            manageUsers: false,
-            changePermissions: false
-          },
-          features: {
-            advancedAnalytics: false,
-            aiNotes: false,
-            exportPDF: false
-          },
-          createdAt: new Date().toISOString(),
-          lastLogin: new Date().toISOString()
-        };
+        const defaultProfile = FirestoreService.buildDefaultUserProfile(userId, profileData);
         await setDoc(userRef, defaultProfile);
         return defaultProfile;
       } else {
@@ -119,6 +131,20 @@ class FirestoreService {
         return existingData;
       }
     } catch (error) {
+      const permissionDenied = error?.code === 'permission-denied';
+      if (
+        permissionDenied &&
+        attempt === 0 &&
+        auth.currentUser?.uid === userId
+      ) {
+        try {
+          const ensure = httpsCallable(functions, 'ensureMyUserProfileDoc');
+          await ensure({});
+          return FirestoreService.createUserProfile(userId, profileData, 1);
+        } catch (ensureErr) {
+          console.warn('[FirestoreService] ensureMyUserProfileDoc failed:', ensureErr);
+        }
+      }
       console.error('[FirestoreService] Error creating/fetching user profile:', error);
       throw error;
     }

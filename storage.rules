@@ -1,0 +1,103 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function ownUserDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function ownProfileExists() {
+      return firestore.exists(ownUserDoc());
+    }
+
+    function getOwnProfile() {
+      return ownUserDoc().data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ownProfileExists() &&
+        getOwnProfile().get('role', 'restricted') in ['admin', 'superadmin'];
+    }
+
+    function isActive() {
+      let profile = getOwnProfile();
+      let status = profile.get('status', {
+        'isActive': false,
+        'isBlocked': true
+      });
+      return isAuthenticated() &&
+        ownProfileExists() &&
+        status.get('isActive', false) == true &&
+        status.get('isBlocked', true) == false;
+    }
+
+    function isVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
+    }
+
+    function withinLimits() {
+      let profile = getOwnProfile();
+      let role = profile.get('role', 'restricted');
+      let limits = profile.get('limits', {});
+      let usage = profile.get('usage', {});
+
+      return role in ['admin', 'superadmin'] || (
+        usage.get('fileCount', 0) <= limits.get('maxFiles', 100) &&
+        usage.get('storageUsedMB', 0) <= limits.get('storageMB', 10)
+      );
+    }
+
+    // User-owned files: /users/{userId}/{allPaths=**}
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) && isActive() && isVerified() && withinLimits();
+      allow read: if isAdmin();
+    }
+
+    // Shared/public files (if any)
+    match /public/{allPaths=**} {
+      allow read: if true; // Public read access
+      allow write: if isAdmin(); // Only admins can write
+    }
+
+    // Temporary uploads (if needed)
+    match /temp/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) && isActive();
+      allow read: if isAdmin();
+    }
+
+    // Course materials (admin-controlled)
+    match /courses/{courseId}/{allPaths=**} {
+      allow read: if isAuthenticated() && isActive() && isVerified();
+      allow write: if isAdmin();
+    }
+
+    // Project files
+    match /projects/{projectId}/{allPaths=**} {
+      // Check if user has access to this project
+      function hasProjectAccess() {
+        let projectDoc = firestore.get(/databases/(default)/documents/studyos_projects/$(projectId));
+        return projectDoc.exists &&
+          (projectDoc.data.get('ownerId', '') == request.auth.uid ||
+           projectDoc.data.get('collaborators', []).hasAny([request.auth.uid]));
+      }
+
+      allow read, write: if isAuthenticated() && isActive() && isVerified() && hasProjectAccess() && withinLimits();
+      allow read: if isAdmin();
+    }
+
+    // Audit logs (read-only for admins)
+    match /audit/{allPaths=**} {
+      allow read: if isAdmin();
+      allow write: if false; // Only via Cloud Functions
+    }
+  }
+}

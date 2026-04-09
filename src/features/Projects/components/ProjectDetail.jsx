@@ -24,16 +24,120 @@ import toast from 'react-hot-toast';
 import { useStorage } from '../../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../../services/storage';
 
-// Tab Components
-import FileManager from './tabs/FileManager';
-import GitHubIntegration from './tabs/GitHubIntegration';
-import DocumentationEditor from './tabs/DocumentationEditor';
-import BugTracker from './tabs/BugTracker';
-import SubmissionTracker from './tabs/SubmissionTracker';
-import CodeSnippets from './tabs/CodeSnippets';
-import NotesIdeapad from './tabs/NotesIdeapad';
-import ActivityLog from './tabs/ActivityLog';
-import TaskManager from './tabs/TaskManager';
+const OverviewTab = ({ project, getStatusColor }) => (
+  <div className="space-y-8">
+    {/* Header Stats */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-500/10 dark:to-emerald-500/10 p-6 rounded-2xl border border-green-100 dark:border-green-500/20"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-sm text-slate-600 dark:text-slate-300">Progress</h3>
+          <CheckCircle2 className="text-green-500" size={20} />
+        </div>
+        <p className="text-3xl font-black text-green-700 dark:text-green-400">
+          {project.board?.done?.length || 0}/{(project.board?.todo?.length || 0) + (project.board?.doing?.length || 0) + (project.board?.done?.length || 0)}
+        </p>
+        <p className="text-xs text-slate-500 mt-2">Tasks completed</p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-500/10 dark:to-cyan-500/10 p-6 rounded-2xl border border-blue-100 dark:border-blue-500/20"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-sm text-slate-600 dark:text-slate-300">Files</h3>
+          <FileText className="text-blue-500" size={20} />
+        </div>
+        <p className="text-3xl font-black text-blue-700 dark:text-blue-400">
+          {project.files?.length || 0}
+        </p>
+        <p className="text-xs text-slate-500 mt-2">Study materials uploaded</p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-500/10 dark:to-pink-500/10 p-6 rounded-2xl border border-purple-100 dark:border-purple-500/20"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-sm text-slate-600 dark:text-slate-300">Submissions</h3>
+          <FileUp className="text-purple-500" size={20} />
+        </div>
+        <p className="text-3xl font-black text-purple-700 dark:text-purple-400">
+          {project.submissions?.length || 0}
+        </p>
+        <p className="text-xs text-slate-500 mt-2">Versions submitted</p>
+      </motion.div>
+    </div>
+
+    {/* Project Details */}
+    <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="space-y-6">
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Status</p>
+            <span className={`inline-block px-4 py-2 rounded-xl text-sm font-black ${getStatusColor(project.status)}`}>
+              {project.status}
+            </span>
+          </div>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Subject / Module</p>
+            <p className="font-bold text-slate-900 dark:text-white">{project.subject || 'Not specified'}</p>
+          </div>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Technology Stack</p>
+            <p className="font-bold text-slate-900 dark:text-white">{project.stack || 'Not specified'}</p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Priority</p>
+            <p className={`font-black text-lg ${
+              project.priority === 'High' ? 'text-red-500' :
+              project.priority === 'Medium' ? 'text-amber-500' :
+              'text-blue-500'
+            }`}>
+              {project.priority || 'Medium'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Deadline</p>
+            {project.deadline ? (
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-slate-400" />
+                <p className="font-bold text-slate-900 dark:text-white">
+                  {new Date(project.deadline).toLocaleDateString()}
+                </p>
+              </div>
+            ) : (
+              <p className="text-slate-400">No deadline set</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Created</p>
+            <p className="font-bold text-slate-900 dark:text-white">
+              {new Date(project.createdAt).toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+        <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Description</p>
+        <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+          {project.description || 'No description provided.'}
+        </p>
+      </div>
+    </div>
+  </div>
+);
 
 const ProjectDetail = ({ project, onBack, onUpdate }) => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -74,124 +178,7 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
     onUpdate({ ...project, activity: [activity, ...(project.activity || [])] });
   };
 
-  // Overview Tab Content
-  const OverviewTab = () => (
-    <div className="space-y-8">
-      {/* Header Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-500/10 dark:to-emerald-500/10 p-6 rounded-2xl border border-green-100 dark:border-green-500/20"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-sm text-slate-600 dark:text-slate-300">Progress</h3>
-            <CheckCircle2 className="text-green-500" size={20} />
-          </div>
-          <p className="text-3xl font-black text-green-700 dark:text-green-400">
-            {project.board?.done?.length || 0}/{(project.board?.todo?.length || 0) + (project.board?.doing?.length || 0) + (project.board?.done?.length || 0)}
-          </p>
-          <p className="text-xs text-slate-500 mt-2">Tasks completed</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-500/10 dark:to-cyan-500/10 p-6 rounded-2xl border border-blue-100 dark:border-blue-500/20"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-sm text-slate-600 dark:text-slate-300">Files</h3>
-            <FileText className="text-blue-500" size={20} />
-          </div>
-          <p className="text-3xl font-black text-blue-700 dark:text-blue-400">
-            {project.files?.length || 0}
-          </p>
-          <p className="text-xs text-slate-500 mt-2">Study materials uploaded</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-500/10 dark:to-pink-500/10 p-6 rounded-2xl border border-purple-100 dark:border-purple-500/20"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-sm text-slate-600 dark:text-slate-300">Submissions</h3>
-            <FileUp className="text-purple-500" size={20} />
-          </div>
-          <p className="text-3xl font-black text-purple-700 dark:text-purple-400">
-            {project.submissions?.length || 0}
-          </p>
-          <p className="text-xs text-slate-500 mt-2">Versions submitted</p>
-        </motion.div>
-      </div>
-
-      {/* Project Details */}
-      <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Left Column */}
-          <div className="space-y-6">
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Status</p>
-              <span className={`inline-block px-4 py-2 rounded-xl text-sm font-black ${getStatusColor(project.status)}`}>
-                {project.status}
-              </span>
-            </div>
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Subject / Module</p>
-              <p className="font-bold text-slate-900 dark:text-white">{project.subject || 'Not specified'}</p>
-            </div>
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Technology Stack</p>
-              <p className="font-bold text-slate-900 dark:text-white">{project.stack || 'Not specified'}</p>
-            </div>
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Priority</p>
-              <p className={`font-black text-lg ${
-                project.priority === 'High' ? 'text-red-500' :
-                project.priority === 'Medium' ? 'text-amber-500' :
-                'text-blue-500'
-              }`}>
-                {project.priority || 'Medium'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Deadline</p>
-              {project.deadline ? (
-                <div className="flex items-center gap-2">
-                  <Clock size={16} className="text-slate-400" />
-                  <p className="font-bold text-slate-900 dark:text-white">
-                    {new Date(project.deadline).toLocaleDateString()}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-slate-400">No deadline set</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Created</p>
-              <p className="font-bold text-slate-900 dark:text-white">
-                {new Date(project.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Description */}
-        <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Description</p>
-          <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-            {project.description || 'No description provided.'}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  // Overview Tab Content is handled externally by the OverviewTab helper.
 
   return (
     <div className="max-w-7xl mx-auto pb-12 space-y-8">
@@ -297,7 +284,7 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {activeTab === 'overview' && <OverviewTab />}
+          {activeTab === 'overview' && <OverviewTab project={project} getStatusColor={getStatusColor} />}
           {activeTab === 'files' && <FileManager project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
           {activeTab === 'github' && <GitHubIntegration project={project} onUpdate={onUpdate} />}
           {activeTab === 'docs' && <DocumentationEditor project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}

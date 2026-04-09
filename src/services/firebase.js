@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, getRedirectResult } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
@@ -35,6 +35,28 @@ if (typeof window !== 'undefined' && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
 
 // Initialize Services
 export const auth = getAuth(app);
+
+/** Single shared promise so React Strict Mode / remounts do not call getRedirectResult twice. */
+let firebaseRedirectResultPromise;
+export function consumeFirebaseRedirectResult() {
+  if (typeof window === "undefined") {
+    return Promise.resolve(null);
+  }
+  if (!firebaseRedirectResultPromise) {
+    firebaseRedirectResultPromise = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      try {
+        if (typeof auth.authStateReady === "function") {
+          await auth.authStateReady();
+        }
+      } catch {
+        void 0;
+      }
+      return getRedirectResult(auth);
+    })();
+  }
+  return firebaseRedirectResultPromise;
+}
 
 // Initialize Firestore with persistent cache and experimental long-polling
 // This fixes the net::ERR_ABORTED errors by forcing a more stable connection method

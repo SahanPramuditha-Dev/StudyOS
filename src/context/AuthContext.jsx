@@ -7,20 +7,114 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
   sendPasswordResetEmail,
   deleteUser,
   reauthenticateWithPopup,
   sendEmailVerification
 } from 'firebase/auth';
 import { ref, uploadBytesResumable, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
-import { auth, storage } from '../services/firebase';
+import { auth, storage, consumeFirebaseRedirectResult } from '../services/firebase';
 import { FirestoreService } from '../services/firestore';
 import { STORAGE_KEYS, StorageService } from '../services/storage';
 import toast from 'react-hot-toast';
 import posthog from 'posthog-js';
 import * as Sentry from "@sentry/react";
 
+const AUTH_ERROR_MESSAGES = {
+  'auth/email-already-in-use': 'An account already exists with this email. Try signing in instead.',
+  'auth/invalid-email': 'That email address does not look valid.',
+  'auth/weak-password': 'Password is too weak. Use at least 6 characters.',
+  'auth/operation-not-allowed': 'Email/password sign-up is not enabled. Contact support.',
+  'auth/network-request-failed': 'Network error. Check your connection and try again.',
+  'auth/too-many-requests': 'Too many attempts. Please wait a few minutes and try again.',
+  'auth/user-disabled': 'This account has been disabled.',
+  'auth/user-not-found': 'No account found with this email.',
+  'auth/wrong-password': 'Incorrect password.',
+  'auth/invalid-credential': 'Email or password is incorrect.',
+  'auth/account-exists-with-different-credential':
+    'An account already exists with this email using a different sign-in method.',
+  'auth/popup-closed-by-user': 'Sign-in was cancelled.',
+  'auth/cancelled-popup-request': 'Only one sign-in window at a time. Try again.',
+  'auth/requires-recent-login': 'For security, sign in again and retry.'
+};
+
+export function authErrorMessage(error) {
+  const code = error?.code;
+  if (code && AUTH_ERROR_MESSAGES[code]) {
+    return AUTH_ERROR_MESSAGES[code];
+  }
+  const raw = error?.message;
+  if (typeof raw === 'string' && raw.length > 0 && !/^Firebase:\s*Error/i.test(raw)) {
+    return raw;
+  }
+  if (typeof raw === 'string' && raw.length > 0) {
+    const m = raw.match(/\((auth\/[^)]+)\)/);
+    if (m && AUTH_ERROR_MESSAGES[m[1]]) {
+      return AUTH_ERROR_MESSAGES[m[1]];
+    }
+  }
+  return 'Something went wrong. Please try again.';
+}
+
+function sessionInitErrorMessage(error) {
+  const code = error?.code;
+  if (code === 'permission-denied') {
+    return 'We could not set up your profile (access denied). If this continues, contact support.';
+  }
+  if (code === 'unavailable') {
+    return 'Cloud service is temporarily unavailable. Try again in a moment.';
+  }
+  const msg = error?.message;
+  if (typeof msg === 'string' && msg.length > 0) {
+    return msg;
+  }
+  return 'We could not load your account. Please try again.';
+}
+
+export const GOOGLE_REDIRECT_PENDING_KEY = 'studyos_google_redirect_pending';
+const GOOGLE_OAUTH_LOADING_TOAST_ID = 'studyos-google-oauth';
+
 const AuthContext = createContext(null);
+
+const buildFallbackAvatar = (displayName, email) => {
+  const label = displayName || email?.split('@')[0] || 'StudyOS User';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(label)}&background=0f172a&color=ffffff`;
+};
+
+const getGoogleProviderPhoto = (firebaseUser) => {
+  const googleProvider = firebaseUser?.providerData?.find((provider) => provider?.providerId === 'google.com');
+  return googleProvider?.photoURL || null;
+};
+
+const resolveAvatarFromAuth = (firebaseUser) => {
+  const googlePhoto = getGoogleProviderPhoto(firebaseUser);
+  if (googlePhoto) return googlePhoto;
+  if (firebaseUser?.photoURL) return firebaseUser.photoURL;
+  if (firebaseUser?.reloadUserInfo?.photoUrl) return firebaseUser.reloadUserInfo.photoUrl;
+  return null;
+};
+
+const resolveGooglePopupPhoto = (result) => {
+  const rawUserInfo = result?._tokenResponse?.rawUserInfo;
+  if (!rawUserInfo) return null;
+  try {
+    const parsed = JSON.parse(rawUserInfo);
+    return parsed?.picture || null;
+  } catch {
+    return null;
+  }
+};
+
+async function applyGoogleProfileAfterSignIn(result) {
+  if (!result?.user) return;
+  await result.user.reload();
+  const refreshedUser = auth.currentUser || result.user;
+  const profilePhoto = resolveAvatarFromAuth(refreshedUser) || resolveGooglePopupPhoto(result);
+  if (profilePhoto) {
+    await updateProfile(refreshedUser, { photoURL: profilePhoto });
+  }
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -48,34 +142,6 @@ export const AuthProvider = ({ children }) => {
       Sentry.setUser(null);
     }
   }, [user, profile?.role]);
-  const buildFallbackAvatar = (displayName, email) => {
-    const label = displayName || email?.split('@')[0] || 'StudyOS User';
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(label)}&background=0f172a&color=ffffff`;
-  };
-
-  const getGoogleProviderPhoto = (firebaseUser) => {
-    const googleProvider = firebaseUser?.providerData?.find((provider) => provider?.providerId === 'google.com');
-    return googleProvider?.photoURL || null;
-  };
-
-  const resolveAvatarFromAuth = (firebaseUser) => {
-    const googlePhoto = getGoogleProviderPhoto(firebaseUser);
-    if (googlePhoto) return googlePhoto;
-    if (firebaseUser?.photoURL) return firebaseUser.photoURL;
-    if (firebaseUser?.reloadUserInfo?.photoUrl) return firebaseUser.reloadUserInfo.photoUrl;
-    return null;
-  };
-
-  const resolveGooglePopupPhoto = (result) => {
-    const rawUserInfo = result?._tokenResponse?.rawUserInfo;
-    if (!rawUserInfo) return null;
-    try {
-      const parsed = JSON.parse(rawUserInfo);
-      return parsed?.picture || null;
-    } catch {
-      return null;
-    }
-  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -86,13 +152,32 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      let hydratedUser = currentUser;
       try {
         await currentUser.reload();
-        const hydratedUser = auth.currentUser || currentUser;
-        const userProfile = await FirestoreService.createUserProfile(hydratedUser.uid, {
-          email: hydratedUser.email,
-          name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
-        });
+        hydratedUser = auth.currentUser || currentUser;
+
+        // Check if user is signing in with Google
+        const isGoogleUser = hydratedUser.providerData?.some(
+          (provider) => provider.providerId === 'google.com'
+        );
+
+        let userProfile;
+        if (isGoogleUser) {
+          // For Google users, create a minimal profile without Firestore call
+          userProfile = FirestoreService.buildDefaultUserProfile(hydratedUser.uid, {
+            email: hydratedUser.email,
+            name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
+          });
+          console.log('[AuthContext] Using minimal profile for Google user');
+        } else {
+          // For email/password users, require Firestore profile
+          userProfile = await FirestoreService.createUserProfile(hydratedUser.uid, {
+            email: hydratedUser.email,
+            name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
+          });
+        }
+
         const resolvedAvatar = userProfile?.avatar || resolveAvatarFromAuth(hydratedUser) || buildFallbackAvatar(hydratedUser.displayName, hydratedUser.email);
 
         setUser({
@@ -105,9 +190,25 @@ export const AuthProvider = ({ children }) => {
         setProfile(userProfile);
       } catch (error) {
         console.error('[AuthContext] Failed to initialize session:', error);
-        toast.error('We could not load your account. Please try again.');
-        setUser(null);
-        setProfile(null);
+        toast.dismiss(GOOGLE_OAUTH_LOADING_TOAST_ID);
+        const displayName =
+          hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User';
+        const fallbackProfile = FirestoreService.buildDefaultUserProfile(hydratedUser.uid, {
+          email: hydratedUser.email,
+          name: displayName
+        });
+        setUser({
+          id: hydratedUser.uid,
+          name: displayName,
+          email: hydratedUser.email,
+          avatar: resolveAvatarFromAuth(hydratedUser) || buildFallbackAvatar(displayName, hydratedUser.email),
+          emailVerified: hydratedUser.emailVerified === true
+        });
+        setProfile(fallbackProfile);
+        toast.error(
+          `${sessionInitErrorMessage(error)} You stay signed in; try refreshing in a moment or contact support if cloud sync keeps failing.`,
+          { duration: 8000 }
+        );
       } finally {
         setLoading(false);
       }
@@ -135,10 +236,7 @@ export const AuthProvider = ({ children }) => {
       toast.success(`Welcome back!`);
       return result.user;
     } catch (error) {
-      const message = error.code === 'auth/user-not-found' ? 'User not found' :
-                     error.code === 'auth/wrong-password' ? 'Incorrect password' :
-                     error.message;
-      toast.error(message);
+      toast.error(authErrorMessage(error));
       throw error;
     }
   };
@@ -150,10 +248,10 @@ export const AuthProvider = ({ children }) => {
         displayName: name
       });
       // createUserProfile is called in onAuthStateChanged
-      toast.success(`Account created! Welcome, ${name}`);
+      toast.success(`Account created successfully. You're signed in as ${name}.`);
       return result.user;
     } catch (error) {
-      toast.error(error.message);
+      toast.error(authErrorMessage(error));
       throw error;
     }
   };
@@ -161,24 +259,24 @@ export const AuthProvider = ({ children }) => {
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     try {
+      console.log('[AuthContext] Starting Google sign-in with popup');
       const result = await signInWithPopup(auth, provider);
-      await result.user.reload();
-      const refreshedUser = auth.currentUser || result.user;
-      const popupProfilePhoto = resolveAvatarFromAuth(refreshedUser) || resolveGooglePopupPhoto(result);
-      if (popupProfilePhoto) {
-        await updateProfile(refreshedUser, { photoURL: popupProfilePhoto });
-        await FirestoreService.updateOwnProfile(refreshedUser.uid, { avatar: popupProfilePhoto });
-      }
-      toast.success(`Welcome, ${result.user.displayName}!`);
-      return result.user;
+      console.log('[AuthContext] SUCCESS: Google sign-in completed', result.user.email);
+      await applyGoogleProfileAfterSignIn(result);
+      console.log('[AuthContext] Google profile applied successfully');
+      toast.success('Signed in with Google successfully.');
     } catch (error) {
-      toast.error(error.message);
+      console.error('[AuthContext] ERROR:', error.code, error.message);
+      toast.error(authErrorMessage(error));
       throw error;
     }
   };
 
   const logout = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+      }
       await signOut(auth);
       setProfile(null);
       toast.success('Logged out successfully');
@@ -202,7 +300,7 @@ export const AuthProvider = ({ children }) => {
       await sendPasswordResetEmail(auth, email);
       toast.success('Password reset email sent!');
     } catch (error) {
-      toast.error('Error sending reset email');
+      toast.error(authErrorMessage(error));
       throw error;
     }
   };

@@ -1,11 +1,93 @@
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
+const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "YOUR_STRIPE_SECRET_KEY");
 
 admin.initializeApp();
+
+function buildUserProfilePayloadFromAuthRecord(user) {
+  const now = new Date().toISOString();
+  const email = user.email || "";
+  const name =
+    user.displayName || (email ? email.split("@")[0] : null) || "StudyOS User";
+
+  return {
+    uid: user.uid,
+    email: email || null,
+    name,
+    role: "restricted",
+    status: { isActive: true, isBlocked: false, isTrial: true },
+    limits: { storageMB: 5, maxFiles: 10, maxCourses: 2, maxNotes: 20 },
+    usage: {
+      storageUsedMB: 0,
+      fileCount: 0,
+      courseCount: 0,
+      noteCount: 0,
+    },
+    permissions: {
+      courses: false,
+      videos: false,
+      notes: true,
+      resources: true,
+      projects: false,
+      workspace: false,
+      reminders: true,
+      analytics: false,
+      adminPanel: false,
+      manageUsers: false,
+      changePermissions: false,
+    },
+    features: { advancedAnalytics: false, aiNotes: false, exportPDF: false },
+    createdAt: now,
+    lastLogin: now,
+  };
+}
+
+/**
+ * When a Firebase Auth user is created (Google, email, etc.), create users/{uid} in Firestore
+ * using the Admin SDK (ignores security rules). Fixes missing profiles when client writes fail
+ * (App Check, network, rule edge cases).
+ */
+exports.syncAuthUserToFirestore = functionsV1.auth.user().onCreate(async (user) => {
+  const uid = user.uid;
+  if (!uid) return;
+  const db = admin.firestore();
+  const ref = db.collection("users").doc(uid);
+  const existing = await ref.get();
+  if (existing.exists) {
+    return;
+  }
+  await ref.set(buildUserProfilePayloadFromAuthRecord(user));
+});
+
+/**
+ * Callable: create users/{uid} if missing (e.g. Auth account existed before syncAuthUserToFirestore
+ * was deployed, or client create failed). Caller must be the same uid.
+ */
+exports.ensureMyUserProfileDoc = onCall(async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+  const uid = request.auth.uid;
+  const db = admin.firestore();
+  const ref = db.collection("users").doc(uid);
+  const snap = await ref.get();
+  if (snap.exists) {
+    return { created: false };
+  }
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUser(uid);
+  } catch (e) {
+    console.error("[ensureMyUserProfileDoc] getUser failed:", e);
+    throw new HttpsError("internal", "Could not load auth user.");
+  }
+  await ref.set(buildUserProfilePayloadFromAuthRecord(userRecord));
+  return { created: true };
+});
 
 const createEmailTransporter = () => {
   const smtpUser = process.env.SMTP_USER;

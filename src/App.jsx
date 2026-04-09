@@ -70,6 +70,28 @@ const App = () => {
     }
   }, []);
 
+  // When logged out, keep the URL honest (avoid /dashboard in bar while showing Sign In)
+  useEffect(() => {
+    if (loading || user) return;
+    if (location.pathname === '/login') return;
+    navigate('/login', {
+      replace: true,
+      state: { from: location.pathname }
+    });
+  }, [loading, user, location.pathname, navigate]);
+
+  // After auth, leave /login so the shell + Routes match the real page
+  useEffect(() => {
+    if (loading || !user) return;
+    if (location.pathname !== '/login') return;
+    const from = location.state?.from;
+    const dest =
+      typeof from === 'string' && from.startsWith('/') && from !== '/login'
+        ? from
+        : '/dashboard';
+    navigate(dest, { replace: true });
+  }, [loading, user, location.pathname, location.state, navigate]);
+
   // Keep route and activeTab in sync (fixes cases where tab changes but route doesn't)
   useEffect(() => {
     const expectedPath = activeTab === 'dashboard' ? '/dashboard' : `/${activeTab}`;
@@ -94,11 +116,13 @@ const App = () => {
   useEffect(() => {
     const path = location.pathname.replace(/^\//, '') || 'dashboard';
     const tab = path.split('/')[0];
+    // Avoid treating /login as a real module tab while authenticated (post-login redirect in flight)
+    if (user && tab === 'login') return;
     if (tab && tab !== activeTab) {
       setActiveTab(tab);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, activeTab]);
+  }, [location.pathname, activeTab, user]);
 
   useEffect(() => {
     if (!user) return;

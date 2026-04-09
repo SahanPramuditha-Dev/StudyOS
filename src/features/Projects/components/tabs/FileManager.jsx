@@ -17,43 +17,90 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../../context/AuthContext';
+import { uploadFile, deleteFile, generateFilePath } from '../../../services/firebaseStorage';
 
 const FileManager = ({ project, onUpdate, onActivityAdd }) => {
+  const { user } = useAuth();
   const [activeFolder, setActiveFolder] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [filterTag, setFilterTag] = useState('All');
+  const [isUploading, setIsUploading] = useState(false);
 
   const folders = ['Notes', 'Assignments', 'Resources', 'Submissions'];
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
+    if (!user) {
+      toast.error('Please log in to upload files');
+      return;
+    }
+
     const files = Array.from(e.target.files);
-    files.forEach(file => {
-      const newFile = {
-        id: nanoid(),
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        folder: 'Notes',
-        tag: 'General',
-        createdAt: new Date().toISOString(),
-        url: URL.createObjectURL(file)
-      };
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const uploadedFiles = [];
+
+      for (const file of files) {
+        // Generate storage path
+        const storagePath = generateFilePath(user.uid, project.id, file.name);
+
+        // Upload to Firebase Storage
+        const downloadURL = await uploadFile(file, storagePath);
+
+        const newFile = {
+          id: nanoid(),
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          folder: 'Notes',
+          tag: 'General',
+          createdAt: new Date().toISOString(),
+          storagePath, // Store the storage path for deletion
+          url: downloadURL // Use Firebase download URL
+        };
+
+        uploadedFiles.push(newFile);
+        onActivityAdd('file_upload', `Uploaded ${file.name}`);
+      }
+
       onUpdate({
         ...project,
-        files: [newFile, ...(project.files || [])]
+        files: [...uploadedFiles, ...(project.files || [])]
       });
-      onActivityAdd('file_upload', `Uploaded ${file.name}`);
-    });
-    toast.success('Files uploaded successfully');
+
+      toast.success(`${files.length} file(s) uploaded successfully`);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload files. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const handleDeleteFile = (fileId) => {
-    onUpdate({
-      ...project,
-      files: project.files.filter(f => f.id !== fileId)
-    });
-    toast.success('File removed');
+  const handleDeleteFile = async (fileId) => {
+    const file = project.files.find(f => f.id === fileId);
+    if (!file) return;
+
+    try {
+      // Delete from Firebase Storage if storagePath exists
+      if (file.storagePath) {
+        await deleteFile(file.storagePath);
+      }
+
+      // Update project state
+      onUpdate({
+        ...project,
+        files: project.files.filter(f => f.id !== fileId)
+      });
+
+      toast.success('File removed');
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete file. Please try again.');
+    }
   };
 
   const handleUpdateFileTag = (fileId, newTag) => {
@@ -116,9 +163,10 @@ const FileManager = ({ project, onUpdate, onActivityAdd }) => {
             onChange={handleFileUpload}
             className="hidden"
             accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.zip,.rar"
+            disabled={isUploading}
           />
-          <span className="px-6 py-3 bg-blue-500 text-white font-black rounded-xl hover:bg-blue-600 cursor-pointer transition-all inline-block">
-            Choose Files
+          <span className={`px-6 py-3 bg-blue-500 text-white font-black rounded-xl hover:bg-blue-600 cursor-pointer transition-all inline-block ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            {isUploading ? 'Uploading...' : 'Choose Files'}
           </span>
         </label>
       </motion.div>

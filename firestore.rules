@@ -10,19 +10,36 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function getUserProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function ownUserDoc() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
     }
 
+    function ownProfileExists() {
+      return exists(ownUserDoc());
+    }
+
+    function getOwnProfile() {
+      return get(ownUserDoc()).data;
+    }
+
+    // Never call get(...).data unless the document exists — otherwise rule evaluation fails
+    // (seen as permission-denied on getDoc for new users when paired with isAdmin()).
     function isAdmin() {
       return isAuthenticated() &&
-        getUserProfile().role in ['admin', 'superadmin'];
+        ownProfileExists() &&
+        getOwnProfile().get('role', 'restricted') in ['admin', 'superadmin'];
     }
 
     function isActive() {
+      let profile = getOwnProfile();
+      let status = profile.get('status', {
+        'isActive': false,
+        'isBlocked': true
+      });
       return isAuthenticated() &&
-        getUserProfile().status.isActive == true &&
-        getUserProfile().status.isBlocked == false;
+        ownProfileExists() &&
+        status.get('isActive', false) == true &&
+        status.get('isBlocked', true) == false;
     }
 
     function isVerified() {
@@ -30,21 +47,21 @@ service cloud.firestore {
     }
 
     function withinLimits() {
-      let profile = getUserProfile();
+      let profile = getOwnProfile();
+      let role = profile.get('role', 'restricted');
       let limits = profile.get('limits', {});
       let usage = profile.get('usage', {});
-      
-      // Safety: Only check limits for normal users
-      return profile.role in ['admin', 'superadmin'] || (
+
+      return role in ['admin', 'superadmin'] || (
         usage.get('fileCount', 0) <= limits.get('maxFiles', 100) &&
         usage.get('storageUsedMB', 0) <= limits.get('storageMB', 10)
       );
     }
 
     function hasModuleAccess(document) {
-      let perms = getUserProfile().permissions;
+      let perms = getOwnProfile().get('permissions', {});
       let modules = perms.get('modules', {});
-      
+
       return
         (document == 'studyos_courses' && (modules.get('courses', false) == true || perms.get('courses', false) == true)) ||
         (document == 'studyos_videos' && (modules.get('videos', false) == true || perms.get('videos', false) == true)) ||
@@ -55,6 +72,19 @@ service cloud.firestore {
         (document == 'studyos_workspace' && (modules.get('workspace', false) == true || perms.get('workspace', false) == true)) ||
         (document == 'studyos_analytics' && (modules.get('analytics', false) == true || perms.get('analytics', false) == true)) ||
         (document == 'studyos_reminders' && (modules.get('reminders', false) == true || perms.get('reminders', false) == true)) ||
+        (document == 'studyos_goals') ||
+        (document == 'studyos_folders') ||
+        (document == 'studyos_weekly_planner') ||
+        (document == 'studyos_review_prefs') ||
+        (document == 'studyos_assignments' && (
+          modules.get('projects', false) == true || perms.get('projects', false) == true ||
+          modules.get('courses', false) == true || perms.get('courses', false) == true
+        )) ||
+        (document == 'studyos_papers' && (modules.get('resources', false) == true || perms.get('resources', false) == true)) ||
+        (document == 'google_calendar_token') ||
+        (document == 'google_calendar_sync_enabled') ||
+        (document == 'active_workspace_project') ||
+        (document == 'active_workspace_context') ||
         (document == 'studyos_settings') ||
         (document == 'studyos_streak') ||
         (document == 'studyos_notifications') ||
@@ -68,7 +98,7 @@ service cloud.firestore {
     function isCreatingOwnProfile(userId) {
       return isOwner(userId) &&
         request.resource.data.uid == request.auth.uid &&
-        request.resource.data.role == 'user';
+        request.resource.data.role in ['user', 'restricted'];
     }
 
     function isSafeSelfProfileUpdate() {
@@ -86,14 +116,19 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      // Short-circuit: own uid first so we never touch admin get() for normal users / new profiles.
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        (ownProfileExists() && getOwnProfile().get('role', 'restricted') in ['admin', 'superadmin'])
+      );
       allow create: if isCreatingOwnProfile(userId);
       allow update: if (isOwner(userId) && isSafeSelfProfileUpdate()) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
     }
 
+    // Read: owner may load their own synced blobs; module gates apply on writes only.
     match /users/{userId}/data/{document} {
-      allow read: if (isOwner(userId) && isActive() && hasModuleAccess(document)) || isAdmin();
+      allow read: if (isOwner(userId) && isActive()) || isAdmin();
       allow write: if (isOwner(userId) && isActive() && isVerified() && hasModuleAccess(document) && withinLimits()) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
     }

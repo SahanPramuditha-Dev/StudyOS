@@ -197,7 +197,7 @@ export const isValidGitHubUrl = (url) => {
  */
 export const parseGitHubUrl = (url) => {
   if (!isValidGitHubUrl(url)) return null;
-  const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (!match) return null;
   return { owner: match[1], repo: match[2].replace('.git', '') };
 };

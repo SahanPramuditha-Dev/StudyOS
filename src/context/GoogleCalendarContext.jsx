@@ -1,12 +1,15 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { useStorage } from '../hooks/useStorage';
 
 const GoogleCalendarContext = createContext();
 
+const isTokenExpired = (expiresAt) => {
+  return expiresAt ? Date.now() >= expiresAt : false;
+};
+
 export const GoogleCalendarProvider = ({ children }) => {
   const [googleAuth, setGoogleAuth] = useStorage('google_calendar_token', null);
   const [syncEnabled, setSyncEnabled] = useStorage('google_calendar_sync_enabled', false);
-  const [isConnected, setIsConnected] = useState(false);
 
   const readTokenData = (value) => {
     if (!value) return { accessToken: null, expiresAt: null };
@@ -18,15 +21,14 @@ export const GoogleCalendarProvider = ({ children }) => {
   };
 
   const { accessToken: googleAccessToken, expiresAt } = readTokenData(googleAuth);
-  const tokenExpired = expiresAt ? Date.now() >= expiresAt : false;
+  const tokenExpired = useMemo(() => isTokenExpired(expiresAt), [expiresAt]);
+  const isConnected = Boolean(googleAccessToken) && !tokenExpired;
 
   useEffect(() => {
-    const connected = Boolean(googleAccessToken) && !tokenExpired;
-    setIsConnected(connected);
-    if (!connected && syncEnabled) {
+    if (!isConnected && syncEnabled) {
       setSyncEnabled(false);
     }
-  }, [googleAccessToken, tokenExpired, syncEnabled, setSyncEnabled]);
+  }, [isConnected, syncEnabled, setSyncEnabled]);
 
   const getTokenString = (tokenResponse) => {
     if (!tokenResponse) return null;
@@ -40,7 +42,6 @@ export const GoogleCalendarProvider = ({ children }) => {
       console.error('Google login response did not include a usable token:', tokenResponse);
       setGoogleAuth(null);
       setSyncEnabled(false);
-      setIsConnected(false);
       return false;
     }
 
@@ -58,7 +59,6 @@ export const GoogleCalendarProvider = ({ children }) => {
   const disconnect = () => {
     setGoogleAuth(null);
     setSyncEnabled(false);
-    setIsConnected(false);
   };
 
   const ensureValidToken = () => {

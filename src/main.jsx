@@ -43,12 +43,16 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
       <BrowserRouter>
+        <Toaster
+          position="top-right"
+          containerStyle={{ zIndex: 2147483647 }}
+          toastOptions={{ duration: 5000 }}
+        />
         <Sentry.ErrorBoundary fallback={({ error }) => <ErrorBoundary error={error} />}>
           <ThemeProvider>
             <AuthProvider>
               <GoogleCalendarProvider>
                 <ReminderProvider>
-                  <Toaster position="top-right" />
                   <App />
                 </ReminderProvider>
               </GoogleCalendarProvider>

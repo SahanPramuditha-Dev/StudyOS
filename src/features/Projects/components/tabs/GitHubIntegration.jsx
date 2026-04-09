@@ -14,6 +14,38 @@ import {
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
+const buildPastDate = (offsetMs = 0) => new Date(Date.now() - offsetMs).toISOString();
+
+const mockCommitsData = [
+  {
+    id: '1',
+    message: 'Add project file manager and documentation system',
+    author: 'You',
+    date: buildPastDate(2 * 60 * 60 * 1000),
+    hash: 'a1b2c3d'
+  },
+  {
+    id: '2',
+    message: 'Implement GitHub integration in projects',
+    author: 'You',
+    date: buildPastDate(1 * 24 * 60 * 60 * 1000),
+    hash: 'e4f5g6h'
+  },
+  {
+    id: '3',
+    message: 'Set up submission tracking system',
+    author: 'You',
+    date: buildPastDate(3 * 24 * 60 * 60 * 1000),
+    hash: 'i7j8k9l'
+  }
+];
+
+const mockBranchesData = [
+  { name: 'main', isDefault: true, lastCommit: 'a1b2c3d', lastUpdated: new Date().toISOString() },
+  { name: 'develop', isDefault: false, lastCommit: 'e4f5g6h', lastUpdated: buildPastDate(1 * 24 * 60 * 60 * 1000) },
+  { name: 'feature/projects', isDefault: false, lastCommit: 'i7j8k9l', lastUpdated: buildPastDate(7 * 24 * 60 * 60 * 1000) }
+];
+
 const GitHubIntegration = ({ project, onUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [repoUrl, setRepoUrl] = useState(project.repo || '');
@@ -36,42 +68,15 @@ const GitHubIntegration = ({ project, onUpdate }) => {
   };
 
   const parseRepoInfo = (url) => {
-    const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+    const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
     if (!match) return null;
     return { owner: match[1], repo: match[2] };
   };
 
   const repoInfo = project.repo ? parseRepoInfo(project.repo) : null;
 
-  const mockCommits = [
-    {
-      id: '1',
-      message: 'Add project file manager and documentation system',
-      author: 'You',
-      date: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      hash: 'a1b2c3d'
-    },
-    {
-      id: '2',
-      message: 'Implement GitHub integration in projects',
-      author: 'You',
-      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      hash: 'e4f5g6h'
-    },
-    {
-      id: '3',
-      message: 'Set up submission tracking system',
-      author: 'You',
-      date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      hash: 'i7j8k9l'
-    }
-  ];
-
-  const mockBranches = [
-    { name: 'main', isDefault: true, lastCommit: 'a1b2c3d', lastUpdated: new Date().toISOString() },
-    { name: 'develop', isDefault: false, lastCommit: 'e4f5g6h', lastUpdated: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString() },
-    { name: 'feature/projects', isDefault: false, lastCommit: 'i7j8k9l', lastUpdated: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }
-  ];
+  const mockCommits = mockCommitsData;
+  const mockBranches = mockBranchesData;
 
   return (
     <div className="space-y-8">
