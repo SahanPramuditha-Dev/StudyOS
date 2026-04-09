@@ -45,6 +45,7 @@ const Videos = () => {
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [bulkCourseId, setBulkCourseId] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '', title: '' });
   
   const activeVideo = React.useMemo(() => 
     videos.find(v => v.id === activeVideoId), 
