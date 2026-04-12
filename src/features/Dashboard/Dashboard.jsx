@@ -30,6 +30,8 @@ const Dashboard = ({ setActiveTab }) => {
   const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
   const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
+  const [globalTasks] = useStorage('studyos_global_tasks', []);
+  const activeTasks = useMemo(() => globalTasks.filter(t => t.status === 'in_progress'), [globalTasks]);
 
   const stats = useMemo(() => {
     const activeCourses = courses.filter(c => c.status === 'Active').length;
@@ -347,6 +349,31 @@ const Dashboard = ({ setActiveTab }) => {
               </button>
             </div>
           </div>
+
+          {activeTasks.length > 0 && (
+            <div className="card border-none bg-gradient-to-br from-accent-50 to-primary-50 dark:from-accent-900/20 dark:to-primary-900/20">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-accent-700 dark:text-accent-400">
+                <Target size={20} />
+                Resume Work
+              </h3>
+              <div className="space-y-3">
+                {activeTasks.slice(0, 2).map(task => (
+                  <div key={task.id} className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-white/20 dark:border-slate-800 backdrop-blur-sm group hover:border-accent-300 dark:hover:border-accent-700 transition-colors cursor-pointer shadow-sm" onClick={() => go('tasks')}>
+                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{task.title}</p>
+                    <div className="flex justify-between items-end mt-2">
+                      <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
+                        Last: {task.lastPosition || 'Not started'}
+                      </p>
+                      <span className="text-[10px] font-black text-accent-600 dark:text-accent-400">{task.progress}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => go('tasks')} className="w-full mt-4 py-2 text-xs font-bold text-accent-600 dark:text-accent-400 hover:bg-white/50 dark:hover:bg-slate-800/50 rounded-lg transition-colors">
+                View all tasks
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
