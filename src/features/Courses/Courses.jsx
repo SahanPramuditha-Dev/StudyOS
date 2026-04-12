@@ -21,6 +21,8 @@ import CourseFilter from './components/CourseFilter';
 import CourseForm from './components/CourseForm';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
+import PageHeader from '../../components/PageHeader';
+import EmptyState from '../../components/EmptyState';
 
 const Courses = () => {
   // 1. State Management
@@ -352,15 +354,12 @@ const Courses = () => {
   return (
     <div className="max-w-7xl mx-auto pb-12">
       {/* Header Title Section */}
-      <div className="mb-12 space-y-2">
-        <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
-          <div className="p-3 rounded-[1.5rem] bg-primary-500 text-white shadow-xl shadow-primary-500/20">
-            <BookOpen size={32} />
-          </div>
-          Learning Streams
-        </h1>
-        <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs">Architect your mastery path</p>
-      </div>
+      <PageHeader
+        title="Learning Streams"
+        description="Architect your mastery path"
+        icon={<BookOpen size={32} />}
+        className="mb-12"
+      />
 
       {/* Filter and Actions */}
       <CourseFilter 
@@ -415,21 +414,21 @@ const Courses = () => {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="col-span-full py-24 text-center space-y-6 bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-100 dark:border-slate-800"
+            className="col-span-full"
           >
-            <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-inner">
-              <BookOpen size={48} className="text-slate-200 dark:text-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-800 dark:text-white">No Streams Found</h3>
-              <p className="text-slate-400 max-w-sm mx-auto">Launch a new course or adjust your filters to discover your learning paths.</p>
-            </div>
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="px-8 py-4 rounded-2xl bg-primary-500 text-white font-black hover:bg-primary-600 shadow-xl shadow-primary-500/20 transition-all active:scale-95"
-            >
-              Start Your First Path
-            </button>
+            <EmptyState
+              icon={<BookOpen size={48} className="text-slate-200 dark:text-slate-700" />}
+              title="No Streams Found"
+              description="Launch a new course or adjust your filters to discover your learning paths."
+              actions={(
+                <button 
+                  onClick={() => setIsModalOpen(true)}
+                  className="px-8 py-4 rounded-2xl bg-primary-500 text-white font-black hover:bg-primary-600 shadow-xl shadow-primary-500/20 transition-all active:scale-95"
+                >
+                  Start Your First Path
+                </button>
+              )}
+            />
           </motion.div>
         )}
       </div>

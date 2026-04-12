@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, getRedirectResult } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 import { getAnalytics } from "firebase/analytics";
 import { getFunctions } from "firebase/functions";
@@ -69,6 +70,7 @@ export const db = initializeFirestore(app, {
 });
 
 export const storage = getStorage(app);
+export const rtdb = getDatabase(app);
 export const functions = getFunctions(app);
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 

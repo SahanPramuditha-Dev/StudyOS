@@ -246,7 +246,8 @@ const Settings = () => {
         reminder: { web: true, email: true },
         deadline: { web: true, email: false },
         streak: { web: true, email: false },
-        roleChanges: { web: true, email: true }
+        roleChanges: { web: true, email: true },
+        chat: { web: true, email: false }
       },
       silentHours: { enabled: false, start: '22:00', end: '07:00' },
       deliveryMode: 'server',
@@ -1569,11 +1570,12 @@ const Settings = () => {
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {[
-                          ['reminder', 'Study Reminder'],
-                          ['deadline', 'Deadlines'],
-                          ['streak', 'Streak Alerts'],
-                          ['roleChanges', 'Role Changes']
-                        ].map(([key, label]) => (
+                        ['reminder', 'Study Reminder'],
+                        ['deadline', 'Deadlines'],
+                        ['streak', 'Streak Alerts'],
+                        ['roleChanges', 'Role Changes'],
+                        ['chat', 'Chat Messages']
+                      ].map(([key, label]) => (
                           <tr key={key}>
                             <td className="px-4 py-3 font-bold text-slate-700 dark:text-slate-200">{label}</td>
                             <td className="px-4 py-3">

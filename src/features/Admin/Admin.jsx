@@ -142,6 +142,21 @@ const Admin = () => {
   const usagePercent = totalStorageLimit > 0 ? Math.round((totalStorageUsed / totalStorageLimit) * 100) : 0;
   const recentActivity = auditFeed.slice(0, 5);
   const enabledFeatureCount = Object.values(adminFeatureFlags).filter(Boolean).length;
+  const userDirectory = useMemo(() => {
+    const map = new Map();
+    users.forEach((entry) => {
+      if (!entry?.id) return;
+      map.set(entry.id, entry);
+    });
+    if (currentUser?.uid) {
+      map.set(currentUser.uid, {
+        id: currentUser.uid,
+        name: currentUser.displayName || currentUser.email || 'Current user',
+        email: currentUser.email || ''
+      });
+    }
+    return map;
+  }, [users, currentUser]);
   const featureDefinitions = [
     { key: 'githubIntegration', label: 'GitHub integration', desc: 'Enable repo linking and GitHub syncing.' },
     { key: 'googleCalendar', label: 'Google Calendar', desc: 'Allow reminders and calendar import sync.' },
@@ -278,6 +293,64 @@ const Admin = () => {
     if (updates.permissions?.actions) summary.push('action permissions updated');
     if (updates.features) summary.push('feature flags updated');
     return summary;
+  };
+
+  const getAuditTimestamp = (log = {}) => {
+    const rawValue = log?.performedAt || log?.timestamp || log?.createdAt || log?.sentAt || '';
+    if (!rawValue) return '';
+    const date = new Date(rawValue);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+  };
+
+  const getAuditTypeLabel = (type = '') => {
+    const normalized = String(type || 'event')
+      .replace(/[_-]+/g, ' ')
+      .trim()
+      .toLowerCase();
+    if (!normalized) return 'Event';
+    return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const getAuditUserLabel = (userId = '', fallback = '') => {
+    const profile = userDirectory.get(userId);
+    if (profile?.name && profile?.email) return `${profile.name} (${profile.email})`;
+    if (profile?.name) return profile.name;
+    if (profile?.email) return profile.email;
+    return fallback || userId || '';
+  };
+
+  const getAuditTargetLabel = (log = {}) => {
+    if (log?.targetUserName && log?.targetUserEmail) {
+      return `${log.targetUserName} (${log.targetUserEmail})`;
+    }
+    if (log?.targetUserName) return log.targetUserName;
+    if (log?.targetUserId) {
+      return getAuditUserLabel(log.targetUserId, 'User record');
+    }
+    if (log?.targetUserEmail) return log.targetUserEmail;
+    if (log?.email) return log.email;
+    return 'System event';
+  };
+
+  const getAuditActorLabel = (log = {}) => {
+    if (log?.performedByName && log?.performedByEmail) {
+      return `${log.performedByName} (${log.performedByEmail})`;
+    }
+    if (log?.performedByName) return log.performedByName;
+    if (log?.performedBy) {
+      return getAuditUserLabel(log.performedBy, 'Admin');
+    }
+    if (log?.performedByEmail) return log.performedByEmail;
+    return 'System';
+  };
+
+  const getAuditSummary = (log = {}) => {
+    const changes = summarizeAuditChanges(log?.updates);
+    if (changes.length > 0) return changes.join(' • ');
+    if (log?.message) return log.message;
+    if (log?.subject) return log.subject;
+    if (log?.type === 'email_sent') return 'Email was sent successfully';
+    return 'No additional details';
   };
 
   const toggleUserSelection = (userId) => {
@@ -717,9 +790,12 @@ const Admin = () => {
               {recentActivity.length === 0 && <p className="text-sm text-slate-400">No recent admin activity yet.</p>}
               {recentActivity.map((log) => (
                 <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{log.type || 'event'}</p>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{log.targetUserId || 'system event'}</p>
-                  <p className="text-xs text-slate-400">{log.performedAt ? new Date(log.performedAt).toLocaleString() : ''}</p>
+                  <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{getAuditTypeLabel(log.type)}</p>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{getAuditTargetLabel(log)}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{getAuditSummary(log)}</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {getAuditTimestamp(log) || 'Unknown time'} • by {getAuditActorLabel(log)}
+                  </p>
                 </div>
               ))}
             </div>
@@ -885,9 +961,12 @@ const Admin = () => {
             {auditFeed.length === 0 && <p className="text-sm text-slate-400">No logs found.</p>}
             {auditFeed.map((log) => (
               <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-                <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{log.type || 'event'}</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{log.targetUserId || 'system event'}</p>
-                <p className="text-xs text-slate-400">{log.performedAt ? new Date(log.performedAt).toLocaleString() : ''}</p>
+                <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{getAuditTypeLabel(log.type)}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{getAuditTargetLabel(log)}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{getAuditSummary(log)}</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {getAuditTimestamp(log) || 'Unknown time'} • by {getAuditActorLabel(log)}
+                </p>
               </div>
             ))}
           </div>
@@ -1296,15 +1375,14 @@ const Admin = () => {
                     <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
                       {auditLogs.map((log) => (
                         <div key={log.id} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-primary-500">{log.type || 'admin_update_user'}</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-primary-500">{getAuditTypeLabel(log.type)}</p>
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-1">{getAuditActorLabel(log)}</p>
                           <p className="text-xs text-slate-500 mt-1">
-                            {log.performedAt ? new Date(log.performedAt).toLocaleString() : 'Unknown time'}
+                            {getAuditTimestamp(log) || 'Unknown time'}
                           </p>
-                          {summarizeAuditChanges(log.updates).length > 0 && (
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1.5">
-                              {summarizeAuditChanges(log.updates).join(' • ')}
-                            </p>
-                          )}
+                          <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1.5">
+                            {getAuditSummary(log)}
+                          </p>
                         </div>
                       ))}
                     </div>

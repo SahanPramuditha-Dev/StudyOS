@@ -4,6 +4,7 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import posthog from 'posthog-js';
 import { Bell, Menu, Moon, Search, Shield, Sun, XCircle, Circle } from 'lucide-react';
 import Sidebar from './components/Sidebar';
+import RealtimePresence from './components/RealtimePresence';
 import UnifiedFooter from './components/Footer/UnifiedFooter';
 import Dashboard from './features/Dashboard/Dashboard';
 import Courses from './features/Courses/Courses';
@@ -80,7 +81,8 @@ const App = () => {
       reminder: { web: true, email: true },
       deadline: { web: true, email: false },
       streak: { web: true, email: false },
-      roleChanges: { web: true, email: true }
+      roleChanges: { web: true, email: true },
+      chat: { web: true, email: false }
     },
     silentHours: { enabled: false, start: '22:00', end: '07:00' },
     emailNotifications: { roleChanges: true, reminders: true }
@@ -92,6 +94,7 @@ const App = () => {
     if (firstSegment === 'support') return 'legal';
     return firstSegment;
   })();
+  const isChatRoute = currentTabFromPath === 'chat';
   const isPublicLegalRoute = [
     '/legal',
     '/legal/privacy',
@@ -123,7 +126,7 @@ const App = () => {
     const alarm = notificationSettings?.alarm || {};
     const shouldNotify = (notification) => {
       if (!notification) return false;
-      if (!['reminder', 'deadline'].includes(notification.type)) return false;
+      if (!['reminder', 'deadline', 'chat', 'chat-mention', 'chat-share'].includes(notification.type)) return false;
       if (notification.browserDeliveredAt) return false;
       if (browserDeliveredRef.current.has(notification.id)) return false;
       return true;
@@ -135,6 +138,7 @@ const App = () => {
 
       for (const notification of pending) {
         browserDeliveredRef.current.add(notification.id);
+        const isChatNotification = String(notification.type || '').startsWith('chat');
 
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification(notification.title || 'StudyOs Alert', {
@@ -143,14 +147,16 @@ const App = () => {
           });
         }
 
-        await playAlarmSound({
-          soundUrl: notification.soundUrl || alarm.soundUrl || '',
-          volume: Number(notification.soundVolume ?? alarm.volume ?? 0.8),
-          repeatCount: Number(notification.soundRepeatCount ?? alarm.repeatCount ?? 1),
-          muted: Boolean(alarm.muted || notification.soundMode === 'mute' || alarm.enabled === false)
-        }).catch((error) => {
-          console.warn('[App] Alarm sound playback failed:', error);
-        });
+        if (!isChatNotification) {
+          await playAlarmSound({
+            soundUrl: notification.soundUrl || alarm.soundUrl || '',
+            volume: Number(notification.soundVolume ?? alarm.volume ?? 0.8),
+            repeatCount: Number(notification.soundRepeatCount ?? alarm.repeatCount ?? 1),
+            muted: Boolean(alarm.muted || notification.soundMode === 'mute' || alarm.enabled === false)
+          }).catch((error) => {
+            console.warn('[App] Alarm sound playback failed:', error);
+          });
+        }
 
         markNotificationAsPresented(notification.id, {
           browserDeliveredAt: new Date().toISOString(),
@@ -417,7 +423,7 @@ const App = () => {
           isMobileOpen={isMobileSidebarOpen}
           setIsMobileOpen={setIsMobileSidebarOpen}
         />
-        <div className="flex flex-1 flex-col h-screen overflow-hidden">
+        <div className="flex flex-1 flex-col h-screen overflow-hidden min-h-0">
           {/* Header */}
           <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
             <div className="flex items-center gap-4">
@@ -585,21 +591,24 @@ const App = () => {
           </header>
 
           {/* Main Content Area */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col scroll-smooth">
-            <div className="flex-1 w-full p-4 lg:p-12 lg:pb-16">
-              <div className="max-w-[1600px] mx-auto space-y-12">
+          <main className={`flex-1 min-h-0 relative flex flex-col scroll-smooth ${isChatRoute ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
+            {user && <RealtimePresence user={user} profile={profile} />}
+            <div className={`w-full ${isChatRoute ? 'flex-1 min-h-0 p-0 flex flex-col' : 'flex-1 p-4 lg:p-12 lg:pb-16'}`}>
+              <div className={`${isChatRoute ? 'flex-1 min-h-0 max-w-none mx-0 space-y-0' : 'max-w-[1600px] mx-auto space-y-12'}`}>
                 {renderContent()}
               </div>
             </div>
             
-            <div className="w-full mt-auto">
-              <UnifiedFooter
-                profile={profile}
-                isAdmin={isAdmin}
-                hasPermission={hasPermission}
-                setActiveTab={setActiveTab}
-              />
-            </div>
+            {!isChatRoute && (
+              <div className="w-full">
+                <UnifiedFooter
+                  profile={profile}
+                  isAdmin={isAdmin}
+                  hasPermission={hasPermission}
+                  setActiveTab={setActiveTab}
+                />
+              </div>
+            )}
           </main>
         </div>
       </div>

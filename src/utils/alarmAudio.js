@@ -5,7 +5,7 @@ const isBrowserAudioSupported = () =>
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-let activePlayback = null;
+let activePlayback = null;\nlet isPlaying = false;\n\nexport const getIsPlaying = () => isPlaying;\n\nexport const setIsPlaying = (playing) => { isPlaying = playing; };\n
 
 const clearActivePlayback = () => {
   activePlayback = null;

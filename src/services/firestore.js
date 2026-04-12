@@ -194,19 +194,50 @@ class FirestoreService {
     }
   }
 
+  static async getUsersByEmails(emails = []) {
+    const normalizedEmails = [...new Set(
+      (emails || []).map(FirestoreService.normalizeChatEmail).filter(Boolean)
+    )];
+
+    if (normalizedEmails.length === 0) return [];
+
+    try {
+      const results = [];
+      for (let index = 0; index < normalizedEmails.length; index += 10) {
+        const chunk = normalizedEmails.slice(index, index + 10);
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', 'in', chunk));
+        const snap = await getDocs(q);
+        snap.forEach((docSnap) => {
+          results.push({ id: docSnap.id, ...docSnap.data() });
+        });
+      }
+      return results;
+    } catch (error) {
+      console.error('[FirestoreService] Error fetching users by emails:', error);
+      return [];
+    }
+  }
+
   /**
    * Admin: Updates a user's settings (role, limits, permissions)
    */
   static async updateUserByAdmin(userId, updates) {
     try {
       const userRef = doc(db, 'users', userId);
+      const targetSnap = await getDoc(userRef);
+      const targetData = targetSnap.exists() ? targetSnap.data() : {};
       await updateDoc(userRef, { ...updates, updatedAt: new Date().toISOString() });
       const actor = auth.currentUser ? auth.currentUser.uid : null;
       try {
         await addDoc(collection(db, 'audit_logs'), {
           targetUserId: userId,
+          targetUserName: targetData?.name || '',
+          targetUserEmail: targetData?.email || '',
           updates,
           performedBy: actor,
+          performedByName: auth.currentUser?.displayName || '',
+          performedByEmail: auth.currentUser?.email || '',
           performedAt: new Date().toISOString(),
           type: 'admin_update_user'
         });
@@ -387,6 +418,39 @@ class FirestoreService {
     return String(reaction || 'thumbsUp').replace(/[^a-zA-Z0-9]/g, '').slice(0, 32) || 'thumbsUp';
   }
 
+  static extractChatMentions(text = '', memberEmails = [], senderEmail = '') {
+    const normalizedText = String(text || '').toLowerCase();
+    const normalizedSender = FirestoreService.normalizeChatEmail(senderEmail);
+    const normalizedMembers = [...new Set((memberEmails || [])
+      .map(FirestoreService.normalizeChatEmail)
+      .filter(Boolean))];
+
+    if (!normalizedText || normalizedMembers.length === 0) {
+      return [];
+    }
+
+    if (normalizedText.includes('@all') || normalizedText.includes('@everyone')) {
+      return normalizedMembers.filter((email) => email !== normalizedSender);
+    }
+
+    const matched = new Set();
+    normalizedMembers.forEach((email) => {
+      const localPart = email.split('@')[0] || '';
+      const alias = localPart.replace(/[^a-z0-9]+/g, '');
+      const tokens = [
+        `@${email}`,
+        `@${localPart}`,
+        `@${alias}`
+      ].filter((token) => token !== '@');
+
+      if (tokens.some((token) => token && normalizedText.includes(token))) {
+        matched.add(email);
+      }
+    });
+
+    return [...matched].filter((email) => email !== normalizedSender);
+  }
+
   static chatRoomCollection() {
     return collection(db, 'chat_rooms');
   }
@@ -416,12 +480,43 @@ class FirestoreService {
       throw new Error('Missing creator identity for chat room');
     }
 
+    if (String(roomType) === 'direct' && normalizedMembers.length === 2) {
+      const q = query(
+        FirestoreService.chatRoomCollection(),
+        where('roomType', '==', 'direct'),
+        where('memberEmails', 'array-contains', normalizedCreatorEmail)
+      );
+
+      const snapshot = await getDocs(q);
+      const existingRoom = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .find((room) => {
+          const existingMembers = [...new Set(
+            (room.memberEmails || []).map(FirestoreService.normalizeChatEmail).filter(Boolean)
+          )].sort();
+          const nextMembers = [...normalizedMembers].sort();
+          return existingMembers.length === nextMembers.length &&
+            existingMembers.every((email, index) => email === nextMembers[index]);
+        });
+
+      if (existingRoom) {
+        return { ...existingRoom, existed: true };
+      }
+    }
+
     const payload = {
-      title: String(title || 'Study Group').trim().slice(0, 80) || 'Study Group',
+      title: String(
+        title ||
+        (String(roomType) === 'direct'
+          ? `Direct message with ${normalizedMembers.find((email) => email !== normalizedCreatorEmail) || 'member'}`
+          : 'Study Group')
+      ).trim().slice(0, 80) || 'Study Group',
       roomType: ['group', 'direct'].includes(String(roomType)) ? String(roomType) : 'group',
       createdByUid,
       createdByEmail: normalizedCreatorEmail,
       memberEmails: normalizedMembers,
+      roomAdminEmails: [normalizedCreatorEmail],
+      inviteCode: roomType === 'group' ? FirestoreService.generateChatInviteCode() : '',
       contextType: String(contextType || 'general'),
       contextId: String(contextId || ''),
       contextLabel: String(contextLabel || ''),
@@ -431,6 +526,9 @@ class FirestoreService {
       lastMessageAt: null,
       lastMessageSenderEmail: normalizedCreatorEmail,
       lastMessageSenderUid: createdByUid,
+      lastMessageHasAttachments: false,
+      lastMessageAttachmentCount: 0,
+      lastMessageMentionEmails: [],
       archivedByEmails: [],
       lastReadAtByEmail: {
         [FirestoreService.chatEmailKey(normalizedCreatorEmail)]: new Date().toISOString()
@@ -439,6 +537,125 @@ class FirestoreService {
 
     const docRef = await addDoc(FirestoreService.chatRoomCollection(), payload);
     return { id: docRef.id, ...payload };
+  }
+
+  static generateChatInviteCode(length = 12) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = new Uint32Array(length);
+    if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+    } else {
+      for (let index = 0; index < length; index += 1) {
+        bytes[index] = Math.floor(Math.random() * alphabet.length);
+      }
+    }
+    return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
+  }
+
+  static buildChatInviteLink(roomId, inviteCode) {
+    if (!roomId || !inviteCode) return '';
+    if (typeof window === 'undefined') return '';
+    const url = new URL(window.location.origin);
+    url.pathname = window.location.pathname;
+    url.searchParams.set('join', `${roomId}:${inviteCode}`);
+    return url.toString();
+  }
+
+  static async ensureChatRoomInviteCode(roomId) {
+    if (!roomId) return '';
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    const roomSnap = await getDoc(roomRef);
+    if (!roomSnap.exists()) {
+      throw new Error('Chat room not found');
+    }
+
+    const currentCode = String(roomSnap.data()?.inviteCode || '').trim();
+    const inviteCode = currentCode || FirestoreService.generateChatInviteCode();
+    if (!currentCode) {
+      await updateDoc(roomRef, {
+        inviteCode,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    return inviteCode;
+  }
+
+  static async addChatRoomMembers(roomId, memberEmails = []) {
+    const normalizedMembers = [...new Set(
+      (memberEmails || [])
+        .map(FirestoreService.normalizeChatEmail)
+        .filter(Boolean)
+    )];
+
+    if (!roomId || normalizedMembers.length === 0) {
+      return;
+    }
+
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    await updateDoc(roomRef, {
+      memberEmails: arrayUnion(...normalizedMembers),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  static async promoteChatRoomMember(roomId, memberEmail = '') {
+    const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
+    if (!roomId || !normalizedEmail) return;
+
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    await updateDoc(roomRef, {
+      roomAdminEmails: arrayUnion(normalizedEmail),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  static async removeChatRoomMember(roomId, memberEmail = '') {
+    const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
+    if (!roomId || !normalizedEmail) return;
+
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    await updateDoc(roomRef, {
+      memberEmails: arrayRemove(normalizedEmail),
+      roomAdminEmails: arrayRemove(normalizedEmail),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  static async joinChatRoomByInviteCode(roomId, inviteCode, memberEmail = '') {
+    const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
+    if (!roomId || !inviteCode || !normalizedEmail) {
+      throw new Error('Missing invite details');
+    }
+
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    const roomSnap = await getDoc(roomRef);
+    if (!roomSnap.exists()) {
+      throw new Error('Chat room not found');
+    }
+
+    const room = roomSnap.data();
+    if (room?.roomType !== 'group') {
+      throw new Error('Invite links are only available for group rooms');
+    }
+
+    const currentCode = String(room?.inviteCode || '').trim();
+    if (!currentCode || currentCode !== String(inviteCode).trim()) {
+      throw new Error('This invite link is no longer valid');
+    }
+
+    const alreadyJoined = (room?.memberEmails || [])
+      .map(FirestoreService.normalizeChatEmail)
+      .includes(normalizedEmail);
+    if (alreadyJoined) {
+      return room;
+    }
+
+    await updateDoc(roomRef, {
+      memberEmails: arrayUnion(normalizedEmail),
+      [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
   }
 
   static subscribeToMyChatRooms(userEmail, callback) {
@@ -492,8 +709,7 @@ class FirestoreService {
       throw new Error('Missing message metadata');
     }
 
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    const messageRef = await addDoc(FirestoreService.chatMessagesCollection(roomId), {
+    const payload = {
       text: String(text || '').trim(),
       senderUid,
       senderEmail: normalizedEmail,
@@ -511,18 +727,45 @@ class FirestoreService {
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-    });
+    };
 
-    await updateDoc(roomRef, {
-      lastMessage: String(text || '').trim().slice(0, 240),
-      lastMessageAt: new Date().toISOString(),
-      lastMessageSenderEmail: normalizedEmail,
-      lastMessageSenderUid: senderUid,
-      updatedAt: new Date().toISOString(),
-      [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString()
-    });
-
-    return messageRef;
+    let messageRef = null;
+    try {
+      const roomRef = doc(db, 'chat_rooms', roomId);
+      const roomSnap = await getDoc(roomRef);
+      const room = roomSnap.exists() ? roomSnap.data() : null;
+      const mentionEmails = FirestoreService.extractChatMentions(text, room?.memberEmails || [], normalizedEmail);
+      const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+      const trimmedText = String(text || '').trim();
+      const roomPreviewText = trimmedText
+        ? trimmedText.slice(0, 240)
+        : (hasAttachments ? `Shared ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}` : '');
+      messageRef = await addDoc(FirestoreService.chatMessagesCollection(roomId), payload);
+      try {
+        await updateDoc(roomRef, {
+          lastMessage: roomPreviewText,
+          lastMessageAt: new Date().toISOString(),
+          lastMessageSenderEmail: normalizedEmail,
+          lastMessageSenderUid: senderUid,
+          lastMessageHasAttachments: hasAttachments,
+          lastMessageAttachmentCount: hasAttachments ? attachments.length : 0,
+          lastMessageMentionEmails: mentionEmails,
+          updatedAt: new Date().toISOString(),
+          [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString()
+        });
+      } catch (error) {
+        if (error?.code !== 'permission-denied') {
+          throw error;
+        }
+        console.warn('[FirestoreService] Failed to update chat room metadata after sending message:', error);
+      }
+      return messageRef;
+    } catch (error) {
+      if (error?.code === 'permission-denied') {
+        throw new Error('Chat access is not enabled for this account yet or you are not a member of this room. Please ask an admin to deploy the latest chat rules.');
+      }
+      throw error;
+    }
   }
 
   static async toggleChatReaction(roomId, messageId, reaction, userEmail) {

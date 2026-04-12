@@ -93,7 +93,8 @@ export const ReminderProvider = ({ children }) => {
       reminder: { web: true, email: true },
       deadline: { web: true, email: false },
       streak: { web: true, email: false },
-      roleChanges: { web: true, email: true }
+      roleChanges: { web: true, email: true },
+      chat: { web: true, email: false }
     },
     silentHours: { enabled: false, start: '22:00', end: '07:00' },
     emailNotifications: { roleChanges: true, reminders: true }
@@ -210,7 +211,10 @@ export const ReminderProvider = ({ children }) => {
       reminder: 'reminder',
       deadline: 'deadline',
       streak: 'streak',
-      roleChanges: 'roleChanges'
+      roleChanges: 'roleChanges',
+      chat: 'chat',
+      'chat-mention': 'chat',
+      'chat-share': 'chat'
     };
     const channelKey = typeMap[notif?.type] || 'reminder';
     const channel = prefs.channels?.[channelKey];
@@ -385,21 +389,7 @@ export const ReminderProvider = ({ children }) => {
               });
             }
 
-            // 3. Dispatch Email Alert
-            if (allowsEmail && r.sendEmail && user?.email) {
-              console.log(`[ReminderContext] Email trigger for: ${r.id}`);
-              const emailResult = await EmailService.sendReminderEmail(user.email, r);
-              if (emailResult.success) {
-                toast.success(`Email alert dispatched for ${r.message}`, { duration: 5000 });
-              } else {
-                if (emailResult.error.includes('environment variables')) {
-                  toast.error('Email service not configured. Please check your .env file.', { duration: 6000 });
-                } else {
-                  console.error(`[ReminderContext] Email failed for ${r.id}:`, emailResult.error);
-                  toast.error('Email alert failed to send');
-                }
-              }
-            }
+            // 3. Dispatch Email Alert - DISABLED to prevent duplicates (use server only)\n            // if (allowsEmail && r.sendEmail && user?.email) {\n            //   console.log(`[ReminderContext] Email trigger for: ${r.id}`);\n            //   const emailResult = await EmailService.sendReminderEmail(user.email, r);\n            //   if (emailResult.success) {\n            //     toast.success(`Email alert dispatched for ${r.message}`, { duration: 5000 });\n            //   } else {\n            //     if (emailResult.error.includes('environment variables')) {\n            //       toast.error('Email service not configured. Please check your .env file.', { duration: 6000 });\n            //     } else {\n            //       console.error(`[ReminderContext] Email failed for ${r.id}:`, emailResult.error);\n            //       toast.error('Email alert failed to send');\n            //     }\n            //   }\n            // }\n\n            // Sound guard: Skip if already playing or recent\n            if (r.soundMode !== 'mute' && getIsPlaying()) {\n              console.log(`[ReminderContext] Skipping sound for ${r.id} - already playing`);\n            }
           } catch (err) {
             console.error(`[ReminderContext] Failed to process alert ${r.id}:`, err);
           }
@@ -479,7 +469,7 @@ export const ReminderProvider = ({ children }) => {
       }
     };
 
-    const interval = setInterval(checkReminders, 15000); // 15s accuracy
+    const interval = setInterval(checkReminders, 60000); // 1min accuracy - fix duplicates
     checkReminders(); // Initial check
 
     return () => clearInterval(interval);

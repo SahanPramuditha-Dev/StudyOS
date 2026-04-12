@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, FileText, Filter } from 'lucide-react';
 import SearchBar from './SearchBar';
 import NoteItem from './NoteItem';
+import EmptyState from '../../../components/EmptyState';
 
 const NotesList = ({
   notes,
@@ -86,15 +87,12 @@ const NotesList = ({
           />
         ))}
         {notes.length === 0 && (
-          <div className="py-24 text-center space-y-4 bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
-            <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-300">
-              <FileText size={32} />
-            </div>
-            <div className="space-y-1 px-6">
-              <p className="font-bold text-slate-800 dark:text-white">Empty Library</p>
-              <p className="text-xs text-slate-400">Start documenting your learning journey today.</p>
-            </div>
-          </div>
+          <EmptyState
+            compact
+            icon={<FileText size={32} />}
+            title="Empty Library"
+            description="Start documenting your learning journey today."
+          />
         )}
       </div>
     </div>

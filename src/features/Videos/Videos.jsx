@@ -36,6 +36,8 @@ import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
 import { useReminders } from '../../context/ReminderContext';
+import PageHeader from '../../components/PageHeader';
+import EmptyState from '../../components/EmptyState';
 
 const Videos = () => {
   const [videos, setVideos] = useStorage(STORAGE_KEYS.VIDEOS, []);
@@ -503,17 +505,14 @@ const Videos = () => {
   return (
     <div className="max-w-7xl mx-auto pb-12 space-y-8">
       {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500">
-              <Youtube size={28} />
-            </div>
-            Video Tracker
-          </h2>
-          <p className="text-slate-400 font-medium ml-12">Turn watch time into learning progress</p>
-        </div>
-        
+      <div className="space-y-6">
+        <PageHeader
+          title="Video Tracker"
+          description="Turn watch time into learning progress"
+          icon={<Youtube size={28} />}
+          iconClassName="bg-red-50 dark:bg-red-500/10 text-red-500"
+        />
+
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -682,15 +681,12 @@ const Videos = () => {
           </div>
 
           {filteredVideos.length === 0 && (
-            <div className="py-20 text-center space-y-4 bg-white dark:bg-slate-900 rounded-[2rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
-              <div className="w-16 h-16 rounded-3xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-300">
-                <Youtube size={32} />
-              </div>
-              <div className="space-y-1">
-                <p className="font-bold text-slate-800 dark:text-white">No videos found</p>
-                <p className="text-sm text-slate-400">Try adjusting your search or add a new video.</p>
-              </div>
-            </div>
+            <EmptyState
+              compact
+              icon={<Youtube size={32} />}
+              title="No videos found"
+              description="Try adjusting your search or add a new video."
+            />
           )}
         </div>
 

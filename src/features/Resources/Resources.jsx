@@ -27,6 +27,8 @@ import ResourceItem from './components/ResourceItem';
 import ResourceForm from './components/ResourceForm';
 import ResourceFilter from './components/ResourceFilter';
 import ConfirmModal from '../../components/ConfirmModal';
+import PageHeader from '../../components/PageHeader';
+import EmptyState from '../../components/EmptyState';
 
 const Resources = () => {
   const { user } = useAuth();
@@ -498,17 +500,12 @@ const Resources = () => {
   return (
     <div className="max-w-7xl mx-auto pb-12">
       {/* Header Title Section */}
-      <div className="mb-12 space-y-2">
-        <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
-          <div className="p-3 rounded-[1.5rem] bg-primary-500 text-white shadow-xl shadow-primary-500/20">
-            <Layers size={32} />
-          </div>
-          {isPapersView ? 'Reading Library (Merged)' : 'Knowledge Base'}
-        </h1>
-        <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs">
-          {isPapersView ? 'Papers are now part of unified resources' : 'Manage your learning assets and associations'}
-        </p>
-      </div>
+      <PageHeader
+        title={isPapersView ? 'Reading Library (Merged)' : 'Knowledge Base'}
+        description={isPapersView ? 'Papers are now part of unified resources' : 'Manage your learning assets and associations'}
+        icon={<Layers size={32} />}
+        className="mb-12"
+      />
 
       <ResourceFilter 
         searchTerm={searchTerm}
@@ -741,20 +738,18 @@ const Resources = () => {
         ))}
 
         {filteredData.resources.length === 0 && filteredData.folders.length === 0 && (
-            <div className="py-20 text-center space-y-6 bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-dashed border-slate-100 dark:border-slate-800">
-            <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800/50 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-inner">
-              <FileSearch size={48} className="text-slate-200 dark:text-slate-700" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-black text-slate-800 dark:text-white">Nothing Here Yet</h3>
-              <p className="text-slate-400 max-w-sm mx-auto">Start with a folder, upload your first file, or add a link to build your knowledge base.</p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button onClick={() => openFolderModal()} className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">Create Folder</button>
-              <button onClick={() => fileInputRef.current?.click()} className="px-5 py-3 rounded-xl bg-primary-500 text-white font-bold">Upload First File</button>
-              <button onClick={() => setIsResourceModalOpen(true)} className="px-5 py-3 rounded-xl bg-emerald-500 text-white font-bold">Link First Asset</button>
-            </div>
-          </div>
+          <EmptyState
+            icon={<FileSearch size={48} className="text-slate-200 dark:text-slate-700" />}
+            title="Nothing Here Yet"
+            description="Start with a folder, upload your first file, or add a link to build your knowledge base."
+            actions={(
+              <>
+                <button onClick={() => openFolderModal()} className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">Create Folder</button>
+                <button onClick={() => fileInputRef.current?.click()} className="px-5 py-3 rounded-xl bg-primary-500 text-white font-bold">Upload First File</button>
+                <button onClick={() => setIsResourceModalOpen(true)} className="px-5 py-3 rounded-xl bg-emerald-500 text-white font-bold">Link First Asset</button>
+              </>
+            )}
+          />
         )}
       </div>
       </section>

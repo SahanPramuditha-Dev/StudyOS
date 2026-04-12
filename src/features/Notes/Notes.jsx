@@ -25,6 +25,8 @@ import NoteEditor from './components/NoteEditor';
 import NotePreview from './components/NotePreview';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
+import PageHeader from '../../components/PageHeader';
+import EmptyState from '../../components/EmptyState';
 
 const Notes = () => {
   // 1. State Management
@@ -222,8 +224,25 @@ const Notes = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 h-[calc(100vh-12rem)]">
-      <div className="flex gap-8 h-full relative">
+    <div className="max-w-7xl mx-auto pb-12">
+      <div className="flex flex-col gap-8">
+        <PageHeader
+          title="Knowledge Library"
+          description="Capture ideas, document code, and build your personal study wiki."
+          icon={<FileText size={28} />}
+          iconClassName="bg-primary-500 text-white shadow-xl shadow-primary-500/20"
+          action={(
+            <button
+              onClick={handleCreateNote}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-black shadow-xl shadow-primary-500/20 transition-all active:scale-95"
+            >
+              <Edit3 size={18} />
+              New Note
+            </button>
+          )}
+        />
+
+        <div className="flex gap-8 min-h-[calc(100vh-20rem)] relative">
         {/* Notes List Sidebar */}
         <motion.div 
           className={`
@@ -414,24 +433,25 @@ const Notes = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex-1 flex flex-col items-center justify-center text-slate-300 space-y-6 p-12 text-center"
+              className="flex-1 flex flex-col items-center justify-center p-12"
             >
-              <div className="w-32 h-32 rounded-[2.5rem] bg-slate-50 dark:bg-slate-900 flex items-center justify-center border border-slate-100 dark:border-slate-800 shadow-inner">
-                <FileText size={48} className="text-slate-200 dark:text-slate-800" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-black text-slate-800 dark:text-white">Knowledge Hub</h3>
-                <p className="text-slate-400 max-w-sm">Capture insights, document code, and build your personal study wiki with Markdown support.</p>
-              </div>
-              <button 
-                onClick={handleCreateNote}
-                className="px-8 py-3.5 rounded-2xl bg-primary-500 text-white font-black hover:bg-primary-600 transition-all shadow-xl shadow-primary-500/20 active:scale-95"
-              >
-                Start New Note
-              </button>
+              <EmptyState
+                icon={<FileText size={48} className="text-slate-200 dark:text-slate-800" />}
+                title="Knowledge Hub"
+                description="Capture insights, document code, and build your personal study wiki with Markdown support."
+                actions={(
+                  <button 
+                    onClick={handleCreateNote}
+                    className="px-8 py-3.5 rounded-2xl bg-primary-500 text-white font-black hover:bg-primary-600 transition-all shadow-xl shadow-primary-500/20 active:scale-95"
+                  >
+                    Start New Note
+                  </button>
+                )}
+              />
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
 
       <ConfirmModal 

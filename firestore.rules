@@ -69,13 +69,53 @@ service cloud.firestore {
     function isChatRoomMember(roomId) {
       return isAuthenticated() &&
         ownProfileExists() &&
-        isActive() &&
-        isVerified() &&
         chatRoomExists(roomId) &&
         (
           get(chatRoomPath(roomId)).data.get('createdByUid', '') == request.auth.uid ||
           get(chatRoomPath(roomId)).data.get('memberEmails', []).hasAny([request.auth.token.email])
         );
+    }
+
+    function isChatRoomAdmin(roomId) {
+      return isAuthenticated() &&
+        ownProfileExists() &&
+        chatRoomExists(roomId) &&
+        (
+          get(chatRoomPath(roomId)).data.get('createdByUid', '') == request.auth.uid ||
+          get(chatRoomPath(roomId)).data.get('createdByEmail', '') == request.auth.token.email ||
+          get(chatRoomPath(roomId)).data.get('roomAdminEmails', []).hasAny([request.auth.token.email])
+        );
+    }
+
+    function isChatRoomSafeMetadataUpdate(roomId) {
+      return isChatRoomMember(roomId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage',
+          'lastMessageAt',
+          'lastMessageSenderEmail',
+          'lastMessageSenderUid',
+          'lastReadAtByEmail',
+          'updatedAt'
+        ]);
+    }
+
+    function isChatRoomInviteJoin(roomId) {
+      return isAuthenticated() &&
+        ownProfileExists() &&
+        chatRoomExists(roomId) &&
+        get(chatRoomPath(roomId)).data.get('roomType', 'group') == 'group' &&
+        get(chatRoomPath(roomId)).data.get('inviteCode', '') is string &&
+        get(chatRoomPath(roomId)).data.get('inviteCode', '') != '' &&
+        request.resource.data.inviteCode == get(chatRoomPath(roomId)).data.get('inviteCode', '') &&
+        request.resource.data.memberEmails is list &&
+        request.resource.data.memberEmails.hasAny([request.auth.token.email]) &&
+        request.resource.data.memberEmails.hasAll(get(chatRoomPath(roomId)).data.get('memberEmails', [])) &&
+        request.resource.data.memberEmails.size() == get(chatRoomPath(roomId)).data.get('memberEmails', []).size() + 1 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'memberEmails',
+          'lastReadAtByEmail',
+          'updatedAt'
+        ]);
     }
 
     function isReactionOnlyMessageUpdate() {
@@ -137,6 +177,8 @@ service cloud.firestore {
         'degree',
         'year',
         'phone',
+        'lastActiveAt',
+        'presence',
         'lastLogin',
         'updatedAt'
       ]);
@@ -169,31 +211,31 @@ service cloud.firestore {
       allow read: if isChatRoomMember(roomId) || isAdmin();
       allow create: if isAuthenticated() &&
         ownProfileExists() &&
-        isActive() &&
-        isVerified() &&
         request.resource.data.createdByUid == request.auth.uid &&
         request.resource.data.createdByEmail == request.auth.token.email &&
         request.resource.data.memberEmails is list &&
         request.resource.data.memberEmails.hasAny([request.auth.token.email]) &&
+        request.resource.data.roomAdminEmails is list &&
+        request.resource.data.roomAdminEmails.hasAny([request.auth.token.email]) &&
         request.resource.data.title is string;
-      allow update: if isChatRoomMember(roomId) || isAdmin();
+      allow update: if isChatRoomSafeMetadataUpdate(roomId) || isChatRoomInviteJoin(roomId) || isChatRoomAdmin(roomId) || isAdmin();
       allow delete: if isChatRoomMember(roomId) || isAdmin();
 
       match /messages/{messageId} {
         allow read: if isChatRoomMember(roomId) || isAdmin();
-        allow create: if isChatRoomMember(roomId) &&
+        allow create: if (isChatRoomMember(roomId) || isAdmin()) &&
           request.resource.data.senderUid == request.auth.uid &&
           request.resource.data.senderEmail == request.auth.token.email &&
           request.resource.data.text is string;
         allow update: if (
-          isChatRoomMember(roomId) &&
+          (isChatRoomMember(roomId) || isAdmin()) &&
           (
             resource.data.senderUid == request.auth.uid ||
             isReactionOnlyMessageUpdate()
           )
         ) || isAdmin();
         allow delete: if (
-          isChatRoomMember(roomId) &&
+          (isChatRoomMember(roomId) || isAdmin()) &&
           resource.data.senderUid == request.auth.uid
         ) || isAdmin();
       }
