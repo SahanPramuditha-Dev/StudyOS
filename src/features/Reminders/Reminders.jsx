@@ -349,13 +349,25 @@ const Reminders = () => {
             Unified events, reminders and deadlines
           </p>
         </div>
-        <button
-          onClick={() => openNewEvent()}
-          className="flex items-center gap-3 px-8 py-3.5 rounded-[2rem] bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-xl shadow-primary-500/30 active:scale-95"
-        >
-          <Plus size={22} />
-          New Event
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => {
+              stopAlarmSound();
+              toast.success('All sounds stopped');
+            }}
+            className="flex items-center gap-3 px-6 py-3.5 rounded-[2rem] bg-red-500 hover:bg-red-600 text-white font-black transition-all shadow-xl shadow-red-500/30 active:scale-95"
+          >
+            <Bell size={20} />
+            Stop Sounds
+          </button>
+          <button
+            onClick={() => openNewEvent()}
+            className="flex items-center gap-3 px-8 py-3.5 rounded-[2rem] bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-xl shadow-primary-500/30 active:scale-95"
+          >
+            <Plus size={22} />
+            New Event
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

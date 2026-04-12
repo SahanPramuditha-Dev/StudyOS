@@ -223,7 +223,39 @@ export const ReminderProvider = ({ children }) => {
     if (notif?.type === 'streak' && prefs.streaks === false) return;
     if (notif?.type === 'reminder' && prefs.reminders === false) return;
 
-    setNotifications(prev => [{ id: nanoid(), ...notif, time: 'Just now', timestamp: new Date().toISOString(), read: false }, ...prev]);
+    setNotifications(prev => {
+      const duplicate = prev.find((existing) => {
+        if (existing.type !== notif.type) return false;
+        if (notif.reminderId && existing.reminderId !== notif.reminderId) return false;
+        if (existing.title !== notif.title) return false;
+        if (existing.message !== notif.message) return false;
+        if (existing.route !== notif.route) return false;
+
+        // If unread, always consider it a duplicate
+        if (existing.read === false) {
+          return true;
+        }
+
+        // If read, check timestamp freshness
+        if (existing.timestamp) {
+          const existingDate = new Date(existing.timestamp);
+          const ageMs = Math.abs(Date.now() - existingDate.getTime());
+          // Duplicate if less than 90 seconds old
+          if (ageMs < 90000) return true;
+          // Duplicate if same date
+          const todayKey = formatDateKey(new Date());
+          return formatDateKey(existingDate) === todayKey;
+        }
+
+        return true;
+      });
+
+      if (duplicate) {
+        console.log(`[ReminderContext] Duplicate blocked for: ${notif.title}`);
+        return prev;
+      }
+      return [{ id: nanoid(), ...notif, time: 'Just now', timestamp: new Date().toISOString(), read: false }, ...prev];
+    });
   }, [setNotifications, notificationSettings]);
 
   const markNotificationAsPresented = useCallback((id, updates = {}) => {
@@ -317,9 +349,28 @@ export const ReminderProvider = ({ children }) => {
     toast.success('Unmuted this reminder');
   }, [reminders, setReminders, setNotifications]);
 
-  // Keep a ref of the latest reminders to avoid effect loops and stale closures
+  // Keep a ref of the latest reminders and notifications to avoid effect loops and stale closures
   const remindersRef = useRef(reminders);
+  const notificationsRef = useRef(notifications);
+  const triggeredReminderKeysRef = useRef(new Set());
+  const deadlineNotifiedRef = useRef(new Set());
+  const lastRefreshDayRef = useRef(formatDateKey(new Date()));
   useEffect(() => { remindersRef.current = reminders; }, [reminders]);
+  useEffect(() => { notificationsRef.current = notifications; }, [notifications]);
+  
+  // Clear session refs at midnight to prevent all-day carryover
+  useEffect(() => {
+    const checkMidnight = setInterval(() => {
+      const today = formatDateKey(new Date());
+      if (today !== lastRefreshDayRef.current) {
+        lastRefreshDayRef.current = today;
+        triggeredReminderKeysRef.current.clear();
+        deadlineNotifiedRef.current.clear();
+        console.log('[ReminderContext] Session refs cleared at day boundary');
+      }
+    }, 60000);
+    return () => clearInterval(checkMidnight);
+  }, []);
 
   // 4. Background Reminder Engine (loop-safe)
   useEffect(() => {
@@ -344,11 +395,15 @@ export const ReminderProvider = ({ children }) => {
         const triggerAt = getTriggerDateTime(r);
         if (!triggerAt) return false;
 
+        const diff = now.getTime() - triggerAt.getTime();
+        const withinWindow = diff >= 0 && diff < 60000;
         const triggerKey = `${formatDateKey(triggerAt)} ${formatTimeKey(triggerAt)}`;
-        const isEligible = r.enabled && !r.completed;
+        const recentlyTriggered = r.lastReminderAt && (now.getTime() - new Date(r.lastReminderAt).getTime()) < 60000;
         const notYetTriggered = !r.lastTriggered?.includes(triggerKey);
+        const sessionKey = `${r.id}|${triggerKey}`;
+        const alreadyTriggeredThisSession = triggeredReminderKeysRef.current.has(sessionKey);
 
-        return triggerKey === currentKey && isEligible && notYetTriggered;
+        return withinWindow && r.enabled && !r.completed && notYetTriggered && !recentlyTriggered && !alreadyTriggeredThisSession;
       });
 
       if (triggeredReminders.length > 0) {
@@ -360,9 +415,74 @@ export const ReminderProvider = ({ children }) => {
         const allowsEmail = allowsInApp && !isMuted && reminderChannels.email !== false && prefs.emailNotifications?.reminders !== false;
         console.log(`[ReminderContext] TRIGERRED: ${triggeredReminders.length} reminders at ${currentDateStr} ${currentTimeStr}`);
         
+        // 4. Update Reminder State in one pass (triggered + missed) before side effects.
+        let changed = false;
+        const nextReminders = snapshot.map(r => {
+          const tr = triggeredReminders.find(tr => tr.id === r.id);
+          let updated = r;
+
+          if (tr) {
+            const triggerAt = getTriggerDateTime(r);
+            const triggerKey = triggerAt ? `${formatDateKey(triggerAt)} ${formatTimeKey(triggerAt)}` : currentKey;
+            const eventAt = toReminderDateTime(r.date, r.time) || now;
+            let nextDate = r.date;
+            let enabled = r.enabled;
+            let missed = false;
+            let missedCount = r.missedCount || 0;
+
+            if (['Daily', 'Weekly', 'Monthly', 'Custom'].includes(r.recurring)) {
+              const nextEventDate = getNextRecurringDate(eventAt, r.recurring, r.recurringIntervalDays);
+              nextDate = formatDateKey(nextEventDate);
+              enabled = true;
+              missed = false;
+            } else {
+              enabled = false;
+            }
+
+            if (!r.completed && eventAt < now && !r.missed) {
+              missed = true;
+              missedCount += 1;
+            }
+
+            updated = {
+              ...r,
+              lastTriggered: triggerAt ? [...(r.lastTriggered || []), triggerKey] : [...(r.lastTriggered || [])],
+              date: nextDate,
+              enabled,
+              missed,
+              missedCount,
+              lastReminderAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+          }
+
+          // Missed marking for non-triggered, one-time reminders
+          if (updated === r) {
+            const eventAt = toReminderDateTime(r.date, r.time);
+            if (eventAt && !r.completed && !r.missed && (r.recurring || 'None') === 'None' && eventAt < now) {
+              updated = { ...r, missed: true, missedCount: (r.missedCount || 0) + 1, updatedAt: new Date().toISOString() };
+            }
+          }
+
+          if (updated !== r) changed = true;
+          return updated;
+        });
+
+        if (changed) {
+          setReminders(nextReminders);
+        }
+
+        triggeredReminders.forEach((r) => {
+          const triggerAt = getTriggerDateTime(r);
+          const triggerKey = triggerAt ? `${formatDateKey(triggerAt)} ${formatTimeKey(triggerAt)}` : null;
+          if (triggerKey) {
+            triggeredReminderKeysRef.current.add(`${r.id}|${triggerKey}`);
+          }
+        });
+
         triggeredReminders.forEach(async (r) => {
           try {
-            // 1. Dispatch In-App Notification
+            // 1. Dispatch In-App Notification after state update.
             if (allowsInApp) {
               addNotification({
                 title: 'Event Reminder: ' + (r.category || 'Reminder'),
@@ -389,72 +509,63 @@ export const ReminderProvider = ({ children }) => {
               });
             }
 
-            // 3. Dispatch Email Alert - DISABLED to prevent duplicates (use server only)\n            // if (allowsEmail && r.sendEmail && user?.email) {\n            //   console.log(`[ReminderContext] Email trigger for: ${r.id}`);\n            //   const emailResult = await EmailService.sendReminderEmail(user.email, r);\n            //   if (emailResult.success) {\n            //     toast.success(`Email alert dispatched for ${r.message}`, { duration: 5000 });\n            //   } else {\n            //     if (emailResult.error.includes('environment variables')) {\n            //       toast.error('Email service not configured. Please check your .env file.', { duration: 6000 });\n            //     } else {\n            //       console.error(`[ReminderContext] Email failed for ${r.id}:`, emailResult.error);\n            //       toast.error('Email alert failed to send');\n            //     }\n            //   }\n            // }\n\n            // Sound guard: Skip if already playing or recent\n            if (r.soundMode !== 'mute' && getIsPlaying()) {\n              console.log(`[ReminderContext] Skipping sound for ${r.id} - already playing`);\n            }
+            // 3. Dispatch Email Alert - DISABLED to prevent duplicates (use server only)
+            // if (allowsEmail && r.sendEmail && user?.email) {
+            //   console.log(`[ReminderContext] Email trigger for: ${r.id}`);
+            //   const emailResult = await EmailService.sendReminderEmail(user.email, r);
+            //   if (emailResult.success) {
+            //     toast.success(`Email alert dispatched for ${r.message}`, { duration: 5000 });
+            //   } else {
+            //     if (emailResult.error.includes('environment variables')) {
+            //       toast.error('Email service not configured. Please check your .env file.', { duration: 6000 });
+            //     } else {
+            //       console.error(`[ReminderContext] Email failed for ${r.id}:`, emailResult.error);
+            //       toast.error('Email alert failed to send');
+            //     }
+            //   }
+            // }
+
+            // Sound guard: Skip if already playing or recent
+            if (r.soundMode !== 'mute' && getIsPlaying()) {
+              console.log(`[ReminderContext] Skipping sound for ${r.id} - already playing`);
+            }
           } catch (err) {
             console.error(`[ReminderContext] Failed to process alert ${r.id}:`, err);
           }
         });
-
-        // 4. Update Reminder State in one pass (triggered + missed)
-        let changed = false;
-        const nextReminders = snapshot.map(r => {
-          const tr = triggeredReminders.find(tr => tr.id === r.id);
-          let updated = r;
-
-          if (tr) {
-            const triggerAt = getTriggerDateTime(r);
-            const triggerKey = triggerAt ? `${formatDateKey(triggerAt)} ${formatTimeKey(triggerAt)}` : currentKey;
-            const lastTriggered = [...(r.lastTriggered || []), triggerKey];
-            const eventAt = toReminderDateTime(r.date, r.time) || now;
-            let nextDate = r.date;
-            let enabled = r.enabled;
-            let missed = false;
-            let missedCount = r.missedCount || 0;
-
-            if (['Daily', 'Weekly', 'Monthly', 'Custom'].includes(r.recurring)) {
-              const nextEventDate = getNextRecurringDate(eventAt, r.recurring, r.recurringIntervalDays);
-              nextDate = formatDateKey(nextEventDate);
-              enabled = true;
-              missed = false;
-            } else {
-              enabled = false;
-            }
-
-            if (!r.completed && eventAt < now && !r.missed) {
-              missed = true;
-              missedCount += 1;
-            }
-
-            updated = { ...r, lastTriggered, date: nextDate, enabled, missed, missedCount, lastReminderAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-          }
-
-          // Missed marking for non-triggered, one-time reminders
-          if (updated === r) {
-            const eventAt = toReminderDateTime(r.date, r.time);
-            if (eventAt && !r.completed && !r.missed && (r.recurring || 'None') === 'None' && eventAt < now) {
-              updated = { ...r, missed: true, missedCount: (r.missedCount || 0) + 1, updatedAt: new Date().toISOString() };
-            }
-          }
-
-          if (updated !== r) changed = true;
-          return updated;
-        });
-
-        if (changed) {
-          setReminders(nextReminders);
-        }
       }
 
       const upcomingDeadlines = snapshot.map(normalizeReminder).filter((r) => {
         if (!r.enabled || r.completed) return false;
+        if (deadlineNotifiedRef.current.has(r.id)) return false;
+        if (r.deadlineNotifiedAt === todayKey) return false;
         const eventAt = toReminderDateTime(r.date, r.time);
         if (!eventAt) return false;
         const diffMs = eventAt.getTime() - now.getTime();
         const within24h = diffMs > 0 && diffMs <= 24 * 60 * 60 * 1000;
-        return within24h && r.deadlineNotifiedAt !== todayKey;
+        return within24h;
       });
       if (upcomingDeadlines.length > 0) {
+        const existingNotifications = notificationsRef.current || [];
+        const upcomingDeadlineIds = new Set(upcomingDeadlines.map((r) => r.id));
+
+        // Persist the deadline-notified marker before firing notifications.
+        setReminders((prev) => prev.map((r) => (
+          upcomingDeadlineIds.has(r.id) ? { ...r, deadlineNotifiedAt: todayKey, updatedAt: new Date().toISOString() } : r
+        )));
+
         upcomingDeadlines.forEach((r) => {
+          const existingDeadlineNotification = existingNotifications.some((n) =>
+            n.type === 'deadline' &&
+            n.reminderId === r.id &&
+            n.read === false
+          );
+          if (existingDeadlineNotification) {
+            console.log(`[ReminderContext] Deadline notification already exists for ${r.id}`);
+            return;
+          }
+
+          deadlineNotifiedRef.current.add(r.id);
           addNotification({
             title: 'Upcoming Deadline',
             message: `${r.title || r.message || 'Reminder'} is due within 24h`,
@@ -463,9 +574,6 @@ export const ReminderProvider = ({ children }) => {
             route: '/reminders'
           });
         });
-        setReminders((prev) => prev.map((r) => (
-          upcomingDeadlines.some((x) => x.id === r.id) ? { ...r, deadlineNotifiedAt: todayKey } : r
-        )));
       }
     };
 
