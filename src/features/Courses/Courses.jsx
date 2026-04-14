@@ -4,7 +4,8 @@ import {
   ExternalLink,
   BookOpen,
   FolderOpen,
-  FileText
+  FileText,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
@@ -29,13 +30,14 @@ const Courses = () => {
   const [courses, setCourses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [resources] = useStorage(STORAGE_KEYS.RESOURCES, []);
   const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
+  const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const { addNotification } = useReminders();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCourseForResources, setSelectedCourseForResources] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
-  const [sortBy, setSortBy] = useState('title'); // 'title' | 'progress' | 'platform'
+  const [sortBy, setSortBy] = useState('updated'); // 'updated' | 'title' | 'progress' | 'platform'
   const [editingCourse, setEditingCourse] = useState(null);
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '', title: '' });
 
@@ -45,6 +47,61 @@ const Courses = () => {
   const [selectedCourseDetail, setSelectedCourseDetail] = useState(null);
   const [detailTab, setDetailTab] = useState('overview'); // overview | assignments | resources
   const [showArchived, setShowArchived] = useState(false);
+
+  // Session Timer State & Logic
+  const [studyTimer, setStudyTimer] = useState({ isRunning: false, seconds: 0, startTime: null, course: null });
+
+  React.useEffect(() => {
+    let interval;
+    if (studyTimer.isRunning) {
+      interval = setInterval(() => {
+        setStudyTimer(prev => ({ ...prev, seconds: Math.floor((Date.now() - prev.startTime) / 1000) }));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [studyTimer.isRunning]);
+
+  const formatTimer = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
+
+  const toggleStudySession = (courseToStart = null) => {
+    if (studyTimer.isRunning) {
+      const elapsed = studyTimer.seconds;
+      const courseToUpdate = studyTimer.course;
+      
+      if (elapsed > 60 && courseToUpdate) {
+        const currentSeconds = timeToSeconds(courseToUpdate.timeTracking?.current || '00:00:00');
+        const newCurrent = formatTimer(currentSeconds + elapsed);
+        
+        const updatedCourse = { 
+          ...courseToUpdate, 
+          timeTracking: { ...courseToUpdate.timeTracking, current: newCurrent },
+          updatedAt: new Date().toISOString()
+        };
+
+        if (updatedCourse.trackingType === 'time') {
+          const totalSec = timeToSeconds(updatedCourse.timeTracking.total);
+          updatedCourse.progress = totalSec > 0 ? Math.min(100, Math.round(((currentSeconds + elapsed) / totalSec) * 100)) : 0;
+        }
+
+        setCourses(prev => prev.map(c => c.id === updatedCourse.id ? updatedCourse : c));
+        if (selectedCourseDetail?.id === updatedCourse.id) {
+          setSelectedCourseDetail(updatedCourse);
+        }
+        toast.success(`Added ${Math.round(elapsed / 60)} minutes to ${updatedCourse.title}!`);
+      } else if (elapsed <= 60) {
+        toast.success("Session ended (under 1 min, not saved).");
+      }
+      setStudyTimer({ isRunning: false, seconds: 0, startTime: null, course: null });
+    } else if (courseToStart) {
+      setStudyTimer({ isRunning: true, seconds: 0, startTime: Date.now(), course: courseToStart });
+      toast.success(`Study session started for ${courseToStart.title}. Focus up!`);
+    }
+  };
 
   const [formData, setFormData] = useState({
     title: '',
@@ -82,6 +139,7 @@ const Courses = () => {
       if (sortBy === 'title') return a.title.localeCompare(b.title);
       if (sortBy === 'progress') return b.progress - a.progress;
       if (sortBy === 'platform') return a.platform.localeCompare(b.platform);
+      if (sortBy === 'updated') return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
       return 0;
     });
   }, [courses, searchTerm, filterStatus, sortBy, showArchived]);
@@ -362,19 +420,33 @@ const Courses = () => {
       />
 
       {/* Filter and Actions */}
-      <CourseFilter 
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        filterStatus={filterStatus}
-        setFilterStatus={setFilterStatus}
-        sortBy={sortBy}
-        setSortBy={setSortBy}
-        onReset={handleResetData}
-        onAdd={() => setIsModalOpen(true)}
-        courseCount={filteredAndSortedCourses.length}
-        showArchived={showArchived}
-        setShowArchived={setShowArchived}
-      />
+      <div className="flex flex-col gap-3 mb-6">
+        <CourseFilter 
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          filterStatus={filterStatus}
+          setFilterStatus={setFilterStatus}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          onReset={handleResetData}
+          onAdd={() => setIsModalOpen(true)}
+          courseCount={filteredAndSortedCourses.length}
+          showArchived={showArchived}
+          setShowArchived={setShowArchived}
+        />
+        <div className="flex justify-end">
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-4 py-2 rounded-xl text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-primary-500/20 shadow-sm"
+          >
+            <option value="updated">Sort: Recently Updated</option>
+            <option value="title">Sort: Alphabetical (A-Z)</option>
+            <option value="progress">Sort: Highest Progress</option>
+            <option value="platform">Sort: By Platform</option>
+          </select>
+        </div>
+      </div>
 
       {selectedCourseIds.length > 0 && (
         <BulkActionBar selectedCount={selectedCourseIds.length} onSelectVisible={toggleSelectAllVisible} onClear={clearSelection} className="mb-6">
@@ -545,7 +617,8 @@ const Courses = () => {
                 {[
                   ['overview', 'Overview'],
                   ['assignments', 'Assignments'],
-                  ['resources', 'Resources']
+                  ['resources', 'Resources'],
+                  ['notes', 'Notes']
                 ].map(([id, label]) => (
                   <button
                     key={id}
@@ -558,6 +631,26 @@ const Courses = () => {
                   </button>
                 ))}
                 <div className="ml-auto flex gap-2">
+                  {studyTimer.isRunning && studyTimer.course?.id === selectedCourseDetail.id && (
+                    <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-black tracking-widest text-xs">
+                      <Clock size={14} className="animate-pulse" />
+                      {formatTimer(studyTimer.seconds)}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (studyTimer.isRunning && studyTimer.course?.id !== selectedCourseDetail.id) {
+                        toast.error(`A session is already running for ${studyTimer.course.title}`);
+                        return;
+                      }
+                      toggleStudySession(selectedCourseDetail);
+                    }}
+                    className={`px-3 py-2 rounded-xl text-white text-xs font-black uppercase tracking-widest transition ${
+                      studyTimer.isRunning && studyTimer.course?.id === selectedCourseDetail.id ? 'bg-rose-500 hover:bg-rose-600' : 'bg-primary-500 hover:bg-primary-600'
+                    }`}
+                  >
+                    {studyTimer.isRunning && studyTimer.course?.id === selectedCourseDetail.id ? 'End Session' : 'Start Session'}
+                  </button>
                   <button
                     onClick={() => {
                       const next = { ...selectedCourseDetail, status: 'Completed' };
@@ -659,6 +752,26 @@ const Courses = () => {
                     )}
                   </div>
                 )}
+
+                {detailTab === 'notes' && (
+                  <div className="space-y-2">
+                    {notes.filter((n) => n.courseId === selectedCourseDetail.id || n.subject === selectedCourseDetail.title).length === 0 ? (
+                      <div className="py-16 text-center text-slate-400 font-bold">No notes linked to this course yet.</div>
+                    ) : (
+                      notes
+                        .filter((n) => n.courseId === selectedCourseDetail.id || n.subject === selectedCourseDetail.title)
+                        .map((n) => (
+                          <div
+                            key={n.id}
+                            className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+                          >
+                            <p className="font-black text-slate-800 dark:text-white">{n.title}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{n.content?.replace(/<[^>]*>?/gm, '') || 'Empty note'}</p>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -672,6 +785,37 @@ const Courses = () => {
         message={confirmConfig.message}
         title={confirmConfig.title}
       />
+
+      {/* Floating Active Study Session */}
+      <AnimatePresence>
+        {studyTimer.isRunning && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-[100] bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-4 rounded-[2rem] shadow-2xl flex items-center gap-6 border border-slate-700 dark:border-slate-200"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center animate-pulse">
+                <Clock size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Active Session</p>
+                <p className="text-sm font-bold truncate max-w-[150px]">{studyTimer.course?.title}</p>
+              </div>
+            </div>
+            <div className="text-2xl font-black tabular-nums tracking-tight">
+              {formatTimer(studyTimer.seconds)}
+            </div>
+            <button
+              onClick={() => toggleStudySession()}
+              className="px-4 py-2 rounded-xl bg-rose-500 text-white text-xs font-black uppercase tracking-widest hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20"
+            >
+              End
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
