@@ -15,6 +15,7 @@ import Resources from './features/Resources/Resources';
 import Projects from './features/Projects/Projects';
 import Assignments from './features/Assignments/Assignments';
 import Workspace from './features/Workspace/Workspace';
+import Tasks from './Tasks';
 import Analytics from './features/Analytics/Analytics';
 import Goals from './features/Goals/Goals';
 import WeeklyPlanner from './features/Planner/WeeklyPlanner';
@@ -325,10 +326,11 @@ const App = () => {
     if (n.route) return n.route;
     if (n.tab) return `/${n.tab}`;
     if (n.reminderId) return '/reminders';
+    if (n.type === 'task') return '/tasks';
     if (n.type === 'course') return '/courses';
     if (n.type === 'video') return '/videos';
     if (n.type === 'note') return '/notes';
-    if (n.type === 'project' || n.type === 'task') return '/projects';
+    if (n.type === 'project') return '/projects';
     return '/dashboard';
   };
 
@@ -416,6 +418,7 @@ const App = () => {
         <Route path="/projects" element={hasPermission('projects') ? <Projects onSelectProject={handleSelectProject} /> : <RestrictedModule name="Projects" />} />
         <Route path="/assignments" element={hasPermission('assignments') ? <Assignments /> : <RestrictedModule name="Assignments" />} />
         <Route path="/workspace" element={hasPermission('workspace') ? <Workspace activeProjectIdOverride={activeProjectId} setActiveTab={setActiveTab} /> : <RestrictedModule name="Workspace" />} />
+        <Route path="/tasks" element={<Tasks />} />
         <Route path="/analytics" element={hasPermission('analytics') ? <Analytics /> : <RestrictedModule name="Analytics" />} />
         <Route path="/goals" element={<Goals />} />
         <Route path="/planner" element={<WeeklyPlanner />} />

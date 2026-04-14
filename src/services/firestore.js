@@ -684,11 +684,13 @@ class FirestoreService {
 
     const q = query(
       FirestoreService.chatMessagesCollection(roomId),
-      orderBy('createdAt', 'asc')
+      orderBy('createdAt', 'desc'),
+      limit(50)
     );
 
     return onSnapshot(q, (snapshot) => {
-      callback(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const messages = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+      callback(messages);
     });
   }
 

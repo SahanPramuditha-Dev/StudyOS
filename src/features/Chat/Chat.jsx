@@ -170,6 +170,7 @@ const Chat = () => {
   const [inviteLinkState, setInviteLinkState] = useState({ loading: false, value: '', copied: false });
   const [memberActionPending, setMemberActionPending] = useState('');
   const [joiningInviteLink, setJoiningInviteLink] = useState(false);
+  const profileCacheRef = useRef(new Map());
 
   const messageEndRef = useRef(null);
   const attachmentInputRef = useRef(null);
@@ -469,13 +470,24 @@ const Chat = () => {
       return undefined;
     }
 
-    FirestoreService.getUsersByEmails(activeRoomMemberEmails)
-      .then((members) => {
-        if (!cancelled) setRoomMemberProfiles(members);
+    const missingEmails = activeRoomMemberEmails.filter(e => !profileCacheRef.current.has(e));
+
+    if (missingEmails.length === 0) {
+      setRoomMemberProfiles(activeRoomMemberEmails.map(e => profileCacheRef.current.get(e)));
+      return undefined;
+    }
+
+    FirestoreService.getUsersByEmails(missingEmails)
+      .then((fetchedMembers) => {
+        if (cancelled) return;
+        fetchedMembers.forEach(m => {
+          if (m.email) profileCacheRef.current.set(FirestoreService.normalizeChatEmail(m.email), m);
+        });
+        const combined = activeRoomMemberEmails.map(e => profileCacheRef.current.get(e)).filter(Boolean);
+        setRoomMemberProfiles(combined);
       })
       .catch((error) => {
         console.warn('[Chat] Failed to load room member profiles:', error);
-        if (!cancelled) setRoomMemberProfiles([]);
       });
 
     return () => {
@@ -526,12 +538,27 @@ const Chat = () => {
   }, [activeRoomId]);
 
   useEffect(() => {
-    const statusRef = ref(rtdb, 'status');
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-      setPresenceByUid(snapshot.val() || {});
+    if (!activeRoomMemberProfiles || activeRoomMemberProfiles.length === 0) {
+      return undefined;
+    }
+
+    const unsubscribes = [];
+
+    activeRoomMemberProfiles.forEach((member) => {
+      const key = member.id || member.uid;
+      if (!key) return;
+
+      const memberStatusRef = ref(rtdb, `status/${key}`);
+      const unsub = onValue(memberStatusRef, (snapshot) => {
+        setPresenceByUid((prev) => ({ ...prev, [key]: snapshot.val() || null }));
+      });
+      unsubscribes.push(unsub);
     });
-    return () => unsubscribe?.();
-  }, []);
+
+    return () => {
+      unsubscribes.forEach((unsub) => unsub());
+    };
+  }, [activeRoomMemberProfiles]);
 
   useEffect(() => {
     const joinParam = new URLSearchParams(window.location.search).get('join');

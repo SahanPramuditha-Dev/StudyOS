@@ -17,7 +17,6 @@ import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const Dashboard = ({ setActiveTab }) => {
   const navigate = useNavigate();
@@ -36,22 +35,6 @@ const Dashboard = ({ setActiveTab }) => {
 
   // State for the Learning Activity chart filter
   const [activityTimeframe, setActivityTimeframe] = useState('7');
-
-  // Render learning data based on timeframe
-  const chartData = useMemo(() => {
-    const days = parseInt(activityTimeframe, 10) || 7;
-    const data = [];
-    const now = new Date();
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      data.push({
-        name: days === 7 ? d.toLocaleDateString('en-US', { weekday: 'short' }) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        hours: Math.max(0.5, Number((Math.random() * 4 + 1).toFixed(1))) // Simulated learning data
-      });
-    }
-    return data;
-  }, [activityTimeframe]);
 
   const stats = useMemo(() => {
     const activeCourses = courses.filter(c => c.status === 'Active').length;
@@ -77,54 +60,54 @@ const Dashboard = ({ setActiveTab }) => {
   const recentActivities = useMemo(() => {
     const activities = [];
     
-    // Get latest courses
-    courses.slice(-2).forEach(c => activities.push({
+    courses.forEach(c => activities.push({
       title: `Added Course: ${c.title}`,
       time: 'Recently',
       icon: BookOpen,
-      color: 'bg-blue-500',
+      color: 'text-blue-500',
+      bg: 'bg-blue-50 dark:bg-blue-500/10',
       createdAt: c.createdAt || ''
     }));
 
-    // Get latest notes
-    notes.slice(-2).forEach(n => activities.push({
+    notes.forEach(n => activities.push({
       title: `Created Note: ${n.title}`,
       time: 'Recently',
       icon: FileText,
-      color: 'bg-purple-500',
+      color: 'text-purple-500',
+      bg: 'bg-purple-50 dark:bg-purple-500/10',
       createdAt: n.createdAt || ''
     }));
 
-    // Get latest videos
-    videos.slice(-2).forEach(v => activities.push({
+    videos.forEach(v => activities.push({
       title: `Watched: ${v.title}`,
       time: v.progress === 100 ? 'Completed' : `${v.progress}% watched`,
       icon: Clock,
-      color: 'bg-teal-500',
+      color: 'text-teal-500',
+      bg: 'bg-teal-50 dark:bg-teal-500/10',
       createdAt: v.lastWatched || v.addedAt || ''
     }));
 
-    // Get latest projects
-    projects.slice(-2).forEach(p => activities.push({
+    projects.forEach(p => activities.push({
       title: `New Project: ${p.name}`,
       time: p.status,
       icon: KanbanIcon,
-      color: 'bg-slate-700',
+      color: 'text-slate-700',
+      bg: 'bg-slate-100 dark:bg-slate-800',
       createdAt: p.createdAt || ''
     }));
 
-    // Get latest assignments
-    assignments.slice(-2).forEach(a => activities.push({
+    assignments.forEach(a => activities.push({
       title: `New Assignment: ${a.title}`,
       time: a.status,
       icon: FileText,
-      color: 'bg-amber-500',
+      color: 'text-amber-500',
+      bg: 'bg-amber-50 dark:bg-amber-500/10',
       createdAt: a.createdAt || ''
     }));
 
     return activities
-      .sort((left, right) => (right.createdAt || '').localeCompare(left.createdAt || ''))
-      .slice(0, 4);
+      .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0))
+      .slice(0, 5);
   }, [courses, notes, videos, projects, assignments]);
 
   const todayFocus = useMemo(() => {
@@ -228,24 +211,12 @@ const Dashboard = ({ setActiveTab }) => {
                 <option value="30">Last 30 days</option>
               </select>
             </div>
-            <div className="h-72 w-full mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
-                  <Tooltip 
-                    cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }}
-                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'transparent' }}
-                    wrapperClassName="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700"
-                    formatter={(value) => [`${value} hours`, 'Studied']}
-                  />
-                  <Bar dataKey="hours" radius={[6, 6, 6, 6]}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} className="fill-primary-500 dark:fill-primary-400 hover:fill-primary-600 transition-all" />
-                    ))}
-                  </Bar>
-                </RechartsBarChart>
-              </ResponsiveContainer>
+            <div className="h-72 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+              <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                <BarChart className="text-slate-300 dark:text-slate-600" size={32} />
+              </div>
+              <p className="text-slate-400 dark:text-slate-500 font-medium">Visualization Coming Soon</p>
+              <p className="text-slate-300 dark:text-slate-600 text-sm">Add more data to see your trends</p>
             </div>
           </div>
 
@@ -257,8 +228,10 @@ const Dashboard = ({ setActiveTab }) => {
               </h3>
               <div className="space-y-4">
                 {recentActivities.map((activity, i) => (
-                  <div key={i} className="flex gap-3">
-                    <div className={`w-1 h-10 rounded-full ${activity.color}`}></div>
+                  <div key={i} className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activity.bg} ${activity.color}`}>
+                      <activity.icon size={18} />
+                    </div>
                     <div>
                       <p className="text-sm font-bold dark:text-slate-200">{activity.title}</p>
                       <p className="text-xs text-slate-400 dark:text-slate-500">{activity.time}</p>
