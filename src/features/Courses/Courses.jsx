@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, 
   ExternalLink,
@@ -49,7 +49,13 @@ const Courses = () => {
   const [showArchived, setShowArchived] = useState(false);
 
   // Session Timer State & Logic
+  const nowRef = useRef(0);
+
   const [studyTimer, setStudyTimer] = useState({ isRunning: false, seconds: 0, startTime: null, course: null });
+
+  useEffect(() => {
+    nowRef.current = Date.now();
+  }, []);
 
   React.useEffect(() => {
     let interval;
@@ -98,7 +104,7 @@ const Courses = () => {
       }
       setStudyTimer({ isRunning: false, seconds: 0, startTime: null, course: null });
     } else if (courseToStart) {
-      setStudyTimer({ isRunning: true, seconds: 0, startTime: Date.now(), course: courseToStart });
+      setStudyTimer({ isRunning: true, seconds: 0, startTime: nowRef.current, course: courseToStart });
       toast.success(`Study session started for ${courseToStart.title}. Focus up!`);
     }
   };

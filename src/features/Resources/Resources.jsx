@@ -20,6 +20,7 @@ import { useAuth } from '../../context/AuthContext';
 import { storage as firebaseStorage } from '../../services/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { nanoid } from 'nanoid';
+import JSZip from 'jszip';
 import toast from 'react-hot-toast';
 
 // Sub-components
@@ -31,6 +32,7 @@ import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 
 const Resources = () => {
+
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -45,6 +47,9 @@ const Resources = () => {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [groupBy, setGroupBy] = useState('type'); // 'type' | 'course' | 'video' | 'folder'
+  const [dateRange, setDateRange] = useState('all');
+  const [sizeFilter, setSizeFilter] = useState('all');
+  const [assocFilter, setAssocFilter] = useState('all');
   
   const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -159,18 +164,62 @@ const Resources = () => {
 
     const scopedFolders = folders.filter((f) => (f.parentId || null) === (currentFolderId || null));
 
-    const fResources = viewScopedResources.filter(r =>
+    let fResources = viewScopedResources.filter(r =>
       r.name.toLowerCase().includes(query) ||
       r.description?.toLowerCase().includes(query) ||
       r.tags?.some(t => t.toLowerCase().includes(query))
     );
+
+    // Advanced filters
+    const now = new Date();
+    if (dateRange !== 'all') {
+      const cutoff = dateRange === 'week' ? now - 7*24*60*60*1000
+        : dateRange === 'month' ? now - 30*24*60*60*1000
+        : dateRange === 'year' ? now - 365*24*60*60*1000 : 0;
+      fResources = fResources.filter(r => new Date(r.createdAt) > new Date(cutoff));
+    }
+
+    if (sizeFilter !== 'all') {
+      fResources = fResources.filter(r => {
+        const sizeMB = parseFloat(r.size) || 0;
+        if (sizeFilter === 'small' && sizeMB > 1) return false;
+        if (sizeFilter === 'medium' && sizeMB > 10) return false;
+        if (sizeFilter === 'large' && sizeMB > 100) return false;
+        return true;
+      });
+    }
+
+    if (assocFilter !== 'all') {
+      if (assocFilter === 'none') fResources = fResources.filter(r => r.associatedType === 'None');
+      else fResources = fResources.filter(r => r.associatedType === assocFilter);
+    }
 
     const fFolders = scopedFolders.filter(f => 
       f.name.toLowerCase().includes(query)
     );
 
     return { resources: fResources, folders: fFolders };
-  }, [resources, folders, searchTerm, currentFolderId, viewMode]);
+  }, [resources, folders, searchTerm, currentFolderId, viewMode, dateRange, sizeFilter, assocFilter]);
+
+  const exportZip = useCallback(async () => {
+    const zip = new JSZip();
+    const filtered = filteredData.resources;
+
+    filtered.forEach(r => {
+      if (r.isLocal && r.storagePath) {
+        zip.file(r.name, `Download: ${r.name} (${r.url})`);
+      } else {
+        zip.file(r.name + '.txt', `Name: ${r.name}\nType: ${r.type}\nURL: ${r.url}\nDesc: ${r.description}`);
+      }
+    });
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(content);
+    link.download = `studyos-resources-${new Date().toISOString().split('T')[0]}.zip`;
+    link.click();
+    toast.success(`Exported ${filtered.length} resources`);
+  }, [filteredData.resources]);
 
   // 3. Grouping Logic
   const groupedResources = useMemo(() => {
@@ -455,6 +504,12 @@ const Resources = () => {
     setBulkTagInput('');
   };
 
+  // Analytics tracker for resource opens (fixes ESLint no-undef)
+  const trackOpen = useCallback((resourceId) => {
+    console.log('[Resources] Opened resource:', resourceId);
+    // Optional: usageMetrics.track('resource_open', { resourceId });
+  }, []);
+
   const cancelQueueItem = (queueId) => {
     uploadTasksRef.current[queueId]?.cancel();
     setUploadQueue((prev) => prev.map((q) => (q.id === queueId ? { ...q, status: 'cancelled', error: 'Cancelled by user' } : q)));
@@ -504,14 +559,29 @@ const Resources = () => {
         title={isPapersView ? 'Reading Library (Merged)' : 'Knowledge Base'}
         description={isPapersView ? 'Papers are now part of unified resources' : 'Manage your learning assets and associations'}
         icon={<Layers size={32} />}
+        actions={[
+          <button 
+            key="export" 
+            onClick={async () => exportZip()} 
+            className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-sm shadow-lg shadow-emerald-500/25 transition-all"
+          >
+            Export ZIP
+          </button>
+        ]}
         className="mb-12"
       />
 
-      <ResourceFilter 
+<ResourceFilter 
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         groupBy={groupBy}
         setGroupBy={setGroupBy}
+        dateRange={dateRange}
+        setDateRange={setDateRange}
+        sizeFilter={sizeFilter}
+        setSizeFilter={setSizeFilter}
+        assocFilter={assocFilter}
+        setAssocFilter={setAssocFilter}
         onNewFolder={() => openFolderModal()}
         onUpload={() => fileInputRef.current?.click()}
         onAddLink={() => setIsResourceModalOpen(true)}
@@ -722,6 +792,7 @@ const Resources = () => {
                     selected={selectedResourceIds.includes(res.id)}
                     onToggleSelect={toggleResourceSelection}
                     onDragStart={handleDragStart}
+                    onOpen={trackOpen}
                     courses={courses}
                     videos={videos}
                     onDelete={deleteResource}

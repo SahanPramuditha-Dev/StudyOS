@@ -16,7 +16,8 @@ import {
   Search,
   Share2,
   Lock,
-  Globe
+  Globe,
+  BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
@@ -31,6 +32,7 @@ import BugTracker from './tabs/BugTracker';
 import CodeSnippets from './tabs/CodeSnippets';
 import NotesIdeapad from './tabs/NotesIdeapad';
 import ActivityLog from './tabs/ActivityLog';
+import ResourcesTab from './tabs/ResourcesTab';
 
 const OverviewTab = ({ project, getStatusColor }) => (
   <div className="space-y-8">
@@ -167,7 +169,8 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
     { id: 'bugs', label: 'Issues', icon: Bug, badge: project.bugs?.length || 0 },
     { id: 'code', label: 'Snippets', icon: Code2, badge: project.snippets?.length || 0 },
     { id: 'notes', label: 'Notes', icon: Lightbulb },
-    { id: 'activity', label: 'Activity', icon: History }
+    { id: 'activity', label: 'Activity', icon: History },
+    { id: 'resources', label: 'Resources', icon: BookOpen, badge: project.resources?.length || 0 }
   ].filter(tab => showGithubTab || tab.id !== 'github');
 
   const getStatusColor = (status) => {
@@ -189,8 +192,6 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
     };
     onUpdate({ ...project, activity: [activity, ...(project.activity || [])] });
   };
-
-  // Overview Tab Content is handled externally by the OverviewTab helper.
 
   return (
     <div className="max-w-7xl mx-auto pb-12 space-y-8">
@@ -305,7 +306,8 @@ const ProjectDetail = ({ project, onBack, onUpdate }) => {
           {displayActiveTab === 'bugs' && <BugTracker project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
           {displayActiveTab === 'code' && <CodeSnippets project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
           {displayActiveTab === 'notes' && <NotesIdeapad project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
-          {displayActiveTab === 'activity' && <ActivityLog project={project} />}
+{displayActiveTab === 'activity' && <ActivityLog project={project} />}
+          {displayActiveTab === 'resources' && <ProjectResourcesTab project={project} onUpdate={onUpdate} onActivityAdd={handleAddActivity} />}
         </motion.div>
       </AnimatePresence>
     </div>

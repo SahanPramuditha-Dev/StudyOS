@@ -1,28 +1,37 @@
 import React, { useState } from 'react';
+import { useStorage } from '../../../../hooks/useStorage';
+import { STORAGE_KEYS } from '../../../../services/storage';
 import { Plus, Trash2, Edit2, Award, Link2, FileDown, FolderOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { nanoid } from 'nanoid';
 
-const ResourcesTab = ({ assignment, onUpdate }) => {
-  const [resources, setResources] = useState(assignment.resources || []);
+const ResourcesTab = ({ entity, onUpdate, onActivityAdd, entityType = 'Assignment' }) => {
+  const label = entityType === 'Project' ? 'project' : 'assignment';
+  const [globalResources, setGlobalResources] = useStorage(STORAGE_KEYS.RESOURCES, []);
   const [isAdding, setIsAdding] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [formData, setFormData] = useState({
-    title: '',
-    category: 'Articles',
-    description: '',
+    name: '',
     url: '',
-    type: 'Link'
+    type: 'Link',
+    description: '',
+    tags: '',
+    category: 'Articles'
   });
 
   const categories = ['Articles', 'Tutorials', 'Lecture Materials', 'Documentation', 'References', 'Tools'];
 
+  // Filter global resources for this entity
+const entityResources = globalResources.filter(r => 
+    r.associatedType === entityType && r.associatedId === entity.id
+  );
+
   const handleAddResource = (e) => {
     e.preventDefault();
-    if (!formData.title.trim()) {
-      toast.error('Resource title is required');
+    if (!formData.name.trim()) {
+      toast.error('Resource name is required');
       return;
     }
 
@@ -31,47 +40,50 @@ const ResourcesTab = ({ assignment, onUpdate }) => {
       return;
     }
 
-    const newResource = {
+    const tagsArray = formData.tags.split(',').map(t => t.trim()).filter(Boolean);
+const newResource = {
       id: nanoid(),
-      title: formData.title,
-      category: formData.category,
-      description: formData.description,
+      name: formData.name,
       url: formData.url,
       type: formData.type,
-      createdAt: new Date().toISOString()
+      description: formData.description,
+      tags: tagsArray,
+      category: formData.category,
+      associatedType: entityType,
+      associatedId: entity.id,
+      createdAt: new Date().toISOString(),
+      folderId: null
     };
 
-    const updated = [newResource, ...resources];
-    setResources(updated);
+    setGlobalResources([newResource, ...globalResources]);
+    // Trigger entity update if needed for legacy
     onUpdate({
-      ...assignment,
-      resources: updated
+      ...entity,
+      resources: [newResource, ...entityResources] // backward compat
     });
 
     setFormData({
-      title: '',
-      category: 'Articles',
-      description: '',
+      name: '',
       url: '',
-      type: 'Link'
+      type: 'Link',
+      description: '',
+      tags: '',
+      category: 'Articles'
     });
     setIsAdding(false);
-    toast.success('Resource added');
+    toast.success(`Resource synced to Knowledge Base for ${label}`);
+    onActivityAdd?.('resource_added', `Added resource "${formData.name}"`);
   };
 
   const handleDelete = (id) => {
-    const updated = resources.filter(r => r.id !== id);
-    setResources(updated);
-    onUpdate({
-      ...assignment,
-      resources: updated
-    });
-    toast.success('Resource deleted');
+    setGlobalResources(prev => prev.map(r => r.id === id ? { ...r, folderId: 'deleted' } : r));
+    toast.success('Resource unlinked from assignment');
   };
 
-  const filteredResources = resources.filter(r => {
-    const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         r.description?.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredResources = entityResources.filter(r => {
+    const matchesSearch = r.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          r.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          r.tags?.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesCategory = selectedCategory === 'All' || r.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -283,7 +295,7 @@ const ResourcesTab = ({ assignment, onUpdate }) => {
           <Award size={48} className="mx-auto mb-4 text-slate-300" />
           <p className="text-slate-500 font-bold">No resources added</p>
           <p className="text-sm text-slate-400 mt-1">
-            {resources.length === 0 ? 'Add resources, links, and references for this assignment' : 'No resources match your search'}
+            {entityResources.length === 0 ? `Add resources for this ${label}` : 'No resources match your search'}
           </p>
         </motion.div>
       )}
