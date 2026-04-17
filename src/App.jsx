@@ -6,7 +6,6 @@ import posthog from 'posthog-js';
 import { Bell, Menu, Moon, Search, Shield, Sun, XCircle, Circle } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import RealtimePresence from './components/RealtimePresence';
-import UnifiedFooter from './components/Footer/UnifiedFooter';
 import Dashboard from './features/Dashboard/Dashboard';
 import Courses from './features/Courses/Courses';
 import Videos from './features/Videos/Videos';
@@ -18,10 +17,12 @@ import Workspace from './features/Workspace/Workspace';
 import Tasks from './Tasks';
 import Analytics from './features/Analytics/Analytics';
 import Goals from './features/Goals/Goals';
+import Budget from './features/Budget/Budget';
 import WeeklyPlanner from './features/Planner/WeeklyPlanner';
 import ReviewHub from './features/Review/ReviewHub';
 import Chat from './features/Chat/Chat';
 import Reminders from './features/Reminders/Reminders';
+import Timer from './features/Timer/Timer';
 import GlobalSearch from './features/Search/Search';
 import Auth from './features/Auth/Auth';
 import Admin from './features/Admin/Admin';
@@ -419,8 +420,11 @@ const App = () => {
         <Route path="/assignments" element={hasPermission('assignments') ? <Assignments /> : <RestrictedModule name="Assignments" />} />
         <Route path="/workspace" element={hasPermission('workspace') ? <Workspace activeProjectIdOverride={activeProjectId} setActiveTab={setActiveTab} /> : <RestrictedModule name="Workspace" />} />
         <Route path="/tasks" element={<Tasks />} />
+        <Route path="/timer" element={<Timer />} />
         <Route path="/analytics" element={hasPermission('analytics') ? <Analytics /> : <RestrictedModule name="Analytics" />} />
         <Route path="/goals" element={<Goals />} />
+        <Route path="/budget" element={<Budget />} />
+        <Route path="/expenses" element={<Budget />} />
         <Route path="/planner" element={<WeeklyPlanner />} />
         <Route path="/review" element={<ReviewHub />} />
         <Route path="/chat" element={<Chat />} />
@@ -707,16 +711,6 @@ const App = () => {
               </div>
             </div>
             
-            {!isChatRoute && (
-              <div className="w-full">
-                <UnifiedFooter
-                  profile={profile}
-                  isAdmin={isAdmin}
-                  hasPermission={hasPermission}
-                  setActiveTab={setActiveTab}
-                />
-              </div>
-            )}
           </main>
         </div>
       </div>

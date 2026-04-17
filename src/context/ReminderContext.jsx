@@ -8,7 +8,7 @@ import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import { EmailService } from '../services/email';
 import { formatDateKey, formatTimeKey, toReminderDateTime } from '../utils/reminderDate';
-import { stopAlarmSound } from '../utils/alarmAudio';
+import { stopAlarmSound, getIsPlaying } from '../utils/alarmAudio';
 
 const ReminderContext = createContext();
 

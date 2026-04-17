@@ -42,12 +42,17 @@ const Dashboard = ({ setActiveTab }) => {
     const days = parseInt(activityTimeframe, 10) || 7;
     const data = [];
     const now = new Date();
+    // Deterministic "random" based on date seed
+    const seed = now.getTime();
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
+      // Simple deterministic hash: (seed + day offset) % range → hours
+      const hash = (seed + i * 137) % 1000;
+      const hours = Math.max(0.5, Number(((hash % 40) + 10) / 10).toFixed(1));
       data.push({
         name: days === 7 ? d.toLocaleDateString('en-US', { weekday: 'short' }) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        hours: Math.max(0.5, Number((Math.random() * 4 + 1).toFixed(1))) // Simulated learning data
+        hours
       });
     }
     return data;
