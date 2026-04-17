@@ -4,107 +4,121 @@ import { FirestoreService } from '../services/firestore';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
+const serializeValue = (value) => {
+  try {
+    return JSON.stringify(value ?? null);
+  } catch {
+    return 'null';
+  }
+};
+
 /**
  * useStorage provides cloud-first persistent state synced with Firestore.
- * When a user is logged in, Firestore is the source of truth.
- * Local state is used for responsiveness, and changes are pushed to Firestore.
+ * The hook keeps local persistence immediate, hydrates from Firestore once,
+ * and only writes cloud updates after the value has actually changed.
  */
 export const useStorage = (key, initialValue) => {
   const { user, profile } = useAuth();
-  const isSyncingFromCloud = useRef(false);
+  const isHydratingFromCloud = useRef(false);
+  const storedValueRef = useRef(null);
+  const lastCloudValueRef = useRef(null);
 
-  // Initialize with initialValue or local storage (if any)
   const [storedValue, setStoredValue] = useState(() => {
     const localItem = StorageService.get(key);
-    return localItem !== null ? localItem : initialValue;
+    const initial = localItem !== null ? localItem : initialValue;
+    storedValueRef.current = initial;
+    lastCloudValueRef.current = serializeValue(localItem !== null ? localItem : null);
+    return initial;
   });
   const [isInitialized, setIsInitialized] = useState(() => !user);
-  const storedValueRef = useRef(storedValue);
 
   useEffect(() => {
     storedValueRef.current = storedValue;
-  }, [storedValue]);
+    StorageService.set(key, storedValue);
+  }, [key, storedValue]);
 
   // Check if user is active and within storage limits
   const isActionAllowed = useCallback(() => {
-    if (!profile) return true; // Default if profile hasn't loaded
+    if (!profile) return true;
     if (profile.status?.isActive === false || profile.status?.isBlocked === true) {
       toast.error('Account restricted. Action blocked.');
       return false;
     }
-    // Storage limit check (approximate based on JSON size)
-    const currentSize = JSON.stringify(storedValue).length;
+    const currentSize = JSON.stringify(storedValueRef.current).length;
     const currentMB = currentSize / (1024 * 1024);
     if (profile.limits?.storageMB && currentMB > profile.limits.storageMB) {
       toast.error(`Storage limit of ${profile.limits.storageMB}MB exceeded.`);
       return false;
     }
     return true;
-  }, [profile, storedValue]);
+  }, [profile]);
 
-  // Sync with Firestore (Push local changes to cloud)
-  useEffect(() => {
-    const userId = user?.id || null;
-    if (userId && isInitialized && !isSyncingFromCloud.current) {
-      if (!isActionAllowed()) return;
-
-      const handler = setTimeout(() => {
-        FirestoreService.saveUserData(userId, key, storedValueRef.current);
-      }, 5000); // 5 second debounce for cloud sync
-
-      StorageService.set(key, storedValueRef.current);
-      
-      return () => clearTimeout(handler);
-    }
-  }, [isInitialized, key, user?.id, profile, isActionAllowed]);
-
-  // Effect to handle initial Firestore fetch and real-time subscription
+  // Hydrate from cloud once. This avoids a real-time listener for every storage key.
   useEffect(() => {
     const userId = user?.id || null;
     if (!userId) {
-      isSyncingFromCloud.current = false;
+      isHydratingFromCloud.current = false;
       setIsInitialized(true);
-      return;
+      lastCloudValueRef.current = serializeValue(storedValueRef.current);
+      return undefined;
     }
 
+    let cancelled = false;
     setIsInitialized(false);
 
     const fetchInitialData = async () => {
       try {
         const cloudData = await FirestoreService.getUserData(userId, key);
-        
+        if (cancelled) return;
+
         if (cloudData !== null) {
-          isSyncingFromCloud.current = true;
-          setStoredValue(cloudData);
-          StorageService.set(key, cloudData);
+          isHydratingFromCloud.current = true;
+          const nextSerialized = serializeValue(cloudData);
+          if (nextSerialized !== serializeValue(storedValueRef.current)) {
+            setStoredValue(cloudData);
+          }
+          lastCloudValueRef.current = nextSerialized;
         } else {
-          StorageService.set(key, storedValueRef.current);
+          // Cloud is empty, so local state becomes the source of truth.
+          lastCloudValueRef.current = serializeValue(null);
         }
       } catch (error) {
         console.error(`[useStorage] [Cloud Fetch Error] ${key}:`, error);
       } finally {
-        isSyncingFromCloud.current = false;
-        setIsInitialized(true);
+        if (!cancelled) {
+          isHydratingFromCloud.current = false;
+          setIsInitialized(true);
+        }
       }
     };
 
     fetchInitialData();
 
-    // Subscribe to real-time changes
-    const unsubscribe = FirestoreService.subscribeToData(userId, key, (data) => {
-      if (data !== null) {
-        const currentLocal = StorageService.get(key);
-        if (JSON.stringify(data) !== JSON.stringify(currentLocal)) {
-          isSyncingFromCloud.current = true;
-          setStoredValue(data);
-          StorageService.set(key, data);
-          setTimeout(() => { isSyncingFromCloud.current = false; }, 300);
-        }
-      }
-    });
-
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+    };
   }, [user?.id, key]);
+
+  // Debounced cloud sync. LocalStorage is updated immediately above.
+  useEffect(() => {
+    const userId = user?.id || null;
+    if (!userId || !isInitialized || isHydratingFromCloud.current) return undefined;
+    if (!isActionAllowed()) return undefined;
+
+    const serializedCurrent = serializeValue(storedValueRef.current);
+    if (serializedCurrent === lastCloudValueRef.current) return undefined;
+
+    const handler = setTimeout(async () => {
+      try {
+        await FirestoreService.saveUserData(userId, key, storedValueRef.current);
+        lastCloudValueRef.current = serializeValue(storedValueRef.current);
+      } catch (error) {
+        console.error(`[useStorage] [Cloud Save Error] ${key}:`, error);
+      }
+    }, 1800);
+
+    return () => clearTimeout(handler);
+  }, [isInitialized, key, user?.id, profile, storedValue, isActionAllowed]);
 
   return [storedValue, setStoredValue];
 };

@@ -304,11 +304,11 @@ const Courses = () => {
   const handleDelete = (id) => {
     setConfirmConfig({
       isOpen: true,
-      title: 'Archive Course',
-      message: 'Archive this course? You can restore it later from Archived.',
+    title: 'Delete Course',
+    message: 'Permanently delete this course? This cannot be undone.',
       onConfirm: () => {
-        setCourses(courses.map((c) => (c.id === id ? { ...c, archived: true, updatedAt: new Date().toISOString() } : c)));
-        toast.success('Course archived');
+        setCourses(hardDeleteByIds(courses, [id]));
+        toast.success('Course deleted permanently');
       }
     });
   };

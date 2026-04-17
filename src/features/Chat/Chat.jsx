@@ -1003,7 +1003,8 @@ const Chat = () => {
         replyToMessageId: replyTarget?.id || '',
         replyToText: replyTarget?.text || '',
         replyToSenderName: replyTarget?.senderName || '',
-        replyToSenderEmail: replyTarget?.senderEmail || ''
+        replyToSenderEmail: replyTarget?.senderEmail || '',
+        roomContext: activeRoom
       });
       setMessageDraft('');
       setPendingAttachments([]);

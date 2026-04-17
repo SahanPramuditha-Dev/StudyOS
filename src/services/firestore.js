@@ -9,6 +9,7 @@ import {
   deleteDoc, 
   updateDoc,
   onSnapshot,
+  writeBatch,
   limit,
   startAfter,
   orderBy,
@@ -19,6 +20,41 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from './firebase';
 import { computeUsageMetrics } from './usageMetrics';
+import { StorageService, STORAGE_KEYS } from './storage';
+
+const userDataCache = new Map();
+const userProfileCache = new Map();
+const userDataReadPromises = new Map();
+const chatRoomReadCache = new Map();
+const usersByEmailsCache = new Map();
+
+const serializeValue = (value) => {
+  try {
+    return JSON.stringify(value ?? null);
+  } catch {
+    return 'null';
+  }
+};
+
+const cacheEntry = (map, key, data) => {
+  const entry = {
+    data,
+    serialized: serializeValue(data),
+    updatedAt: Date.now()
+  };
+  map.set(key, entry);
+  return entry;
+};
+
+const getCachedEntry = (map, key) => map.get(key) || null;
+
+const getCachedCollectionData = (userId, key) => {
+  const cacheKey = `${userId}:${key}`;
+  const cached = getCachedEntry(userDataCache, cacheKey);
+  if (cached) return cached.data;
+  const localValue = StorageService.get(key);
+  return Array.isArray(localValue) ? localValue : [];
+};
 
 /**
  * FirestoreService handles cloud data persistence for StudyOs.
@@ -90,28 +126,29 @@ class FirestoreService {
       if (!userSnap.exists()) {
         const defaultProfile = FirestoreService.buildDefaultUserProfile(userId, profileData);
         await setDoc(userRef, defaultProfile);
+        cacheEntry(userProfileCache, userId, defaultProfile);
         return defaultProfile;
       } else {
         const existingData = userSnap.data();
-        // Update last login
-        await updateDoc(userRef, { lastLogin: new Date().toISOString() });
+        cacheEntry(userProfileCache, userId, existingData);
+
+        // Only update when the value actually changed to avoid repetitive writes.
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const lastLoginKey = String(existingData?.lastLogin || '').slice(0, 10);
+        if (lastLoginKey !== todayKey) {
+          const now = new Date().toISOString();
+          await updateDoc(userRef, { lastLogin: now });
+          cacheEntry(userProfileCache, userId, { ...existingData, lastLogin: now });
+        }
         
         // Background recalculation to ensure accuracy
         (async () => {
           try {
-            const dataCol = collection(db, 'users', userId, 'data');
-            const snap = await getDocs(dataCol);
             const collections = {
-              studyos_resources: [],
-              studyos_notes: [],
-              studyos_papers: []
+              studyos_resources: getCachedCollectionData(userId, STORAGE_KEYS.RESOURCES),
+              studyos_notes: getCachedCollectionData(userId, STORAGE_KEYS.NOTES),
+              studyos_papers: getCachedCollectionData(userId, STORAGE_KEYS.PAPERS)
             };
-            snap.forEach(d => {
-              const v = d.data()?.data;
-              if (Object.prototype.hasOwnProperty.call(collections, d.id) && Array.isArray(v)) {
-                collections[d.id] = v;
-              }
-            });
             const usage = computeUsageMetrics({
               resources: collections.studyos_resources,
               notes: collections.studyos_notes,
@@ -124,7 +161,17 @@ class FirestoreService {
             ) {
               await updateDoc(userRef, {
                 'usage.fileCount': usage.displayFileCount,
-                'usage.storageUsedMB': Number(usage.displayStorageUsedMB.toFixed(3))
+                'usage.storageUsedMB': Number(usage.displayStorageUsedMB.toFixed(3)),
+                'usage.updatedAt': new Date().toISOString()
+              });
+              cacheEntry(userProfileCache, userId, {
+                ...existingData,
+                usage: {
+                  ...(existingData.usage || {}),
+                  fileCount: usage.displayFileCount,
+                  storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
+                  updatedAt: new Date().toISOString()
+                }
               });
             }
           } catch (e) { console.warn('[Firestore] Background audit failed:', e); }
@@ -158,9 +205,14 @@ class FirestoreService {
   static async getUserProfile(userId) {
     if (!userId) return null;
     try {
+      const cached = getCachedEntry(userProfileCache, userId);
+      if (cached) return cached.data;
+
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
-      return userSnap.exists() ? userSnap.data() : null;
+      const data = userSnap.exists() ? userSnap.data() : null;
+      if (data) cacheEntry(userProfileCache, userId, data);
+      return data;
     } catch (error) {
       console.error('[FirestoreService] Error fetching user profile:', error);
       return null;
@@ -201,6 +253,12 @@ class FirestoreService {
 
     if (normalizedEmails.length === 0) return [];
 
+    const cacheKey = normalizedEmails.slice().sort().join('|');
+    const cached = usersByEmailsCache.get(cacheKey);
+    if (cached && Date.now() - cached.updatedAt < 5 * 60 * 1000) {
+      return cached.data;
+    }
+
     try {
       const results = [];
       for (let index = 0; index < normalizedEmails.length; index += 10) {
@@ -212,6 +270,7 @@ class FirestoreService {
           results.push({ id: docSnap.id, ...docSnap.data() });
         });
       }
+      usersByEmailsCache.set(cacheKey, { data: results, updatedAt: Date.now() });
       return results;
     } catch (error) {
       console.error('[FirestoreService] Error fetching users by emails:', error);
@@ -227,10 +286,18 @@ class FirestoreService {
       const userRef = doc(db, 'users', userId);
       const targetSnap = await getDoc(userRef);
       const targetData = targetSnap.exists() ? targetSnap.data() : {};
-      await updateDoc(userRef, { ...updates, updatedAt: new Date().toISOString() });
+      const currentPayload = { ...(targetData || {}) };
+      const nextPayload = { ...currentPayload, ...updates };
+      if (serializeValue(currentPayload) === serializeValue(nextPayload)) {
+        return;
+      }
+
+      const batch = writeBatch(db);
+      batch.set(userRef, { ...updates, updatedAt: new Date().toISOString() }, { merge: true });
       const actor = auth.currentUser ? auth.currentUser.uid : null;
       try {
-        await addDoc(collection(db, 'audit_logs'), {
+        const auditRef = doc(collection(db, 'audit_logs'));
+        batch.set(auditRef, {
           targetUserId: userId,
           targetUserName: targetData?.name || '',
           targetUserEmail: targetData?.email || '',
@@ -242,6 +309,8 @@ class FirestoreService {
           type: 'admin_update_user'
         });
       } catch { void 0; }
+      await batch.commit();
+      cacheEntry(userProfileCache, userId, nextPayload);
     } catch (error) {
       console.error('[FirestoreService] Error updating user by admin:', error);
       throw error;
@@ -297,37 +366,65 @@ class FirestoreService {
     if (!userId) return;
     try {
       const docRef = doc(db, 'users', userId, 'data', key);
-      await setDoc(docRef, { data, updatedAt: new Date().toISOString() });
+      const cacheKey = `${userId}:${key}`;
+      const nextSerialized = serializeValue(data);
+      const existingEntry = getCachedEntry(userDataCache, cacheKey);
+      if (existingEntry?.serialized === nextSerialized) {
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const batch = writeBatch(db);
+      batch.set(docRef, { data, updatedAt: now }, { merge: true });
       
+      let usageUpdate = null;
+      let nextProfileCache = null;
       try {
-        const dataCol = collection(db, 'users', userId, 'data');
-        const snap = await getDocs(dataCol);
-        const collections = {
-          studyos_resources: [],
-          studyos_notes: [],
-          studyos_papers: []
-        };
-        
-        snap.forEach(d => {
-          const v = d.data()?.data;
-          if (Object.prototype.hasOwnProperty.call(collections, d.id) && Array.isArray(v)) {
-            collections[d.id] = v;
+        const assetKeys = new Set([STORAGE_KEYS.RESOURCES, STORAGE_KEYS.NOTES, STORAGE_KEYS.PAPERS]);
+        if (assetKeys.has(key)) {
+          const userRef = doc(db, 'users', userId);
+          const profileEntry = getCachedEntry(userProfileCache, userId);
+          const cloudUsage = profileEntry?.data?.usage || {};
+          const usage = computeUsageMetrics({
+            resources: key === STORAGE_KEYS.RESOURCES ? data : getCachedCollectionData(userId, STORAGE_KEYS.RESOURCES),
+            notes: key === STORAGE_KEYS.NOTES ? data : getCachedCollectionData(userId, STORAGE_KEYS.NOTES),
+            papers: key === STORAGE_KEYS.PAPERS ? data : getCachedCollectionData(userId, STORAGE_KEYS.PAPERS),
+            cloudUsage
+          });
+          const nextUsage = {
+            storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
+            fileCount: usage.displayFileCount,
+            updatedAt: now
+          };
+          const currentUsage = {
+            storageUsedMB: Number(profileEntry?.data?.usage?.storageUsedMB || 0),
+            fileCount: Number(profileEntry?.data?.usage?.fileCount || 0)
+          };
+
+          if (
+            currentUsage.storageUsedMB !== nextUsage.storageUsedMB ||
+            currentUsage.fileCount !== nextUsage.fileCount
+          ) {
+            usageUpdate = { userRef, nextUsage };
+            nextProfileCache = {
+              ...(profileEntry?.data || {}),
+              usage: nextUsage
+            };
           }
-        });
-        const usage = computeUsageMetrics({
-          resources: collections.studyos_resources,
-          notes: collections.studyos_notes,
-          papers: collections.studyos_papers
-        });
-        const userRef = doc(db, 'users', userId);
-        
-        // Use dot notation to preserve other usage metrics (courseCount, noteCount, etc)
-        await updateDoc(userRef, {
-          'usage.storageUsedMB': Number(usage.localStorageUsedMB.toFixed(3)),
-          'usage.fileCount': usage.localFileCount,
-          "usage.updatedAt": new Date().toISOString()
-        });
-      } catch { void 0; }
+        }
+      } catch (usageError) {
+        console.warn(`[FirestoreService] Usage recalculation skipped for [${key}]:`, usageError);
+      }
+
+      if (usageUpdate) {
+        batch.set(usageUpdate.userRef, { usage: usageUpdate.nextUsage }, { merge: true });
+      }
+
+      await batch.commit();
+      if (nextProfileCache) {
+        cacheEntry(userProfileCache, userId, nextProfileCache);
+      }
+      cacheEntry(userDataCache, cacheKey, data);
     } catch (error) {
       console.error(`[FirestoreService] Error saving to Firestore [${key}]:`, error);
       throw error;
@@ -342,12 +439,26 @@ class FirestoreService {
   static async getUserData(userId, key) {
     if (!userId) return null;
     try {
+      const cacheKey = `${userId}:${key}`;
+      const cached = getCachedEntry(userDataCache, cacheKey);
+      if (cached) return cached.data;
+
+      const pendingRead = userDataReadPromises.get(cacheKey);
+      if (pendingRead) return pendingRead;
+
       const docRef = doc(db, 'users', userId, 'data', key);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        return docSnap.data().data;
-      }
-      return null;
+      const readPromise = getDoc(docRef)
+        .then((docSnap) => {
+          const data = docSnap.exists() ? docSnap.data().data : null;
+          cacheEntry(userDataCache, cacheKey, data);
+          return data;
+        })
+        .finally(() => {
+          userDataReadPromises.delete(cacheKey);
+        });
+
+      userDataReadPromises.set(cacheKey, readPromise);
+      return readPromise;
     } catch (error) {
       console.error(`[FirestoreService] Error fetching from Firestore [${key}]:`, error);
       return null;
@@ -365,7 +476,9 @@ class FirestoreService {
     const docRef = doc(db, 'users', userId, 'data', key);
     return onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
-        callback(docSnap.data().data);
+        const data = docSnap.data().data;
+        cacheEntry(userDataCache, `${userId}:${key}`, data);
+        callback(data);
       }
     });
   }
@@ -374,7 +487,11 @@ class FirestoreService {
     if (!userId) return;
     try {
       const userRef = doc(db, 'users', userId);
+      const current = (await getDoc(userRef)).data() || {};
+      const next = { ...current, ...updates };
+      if (serializeValue(current) === serializeValue(next)) return;
       await updateDoc(userRef, { ...updates, updatedAt: new Date().toISOString() });
+      cacheEntry(userProfileCache, userId, next);
     } catch (error) {
       console.error('[FirestoreService] Error updating own profile:', error);
       throw error;
@@ -400,6 +517,12 @@ class FirestoreService {
       );
 
       await deleteDoc(doc(db, 'users', userId));
+      userProfileCache.delete(userId);
+      [...userDataCache.keys()].forEach((cacheKey) => {
+        if (cacheKey.startsWith(`${userId}:`)) {
+          userDataCache.delete(cacheKey);
+        }
+      });
     } catch (error) {
       console.error('[FirestoreService] Error deleting user data:', error);
       throw error;
@@ -664,7 +787,8 @@ class FirestoreService {
 
     const q = query(
       FirestoreService.chatRoomCollection(),
-      where('memberEmails', 'array-contains', normalizedEmail)
+      where('memberEmails', 'array-contains', normalizedEmail),
+      limit(50)
     );
 
     return onSnapshot(q, (snapshot) => {
@@ -704,7 +828,8 @@ class FirestoreService {
     replyToMessageId = '',
     replyToText = '',
     replyToSenderName = '',
-    replyToSenderEmail = ''
+    replyToSenderEmail = '',
+    roomContext = null
   }) {
     const normalizedEmail = FirestoreService.normalizeChatEmail(senderEmail);
     if (!roomId || !senderUid || !normalizedEmail) {
@@ -734,15 +859,17 @@ class FirestoreService {
     let messageRef = null;
     try {
       const roomRef = doc(db, 'chat_rooms', roomId);
-      const roomSnap = await getDoc(roomRef);
-      const room = roomSnap.exists() ? roomSnap.data() : null;
-      const mentionEmails = FirestoreService.extractChatMentions(text, room?.memberEmails || [], normalizedEmail);
+      const room = roomContext || null;
+      const roomSnap = room ? null : await getDoc(roomRef);
+      const resolvedRoom = room || (roomSnap?.exists() ? roomSnap.data() : null);
+      const mentionEmails = FirestoreService.extractChatMentions(text, resolvedRoom?.memberEmails || [], normalizedEmail);
       const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
       const trimmedText = String(text || '').trim();
       const roomPreviewText = trimmedText
         ? trimmedText.slice(0, 240)
         : (hasAttachments ? `Shared ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}` : '');
-      messageRef = await addDoc(FirestoreService.chatMessagesCollection(roomId), payload);
+      messageRef = doc(FirestoreService.chatMessagesCollection(roomId));
+      await setDoc(messageRef, payload);
       try {
         await updateDoc(roomRef, {
           lastMessage: roomPreviewText,
@@ -793,6 +920,11 @@ class FirestoreService {
   static async markChatRoomRead(roomId, userEmail) {
     const normalizedEmail = FirestoreService.normalizeChatEmail(userEmail);
     if (!roomId || !normalizedEmail) return;
+
+    const cacheKey = `${roomId}:${normalizedEmail}`;
+    const lastMark = chatRoomReadCache.get(cacheKey) || 0;
+    if (Date.now() - lastMark < 60 * 1000) return;
+    chatRoomReadCache.set(cacheKey, Date.now());
 
     await updateDoc(doc(db, 'chat_rooms', roomId), {
       [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString(),

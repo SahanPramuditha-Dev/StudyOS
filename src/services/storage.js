@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   TASKS: 'studyos_tasks',
   ANALYTICS: 'studyos_analytics',
   GOALS: 'studyos_goals',
+  FINANCE: 'studyos_finance',
   WEEKLY_PLANNER: 'studyos_weekly_planner',
   REVIEW_PREFS: 'studyos_review_prefs',
   ACHIEVEMENTS: 'studyos_achievements',

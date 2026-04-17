@@ -20,7 +20,9 @@ import {
   Target,
   CalendarClock,
   Inbox,
-  ListTodo
+  ListTodo,
+  Clock,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NavLink } from 'react-router-dom';
@@ -48,8 +50,10 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
     { id: 'assignments', icon: FileText, label: 'Assignments', permission: 'assignments' },
     { id: 'workspace', icon: Kanban, label: 'Workspace', permission: 'workspace' },
     { id: 'tasks', icon: ListTodo, label: 'Tasks' },
+    { id: 'timer', icon: Clock, label: 'Timer' },
     { id: 'analytics', icon: BarChart, label: 'Analytics', permission: 'analytics' },
     { id: 'goals', icon: Target, label: 'Goals' },
+    { id: 'budget', icon: Wallet, label: 'Budget' },
     { id: 'planner', icon: CalendarClock, label: 'Planner' },
     { id: 'review', icon: Inbox, label: 'Review Hub' },
     { id: 'chat', icon: MessageSquare, label: 'Chat' },
