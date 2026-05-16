@@ -32,13 +32,22 @@ const AUTH_ERROR_MESSAGES = {
   'auth/user-disabled': 'This account has been disabled.',
   'auth/user-not-found': 'No account found with this email.',
   'auth/wrong-password': 'Incorrect password.',
-  'auth/invalid-credential': 'Email or password is incorrect.',
+  'auth/invalid-credential':
+    'Email/password is invalid, or this account was created with another method (Google/GitHub).',
   'auth/account-exists-with-different-credential':
     'An account already exists with this email using a different sign-in method.',
   'auth/popup-closed-by-user': 'Sign-in was cancelled.',
+  'auth/popup-blocked': 'Sign-in popup was blocked by the browser. We will retry with redirect.',
   'auth/cancelled-popup-request': 'Only one sign-in window at a time. Try again.',
+  'auth/operation-not-supported-in-this-environment':
+    'Popup sign-in is not supported in this environment. We will retry with redirect.',
   'auth/requires-recent-login': 'For security, sign in again and retry.'
 };
+
+const POPUP_REDIRECT_FALLBACK_CODES = new Set([
+  'auth/popup-blocked',
+  'auth/operation-not-supported-in-this-environment'
+]);
 
 export function authErrorMessage(error) {
   const code = error?.code;
@@ -56,6 +65,48 @@ export function authErrorMessage(error) {
     }
   }
   return 'Something went wrong. Please try again.';
+}
+
+function extractServerAuthMessage(error) {
+  const tokenResponse = error?.customData?._tokenResponse;
+  if (typeof tokenResponse?.error?.message === 'string' && tokenResponse.error.message.length > 0) {
+    return tokenResponse.error.message;
+  }
+  if (typeof tokenResponse?.errorMessage === 'string' && tokenResponse.errorMessage.length > 0) {
+    return tokenResponse.errorMessage;
+  }
+
+  const serverResponse = error?.customData?._serverResponse;
+  if (typeof serverResponse === 'string' && serverResponse.length > 0) {
+    try {
+      const parsed = JSON.parse(serverResponse);
+      const parsedMessage = parsed?.error?.message;
+      if (typeof parsedMessage === 'string' && parsedMessage.length > 0) {
+        return parsedMessage;
+      }
+    } catch {
+      return serverResponse;
+    }
+  }
+
+  return null;
+}
+
+function isPopupRedirectFallbackError(error) {
+  if (POPUP_REDIRECT_FALLBACK_CODES.has(error?.code)) {
+    return true;
+  }
+  const raw = `${error?.message || ''} ${extractServerAuthMessage(error) || ''}`.toLowerCase();
+  return raw.includes('cross-origin-opener-policy') || raw.includes('window.closed');
+}
+
+function logAuthFailure(label, error, context = {}) {
+  console.error(`[AuthContext] ${label}`, {
+    code: error?.code || null,
+    message: error?.message || null,
+    serverMessage: extractServerAuthMessage(error),
+    ...context
+  });
 }
 
 function sessionInitErrorMessage(error) {
@@ -145,6 +196,44 @@ export const AuthProvider = ({ children }) => {
   }, [user, profile?.role]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const pendingProvider = sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY);
+    if (!pendingProvider) return;
+
+    let cancelled = false;
+    toast.loading(`Completing ${pendingProvider} sign-in...`, {
+      id: GOOGLE_OAUTH_LOADING_TOAST_ID
+    });
+
+    (async () => {
+      try {
+        const result = await consumeFirebaseRedirectResult();
+        if (cancelled) return;
+        if (result?.user) {
+          await applyGoogleProfileAfterSignIn(result);
+          toast.success(`Signed in with ${pendingProvider} successfully.`, {
+            id: GOOGLE_OAUTH_LOADING_TOAST_ID
+          });
+        } else {
+          toast.dismiss(GOOGLE_OAUTH_LOADING_TOAST_ID);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        logAuthFailure('Redirect sign-in failed', error, { provider: pendingProvider });
+        toast.error(authErrorMessage(error), { id: GOOGLE_OAUTH_LOADING_TOAST_ID });
+      } finally {
+        if (!cancelled) {
+          sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         setUser(null);
@@ -216,28 +305,43 @@ export const AuthProvider = ({ children }) => {
     return profile.permissions[module] === true;
   };
 
+  const beginRedirectSignIn = async (provider, providerName) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, providerName);
+    }
+    toast.loading(`Switching to ${providerName} redirect sign-in...`, {
+      id: GOOGLE_OAUTH_LOADING_TOAST_ID
+    });
+    await signInWithRedirect(auth, provider);
+  };
+
   const login = async (email, password) => {
+    const normalizedEmail = (email || '').trim();
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
+      const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       // Profile will be loaded by onAuthStateChanged
       toast.success(`Welcome back!`);
       return result.user;
     } catch (error) {
+      logAuthFailure('Email/password sign-in failed', error, { email: normalizedEmail || null });
       toast.error(authErrorMessage(error));
       throw error;
     }
   };
 
   const signup = async (name, email, password) => {
+    const normalizedName = (name || '').trim();
+    const normalizedEmail = (email || '').trim();
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
+      const result = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       await updateProfile(result.user, {
-        displayName: name
+        displayName: normalizedName
       });
       // createUserProfile is called in onAuthStateChanged
-      toast.success(`Account created successfully. You're signed in as ${name}.`);
+      toast.success(`Account created successfully. You're signed in as ${normalizedName}.`);
       return result.user;
     } catch (error) {
+      logAuthFailure('Email/password sign-up failed', error, { email: normalizedEmail || null });
       toast.error(authErrorMessage(error));
       throw error;
     }
@@ -253,7 +357,12 @@ export const AuthProvider = ({ children }) => {
       console.log('[AuthContext] Google profile applied successfully');
       toast.success('Signed in with Google successfully.');
     } catch (error) {
-      console.error('[AuthContext] ERROR:', error.code, error.message);
+      if (isPopupRedirectFallbackError(error)) {
+        console.warn('[AuthContext] Google popup flow blocked. Falling back to redirect.');
+        await beginRedirectSignIn(provider, 'Google');
+        return;
+      }
+      logAuthFailure('Google sign-in failed', error);
       toast.error(authErrorMessage(error));
       throw error;
     }
@@ -293,7 +402,12 @@ export const AuthProvider = ({ children }) => {
       toast.success(`Signed in with GitHub as ${githubUserName}.`);
       return result.user;
     } catch (error) {
-      console.error('[AuthContext] GitHub sign-in failed:', error.code, error.message);
+      if (isPopupRedirectFallbackError(error)) {
+        console.warn('[AuthContext] GitHub popup flow blocked. Falling back to redirect.');
+        await beginRedirectSignIn(provider, 'GitHub');
+        return null;
+      }
+      logAuthFailure('GitHub sign-in failed', error);
       toast.error(authErrorMessage(error));
       throw error;
     }
@@ -326,10 +440,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const resetPassword = async (email) => {
+    const normalizedEmail = (email || '').trim();
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, normalizedEmail);
       toast.success('Password reset email sent!');
     } catch (error) {
+      logAuthFailure('Password reset failed', error, { email: normalizedEmail || null });
       toast.error(authErrorMessage(error));
       throw error;
     }

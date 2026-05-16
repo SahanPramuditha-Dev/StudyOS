@@ -33,7 +33,7 @@ Live Demo: [Open in Browser](http://localhost:5173) after `npm run dev`
 ## 🛠️ Tech Stack
 
 ```
-Frontend: React 19 + Vite + Tailwind CSS + Framer Motion
+Frontend: React 19 + Vite + Tailwind CSS + MUI + Framer Motion
 Backend: Firebase (Auth/Firestore/Storage/Functions/Analytics)
 Services: Google Calendar API, GitHub API, SMTP Email (Functions)
 Hooks: Custom (useGoogleCalendar, useOnline, useStorage)
@@ -47,7 +47,7 @@ Quality: ESLint + Prettier
 git clone https://github.com/yourusername/studyos.git
 cd studyos
 npm install
-cp .env.example .env  # Fill Firebase config
+cp .env.example .env.local  # Fill Firebase config
 npm run dev
 ```
 
@@ -59,6 +59,7 @@ Copy `.env.example` to `.env.local` and add:
 ```
 VITE_FIREBASE_API_KEY=your_key
 VITE_FIREBASE_AUTH_DOMAIN=yourproject.firebaseapp.com
+VITE_FIREBASE_DATABASE_URL=https://yourproject-default-rtdb.firebaseio.com
 VITE_FIREBASE_PROJECT_ID=yourproject
 VITE_FIREBASE_STORAGE_BUCKET=yourproject.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123
@@ -85,6 +86,8 @@ StudyOS/
 ```
 
 Detailed: [Projects Guide](src/features/Projects/PROJECTS_GUIDE.md), [Projects Summary](PROJECTS_FEATURE_SUMMARY.md)
+
+UI Standards: [UI System Guidelines](docs/UI_SYSTEM_GUIDELINES.md)
 
 ## 🔍 Quality & Build
 

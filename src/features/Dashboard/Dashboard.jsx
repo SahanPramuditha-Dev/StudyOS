@@ -1,23 +1,78 @@
 import React, { useMemo, useState } from 'react';
-import { 
-  BookOpen, 
-  FileText, 
-  Clock, 
-  Plus, 
+import {
+  BookOpen,
+  FileText,
+  Clock,
+  Plus,
   ArrowUpRight,
   TrendingUp,
   Layout as KanbanIcon,
-  BarChart,
   CheckCircle2,
   Calendar,
   AlertCircle,
-  Target
+  Target,
+  Activity,
+  Sparkles
 } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import {
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
+
+const toDateSafe = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const formatDayKey = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatRelativeTime = (value) => {
+  const date = toDateSafe(value);
+  if (!date) return 'Unknown time';
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString();
+};
+
+const normalizeAssignmentStatus = (status) => String(status || '').trim().toLowerCase();
+const isAssignmentSubmitted = (status) => {
+  const normalized = normalizeAssignmentStatus(status);
+  return normalized === 'submitted' || normalized === 'completed';
+};
+
+const getAssignmentDeadline = (assignment) =>
+  toDateSafe(assignment?.deadline || assignment?.dueDate || null);
+
+const clampProgress = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, Math.round(number)));
+};
 
 const Dashboard = ({ setActiveTab }) => {
   const navigate = useNavigate();
@@ -25,6 +80,7 @@ const Dashboard = ({ setActiveTab }) => {
     setActiveTab(tab);
     navigate(`/${tab}`);
   };
+
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
@@ -32,113 +88,313 @@ const Dashboard = ({ setActiveTab }) => {
   const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
   const [globalTasks] = useStorage('studyos_global_tasks', []);
-  const activeTasks = useMemo(() => globalTasks.filter(t => t.status === 'in_progress'), [globalTasks]);
+  const [reminders] = useStorage(STORAGE_KEYS.REMINDERS, []);
 
-  // State for the Learning Activity chart filter
   const [activityTimeframe, setActivityTimeframe] = useState('7');
-
-  // Render learning data based on timeframe
-  const chartData = useMemo(() => {
-    const days = parseInt(activityTimeframe, 10) || 7;
-    const data = [];
-    const now = new Date();
-    // Deterministic "random" based on date seed
-    const seed = now.getTime();
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      // Simple deterministic hash: (seed + day offset) % range → hours
-      const hash = (seed + i * 137) % 1000;
-      const hours = Math.max(0.5, Number(((hash % 40) + 10) / 10).toFixed(1));
-      data.push({
-        name: days === 7 ? d.toLocaleDateString('en-US', { weekday: 'short' }) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        hours
-      });
-    }
-    return data;
+  const timeframeDays = useMemo(() => {
+    const parsed = Number.parseInt(activityTimeframe, 10);
+    return parsed === 30 ? 30 : 7;
   }, [activityTimeframe]);
 
-  const stats = useMemo(() => {
-    const activeCourses = courses.filter(c => c.status === 'Active').length;
-    const submittedAssignments = assignments.filter(a => a.status === 'Submitted').length;
-    const pendingAssignments = assignments.filter(a => a.status !== 'Submitted').length;
-    const activeProjects = projects.filter(p => p.status === 'Active').length;
+  const activeTasks = useMemo(
+    () => globalTasks.filter((task) => task.status === 'in_progress'),
+    [globalTasks]
+  );
 
-    return [
-      { label: 'Active Courses', value: activeCourses, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50', route: 'courses' },
-      { label: 'Notes Taken', value: notes.length, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50', route: 'notes' },
-      { label: 'Pending Assignments', value: pendingAssignments, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', route: 'assignments' },
-      { label: 'Submitted', value: submittedAssignments, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50', route: 'assignments' },
-      { label: 'Active Projects', value: activeProjects, icon: KanbanIcon, color: 'text-slate-700', bg: 'bg-slate-100', route: 'projects' },
-    ];
-  }, [courses, notes, assignments, projects]);
+  const completedTasks = useMemo(
+    () => globalTasks.filter((task) => task.status === 'completed'),
+    [globalTasks]
+  );
 
-  const productivityScore = useMemo(() => {
-    if (courses.length === 0) return 0;
-    const totalProgress = courses.reduce((acc, c) => acc + (c.progress || 0), 0);
-    return Math.round(totalProgress / courses.length);
+  const sessionSecondsByDay = useMemo(() => {
+    const map = {};
+    videos.forEach((video) => {
+      (video.playbackLogs || []).forEach((log) => {
+        const start = toDateSafe(log?.startTime);
+        if (!start) return;
+        const key = formatDayKey(start);
+        map[key] = (map[key] || 0) + Math.max(0, Number(log?.duration || 0));
+      });
+    });
+    return map;
+  }, [videos]);
+
+  const chartData = useMemo(() => {
+    const now = new Date();
+    const data = [];
+
+    for (let i = timeframeDays - 1; i >= 0; i -= 1) {
+      const date = new Date(now);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(now.getDate() - i);
+      const key = formatDayKey(date);
+      const seconds = sessionSecondsByDay[key] || 0;
+      data.push({
+        name:
+          timeframeDays === 7
+            ? date.toLocaleDateString('en-US', { weekday: 'short' })
+            : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        hours: Number((seconds / 3600).toFixed(2)),
+        dateKey: key
+      });
+    }
+
+    return data;
+  }, [timeframeDays, sessionSecondsByDay]);
+
+  const hasTrackedActivity = useMemo(
+    () => chartData.some((entry) => entry.hours > 0),
+    [chartData]
+  );
+
+  const submittedAssignments = useMemo(
+    () => assignments.filter((assignment) => isAssignmentSubmitted(assignment.status)).length,
+    [assignments]
+  );
+
+  const pendingAssignments = useMemo(
+    () => assignments.filter((assignment) => !isAssignmentSubmitted(assignment.status)).length,
+    [assignments]
+  );
+
+  const overdueAssignments = useMemo(() => {
+    const now = Date.now();
+    return assignments.filter((assignment) => {
+      if (isAssignmentSubmitted(assignment.status)) return false;
+      const deadline = getAssignmentDeadline(assignment);
+      return deadline ? deadline.getTime() < now : false;
+    }).length;
+  }, [assignments]);
+
+  const nextDeadlineAssignment = useMemo(() => {
+    const now = Date.now();
+    return assignments
+      .filter((assignment) => !isAssignmentSubmitted(assignment.status))
+      .map((assignment) => ({ assignment, deadline: getAssignmentDeadline(assignment) }))
+      .filter((item) => item.deadline && item.deadline.getTime() >= now)
+      .sort((left, right) => left.deadline - right.deadline)[0]?.assignment || null;
+  }, [assignments]);
+
+  const activeCourses = useMemo(
+    () => courses.filter((course) => String(course.status || '').toLowerCase() === 'active').length,
+    [courses]
+  );
+
+  const activeProjects = useMemo(
+    () => projects.filter((project) => String(project.status || '').toLowerCase() === 'active').length,
+    [projects]
+  );
+
+  const completedVideos = useMemo(
+    () => videos.filter((video) => Boolean(video.completed)).length,
+    [videos]
+  );
+
+  const stats = useMemo(
+    () => [
+      {
+        label: 'Active Courses',
+        value: activeCourses,
+        icon: BookOpen,
+        color: 'text-blue-600',
+        bg: 'bg-blue-50',
+        route: 'courses'
+      },
+      {
+        label: 'Notes Taken',
+        value: notes.length,
+        icon: FileText,
+        color: 'text-purple-600',
+        bg: 'bg-purple-50',
+        route: 'notes'
+      },
+      {
+        label: 'Pending Assignments',
+        value: pendingAssignments,
+        icon: Clock,
+        color: 'text-amber-600',
+        bg: 'bg-amber-50',
+        route: 'assignments'
+      },
+      {
+        label: 'Submitted',
+        value: submittedAssignments,
+        icon: CheckCircle2,
+        color: 'text-green-600',
+        bg: 'bg-green-50',
+        route: 'assignments'
+      },
+      {
+        label: 'Active Projects',
+        value: activeProjects,
+        icon: KanbanIcon,
+        color: 'text-slate-700',
+        bg: 'bg-slate-100',
+        route: 'projects'
+      }
+    ],
+    [activeCourses, notes.length, pendingAssignments, submittedAssignments, activeProjects]
+  );
+
+  const courseProgressScore = useMemo(() => {
+    if (!courses.length) return null;
+    const total = courses.reduce((acc, course) => acc + clampProgress(course.progress || 0), 0);
+    return total / courses.length;
   }, [courses]);
+
+  const assignmentCompletionScore = useMemo(() => {
+    if (!assignments.length) return null;
+    return (submittedAssignments / assignments.length) * 100;
+  }, [assignments.length, submittedAssignments]);
+
+  const taskCompletionScore = useMemo(() => {
+    if (!globalTasks.length) return null;
+    return (completedTasks.length / globalTasks.length) * 100;
+  }, [completedTasks.length, globalTasks.length]);
+
+  const videoCompletionScore = useMemo(() => {
+    if (!videos.length) return null;
+    return (completedVideos / videos.length) * 100;
+  }, [videos.length, completedVideos]);
+
+  const streakMomentumScore = useMemo(() => {
+    const days = Number(streak?.current || 0);
+    return days > 0 ? Math.min(days * 10, 100) : null;
+  }, [streak?.current]);
+
+  const efficiencyScore = useMemo(() => {
+    const metrics = [
+      { value: courseProgressScore, weight: 0.35 },
+      { value: assignmentCompletionScore, weight: 0.25 },
+      { value: taskCompletionScore, weight: 0.2 },
+      { value: videoCompletionScore, weight: 0.15 },
+      { value: streakMomentumScore, weight: 0.05 }
+    ].filter((metric) => metric.value !== null);
+
+    if (!metrics.length) return 0;
+
+    const totalWeight = metrics.reduce((acc, metric) => acc + metric.weight, 0);
+    const weightedSum = metrics.reduce((acc, metric) => acc + metric.value * metric.weight, 0);
+    return clampProgress(weightedSum / totalWeight);
+  }, [
+    courseProgressScore,
+    assignmentCompletionScore,
+    taskCompletionScore,
+    videoCompletionScore,
+    streakMomentumScore
+  ]);
 
   const recentActivities = useMemo(() => {
-    const activities = [];
-    
-    // Get latest courses
-    courses.slice(-2).forEach(c => activities.push({
-      title: `Added Course: ${c.title}`,
-      time: 'Recently',
-      icon: BookOpen,
-      color: 'bg-blue-500',
-      createdAt: c.createdAt || ''
-    }));
+    const events = [];
 
-    // Get latest notes
-    notes.slice(-2).forEach(n => activities.push({
-      title: `Created Note: ${n.title}`,
-      time: 'Recently',
-      icon: FileText,
-      color: 'bg-purple-500',
-      createdAt: n.createdAt || ''
-    }));
+    courses.forEach((course) => {
+      const timestamp = course.updatedAt || course.createdAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Course: ${course.title || 'Untitled'}`,
+        detail: `Progress ${clampProgress(course.progress || 0)}%`,
+        timestamp,
+        icon: BookOpen,
+        color: 'bg-blue-500',
+        route: 'courses'
+      });
+    });
 
-    // Get latest videos
-    videos.slice(-2).forEach(v => activities.push({
-      title: `Watched: ${v.title}`,
-      time: v.progress === 100 ? 'Completed' : `${v.progress}% watched`,
-      icon: Clock,
-      color: 'bg-teal-500',
-      createdAt: v.lastWatched || v.addedAt || ''
-    }));
+    notes.forEach((note) => {
+      const timestamp = note.updatedAt || note.createdAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Note: ${note.title || 'Untitled note'}`,
+        detail: note.pinned ? 'Pinned' : 'Updated',
+        timestamp,
+        icon: FileText,
+        color: 'bg-purple-500',
+        route: 'notes'
+      });
+    });
 
-    // Get latest projects
-    projects.slice(-2).forEach(p => activities.push({
-      title: `New Project: ${p.name}`,
-      time: p.status,
-      icon: KanbanIcon,
-      color: 'bg-slate-700',
-      createdAt: p.createdAt || ''
-    }));
+    videos.forEach((video) => {
+      const timestamp = video.lastWatched || video.updatedAt || video.addedAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Video: ${video.title || 'Untitled video'}`,
+        detail: video.completed ? 'Completed' : `${clampProgress(video.progress || 0)}% watched`,
+        timestamp,
+        icon: Clock,
+        color: 'bg-teal-500',
+        route: 'videos'
+      });
+    });
 
-    // Get latest assignments
-    assignments.slice(-2).forEach(a => activities.push({
-      title: `New Assignment: ${a.title}`,
-      time: a.status,
-      icon: FileText,
-      color: 'bg-amber-500',
-      createdAt: a.createdAt || ''
-    }));
+    projects.forEach((project) => {
+      const timestamp = project.updatedAt || project.createdAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Project: ${project.name || 'Untitled project'}`,
+        detail: project.status || 'Updated',
+        timestamp,
+        icon: KanbanIcon,
+        color: 'bg-slate-700',
+        route: 'projects'
+      });
+    });
 
-    return activities
-      .sort((left, right) => (right.createdAt || '').localeCompare(left.createdAt || ''))
-      .slice(0, 4);
-  }, [courses, notes, videos, projects, assignments]);
+    assignments.forEach((assignment) => {
+      const timestamp = assignment.updatedAt || assignment.createdAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Assignment: ${assignment.title || 'Untitled assignment'}`,
+        detail: assignment.status || 'Updated',
+        timestamp,
+        icon: AlertCircle,
+        color: 'bg-amber-500',
+        route: 'assignments'
+      });
+    });
 
-  const todayFocus = useMemo(() => {
-    return courses.find(c => c.status === 'Active') || courses[0];
-  }, [courses]);
+    globalTasks.forEach((task) => {
+      const timestamp = task.updatedAt || task.createdAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Task: ${task.title || 'Untitled task'}`,
+        detail: task.status === 'completed' ? 'Completed' : 'In workflow',
+        timestamp,
+        icon: Target,
+        color: 'bg-indigo-500',
+        route: 'tasks'
+      });
+    });
+
+    return events
+      .sort((left, right) => (toDateSafe(right.timestamp)?.getTime() || 0) - (toDateSafe(left.timestamp)?.getTime() || 0))
+      .slice(0, 6);
+  }, [courses, notes, videos, projects, assignments, globalTasks]);
+
+  const todayFocus = useMemo(
+    () => courses.find((course) => String(course.status || '').toLowerCase() === 'active') || courses[0] || null,
+    [courses]
+  );
+
+  const hasAnyDashboardData =
+    courses.length > 0 ||
+    notes.length > 0 ||
+    videos.length > 0 ||
+    projects.length > 0 ||
+    assignments.length > 0 ||
+    globalTasks.length > 0 ||
+    reminders.length > 0;
+
+  const upcomingCount = useMemo(() => {
+    const now = Date.now();
+    return reminders.filter((reminder) => {
+      if (!reminder || reminder.completed || reminder.enabled === false) return false;
+      const target = toDateSafe(`${reminder.date}T${reminder.time || '00:00'}`);
+      return target ? target.getTime() >= now : false;
+    }).length;
+  }, [reminders]);
 
   return (
     <div className="space-y-10 max-w-7xl mx-auto pb-12 pt-4">
-      {/* Hero Section */}
       <section className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-12 md:p-16 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
         <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-16">
           <div className="space-y-8 text-center lg:text-left flex-1">
@@ -152,7 +408,7 @@ const Dashboard = ({ setActiveTab }) => {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-5 justify-center lg:justify-start pt-4">
-              <button 
+              <button
                 onClick={() => go('workspace')}
                 className="px-10 py-4 rounded-2xl bg-white text-primary-600 font-bold hover:bg-primary-50 transition-all hover:scale-105 active:scale-95 shadow-xl shadow-primary-500/10 flex items-center gap-2 group"
               >
@@ -160,7 +416,7 @@ const Dashboard = ({ setActiveTab }) => {
                 Create Study Plan
                 <ArrowUpRight size={20} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </button>
-              <button 
+              <button
                 onClick={() => go('review')}
                 className="px-10 py-4 rounded-2xl bg-primary-500/20 backdrop-blur-2xl border border-white/20 text-white font-bold hover:bg-primary-500/30 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
               >
@@ -169,33 +425,114 @@ const Dashboard = ({ setActiveTab }) => {
               </button>
             </div>
           </div>
-          
+
           <div className="hidden xl:flex items-center gap-12 bg-white/5 backdrop-blur-3xl rounded-[3rem] p-12 border border-white/10 shadow-2xl">
             <div className="text-center">
-              <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{productivityScore}%</div>
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">Overall Progress</div>
+              <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{efficiencyScore}%</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">
+                Efficiency Score
+              </div>
             </div>
             <div className="w-px h-20 bg-white/10"></div>
             <div className="text-center">
               <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{courses.length}</div>
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">Total Courses</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">
+                Total Courses
+              </div>
             </div>
           </div>
         </div>
-        
-        {/* Decorative elements */}
+
         <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-[40rem] h-[40rem] bg-white/10 rounded-full blur-[120px] pointer-events-none animate-pulse duration-[10s]"></div>
         <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-[30rem] h-[30rem] bg-accent-400/20 rounded-full blur-[100px] pointer-events-none animate-pulse duration-[8s]"></div>
       </section>
 
-      {/* Stats Grid */}
+      {!hasAnyDashboardData && (
+        <section className="card border-none bg-gradient-to-br from-primary-50 to-accent-50 dark:from-slate-900 dark:to-primary-900/40">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div>
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <Sparkles className="text-primary-500" size={24} />
+                Let&apos;s set up your dashboard
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">
+                Start with one course, one note, and one assignment to unlock personalized insights.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => go('courses')} className="px-5 py-3 rounded-xl bg-primary-500 text-white font-bold hover:bg-primary-600 transition-colors">
+                Add First Course
+              </button>
+              <button onClick={() => go('notes')} className="px-5 py-3 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold">
+                Create First Note
+              </button>
+              <button onClick={() => go('assignments')} className="px-5 py-3 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold">
+                Add Assignment
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section className="card">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h3 className="text-xl font-bold flex items-center gap-2 dark:text-white">
+              <Activity className="text-primary-500" size={22} />
+              Today At A Glance
+            </h3>
+            <p className="text-sm text-slate-400 dark:text-slate-500">Focus on what matters next.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => go('assignments')} className="px-4 py-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 font-bold text-sm">
+              Review Deadlines
+            </button>
+            <button onClick={() => go('timer')} className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-sm">
+              Start Focus Session
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/70 dark:bg-slate-900/40">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Next Deadline</p>
+            {nextDeadlineAssignment ? (
+              <>
+                <p className="mt-2 font-black text-slate-800 dark:text-white truncate">
+                  {nextDeadlineAssignment.title || 'Untitled Assignment'}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {getAssignmentDeadline(nextDeadlineAssignment)?.toLocaleString() || 'Date unavailable'}
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">No upcoming deadlines.</p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/70 dark:bg-slate-900/40">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Overdue Items</p>
+            <p className="mt-2 text-3xl font-black text-rose-500 tabular-nums">{overdueAssignments}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Assignments needing attention now.</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/70 dark:bg-slate-900/40">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">In Progress</p>
+            <p className="mt-2 text-3xl font-black text-primary-500 tabular-nums">{activeTasks.length}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Tasks in motion • {upcomingCount} upcoming reminders
+            </p>
+          </div>
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-        {stats.map((stat, i) => (
-          <motion.div 
-            key={i}
+        {stats.map((stat, index) => (
+          <motion.div
+            key={stat.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
+            transition={{ delay: index * 0.1 }}
             onClick={() => stat.route && go(stat.route)}
             className={`card group hover:-translate-y-1 ${stat.route ? 'cursor-pointer' : ''}`}
           >
@@ -213,7 +550,6 @@ const Dashboard = ({ setActiveTab }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Progress Overview */}
         <div className="lg:col-span-2 space-y-6">
           <div className="card">
             <div className="flex items-center justify-between mb-6">
@@ -222,11 +558,13 @@ const Dashboard = ({ setActiveTab }) => {
                   <TrendingUp className="text-primary-500" size={24} />
                   Learning Activity
                 </h3>
-                <p className="text-sm text-slate-400 dark:text-slate-500">Your study performance over the last 7 days</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500">
+                  Real tracked watch sessions for the last {timeframeDays} days
+                </p>
               </div>
-              <select 
+              <select
                 value={activityTimeframe}
-                onChange={(e) => setActivityTimeframe(e.target.value)}
+                onChange={(event) => setActivityTimeframe(event.target.value)}
                 className="bg-slate-50 dark:bg-slate-800 border-none text-sm font-semibold rounded-lg px-3 py-1.5 focus:ring-2 ring-primary-500/20 dark:text-white cursor-pointer outline-none transition-shadow"
               >
                 <option value="7">Last 7 days</option>
@@ -237,21 +575,33 @@ const Dashboard = ({ setActiveTab }) => {
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
-                  <Tooltip 
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}h`} />
+                  <Tooltip
                     cursor={{ fill: 'rgba(148, 163, 184, 0.1)' }}
-                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'transparent' }}
+                    contentStyle={{
+                      borderRadius: '1rem',
+                      border: 'none',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      backgroundColor: 'transparent'
+                    }}
                     wrapperClassName="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700"
-                    formatter={(value) => [`${value} hours`, 'Studied']}
+                    formatter={(value) => [`${Number(value).toFixed(2)} hours`, 'Tracked']}
                   />
                   <Bar dataKey="hours" radius={[6, 6, 6, 6]}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} className="fill-primary-500 dark:fill-primary-400 hover:fill-primary-600 transition-all" />
+                    {chartData.map((entry) => (
+                      <Cell key={entry.dateKey} className="fill-primary-500 dark:fill-primary-400 hover:fill-primary-600 transition-all" />
                     ))}
                   </Bar>
                 </RechartsBarChart>
               </ResponsiveContainer>
             </div>
+            {!hasTrackedActivity && (
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-5 text-center">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No tracked watch sessions yet. Start a video session to populate this chart.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -261,62 +611,67 @@ const Dashboard = ({ setActiveTab }) => {
                 Recent Activity
               </h3>
               <div className="space-y-4">
-                {recentActivities.map((activity, i) => (
-                  <div key={i} className="flex gap-3">
+                {recentActivities.map((activity) => (
+                  <div key={`${activity.title}-${activity.timestamp}`} className="flex gap-3">
                     <div className={`w-1 h-10 rounded-full ${activity.color}`}></div>
                     <div>
                       <p className="text-sm font-bold dark:text-slate-200">{activity.title}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{activity.time}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        {activity.detail} • {formatRelativeTime(activity.timestamp)}
+                      </p>
                     </div>
                   </div>
                 ))}
                 {recentActivities.length === 0 && (
-                  <p className="text-sm text-slate-400 text-center py-4">No recent activity found.</p>
+                  <p className="text-sm text-slate-400 text-center py-4">
+                    No recent activity found. Start by creating your first item.
+                  </p>
                 )}
               </div>
             </div>
+
             <div className="card">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
                 <KanbanIcon className="text-accent-500" size={20} />
                 Quick Actions
               </h3>
               <div className="grid grid-cols-2 gap-3">
-                <button 
+                <button
                   onClick={() => go('courses')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-left group"
                 >
                   <Plus size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-primary-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Course</p>
                 </button>
-                <button 
+                <button
                   onClick={() => go('notes')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-accent-50 dark:hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition-colors text-left group"
                 >
                   <FileText size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-accent-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Note</p>
                 </button>
-                <button 
-                  onClick={() => go('reminders')}
+                <button
+                  onClick={() => go('timer')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-left group"
                 >
                   <Clock size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-orange-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Timer</p>
                 </button>
-                <button 
+                <button
                   onClick={() => go('assignments')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-left group"
                 >
                   <FileText size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-amber-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Assignments</p>
                 </button>
-                <button 
+                <button
                   onClick={() => go('analytics')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-teal-50 dark:hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left group"
                 >
                   <TrendingUp size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-teal-500" />
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Analytics</p>
                 </button>
-                <button 
+                <button
                   onClick={() => go('goals')}
                   className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-left group"
                 >
@@ -342,7 +697,6 @@ const Dashboard = ({ setActiveTab }) => {
           </div>
         </div>
 
-        {/* Sidebar / Focus */}
         <div className="space-y-8">
           <div className="card overflow-hidden">
             <h3 className="text-lg font-bold mb-4 dark:text-white">Efficiency Score</h3>
@@ -350,21 +704,33 @@ const Dashboard = ({ setActiveTab }) => {
               <div className="relative w-40 h-40 mb-4 flex items-center justify-center">
                 <svg className="w-full h-full -rotate-90">
                   <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100 dark:text-slate-800" />
-                  <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" strokeDasharray="440" strokeDashoffset={440 - (440 * productivityScore) / 100} className="text-primary-500 transition-all duration-1000 ease-out" />
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="70"
+                    stroke="currentColor"
+                    strokeWidth="12"
+                    fill="transparent"
+                    strokeDasharray="440"
+                    strokeDashoffset={440 - (440 * efficiencyScore) / 100}
+                    className="text-primary-500 transition-all duration-1000 ease-out"
+                  />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-4xl font-black dark:text-white">{productivityScore}</span>
+                  <span className="text-4xl font-black dark:text-white">{efficiencyScore}</span>
                   <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">%</span>
                 </div>
               </div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Based on your overall course completion progress.</p>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                Built from progress, completion rates, and streak momentum.
+              </p>
             </div>
           </div>
 
           <div className="card bg-slate-900 text-white border-none">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
               <Clock className="text-primary-400" size={20} />
-              Today's Focus
+              Today&apos;s Focus
             </h3>
             <div className="space-y-4">
               {todayFocus ? (
@@ -372,10 +738,10 @@ const Dashboard = ({ setActiveTab }) => {
                   <p className="text-sm font-bold text-white mb-1">{todayFocus.title}</p>
                   <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
                     <span>Progress</span>
-                    <span>{todayFocus.progress}%</span>
+                    <span>{clampProgress(todayFocus.progress || 0)}%</span>
                   </div>
                   <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary-500 rounded-full transition-all duration-500" style={{ width: `${todayFocus.progress}%` }}></div>
+                    <div className="h-full bg-primary-500 rounded-full transition-all duration-500" style={{ width: `${clampProgress(todayFocus.progress || 0)}%` }}></div>
                   </div>
                 </div>
               ) : (
@@ -383,10 +749,7 @@ const Dashboard = ({ setActiveTab }) => {
                   <p className="text-sm text-slate-400">No active courses. Add one to start tracking!</p>
                 </div>
               )}
-              <button 
-                onClick={() => go('videos')}
-                className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 transition-colors font-bold text-sm"
-              >
+              <button onClick={() => go('videos')} className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 transition-colors font-bold text-sm">
                 Start Session
               </button>
             </div>
@@ -399,19 +762,28 @@ const Dashboard = ({ setActiveTab }) => {
                 Resume Work
               </h3>
               <div className="space-y-3">
-                {activeTasks.slice(0, 2).map(task => (
-                  <div key={task.id} className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-white/20 dark:border-slate-800 backdrop-blur-sm group hover:border-accent-300 dark:hover:border-accent-700 transition-colors cursor-pointer shadow-sm" onClick={() => go('tasks')}>
+                {activeTasks.slice(0, 2).map((task) => (
+                  <div
+                    key={task.id}
+                    className="p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-white/20 dark:border-slate-800 backdrop-blur-sm group hover:border-accent-300 dark:hover:border-accent-700 transition-colors cursor-pointer shadow-sm"
+                    onClick={() => go('tasks')}
+                  >
                     <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{task.title}</p>
                     <div className="flex justify-between items-end mt-2">
                       <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
                         Last: {task.lastPosition || 'Not started'}
                       </p>
-                      <span className="text-[10px] font-black text-accent-600 dark:text-accent-400">{task.progress}%</span>
+                      <span className="text-[10px] font-black text-accent-600 dark:text-accent-400">
+                        {clampProgress(task.progress || 0)}%
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
-              <button onClick={() => go('tasks')} className="w-full mt-4 py-2 text-xs font-bold text-accent-600 dark:text-accent-400 hover:bg-white/50 dark:hover:bg-slate-800/50 rounded-lg transition-colors">
+              <button
+                onClick={() => go('tasks')}
+                className="w-full mt-4 py-2 text-xs font-bold text-accent-600 dark:text-accent-400 hover:bg-white/50 dark:hover:bg-slate-800/50 rounded-lg transition-colors"
+              >
                 View all tasks
               </button>
             </div>

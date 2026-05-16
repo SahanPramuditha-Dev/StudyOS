@@ -4,6 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import * as Sentry from "@sentry/react";
 import posthog from 'posthog-js';
+import '@fontsource/poppins/latin-400.css';
+import '@fontsource/poppins/latin-500.css';
+import '@fontsource/poppins/latin-600.css';
+import '@fontsource/poppins/latin-700.css';
+import '@fontsource/poppins/latin-800.css';
 import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext'
@@ -12,6 +17,7 @@ import { ReminderProvider } from './context/ReminderContext'
 import { GoogleCalendarProvider } from './context/GoogleCalendarContext'
 import { Toaster } from 'react-hot-toast'
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary'
+import MuiDesignSystemProvider from './theme/MuiDesignSystemProvider'
 
 // 1. Initialize Sentry (Error Monitoring)
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -50,13 +56,15 @@ createRoot(document.getElementById('root')).render(
         />
         <Sentry.ErrorBoundary fallback={({ error }) => <ErrorBoundary error={error} />}>
           <ThemeProvider>
-            <AuthProvider>
-              <GoogleCalendarProvider>
-                <ReminderProvider>
-                  <App />
-                </ReminderProvider>
-              </GoogleCalendarProvider>
-            </AuthProvider>
+            <MuiDesignSystemProvider>
+              <AuthProvider>
+                <GoogleCalendarProvider>
+                  <ReminderProvider>
+                    <App />
+                  </ReminderProvider>
+                </GoogleCalendarProvider>
+              </AuthProvider>
+            </MuiDesignSystemProvider>
           </ThemeProvider>
         </Sentry.ErrorBoundary>
       </BrowserRouter>

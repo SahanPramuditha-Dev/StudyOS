@@ -12,7 +12,6 @@ import {
   Search,
   MessageSquare,
   Settings,
-  Menu,
   X,
   Plus,
   ShieldAlert,
@@ -22,7 +21,9 @@ import {
   Inbox,
   ListTodo,
   Clock,
-  Wallet
+  Wallet,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NavLink } from 'react-router-dom';
@@ -71,9 +72,15 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
   const adminItem = isAdmin ? { id: 'admin', icon: ShieldAlert, label: 'Admin Panel' } : null;
   const legalItem = { id: 'legal', icon: Lock, label: 'Legal' };
 
+  const isDesktopCollapsed = !isOpen && !isMobileOpen;
+
   const sidebarContent = (
     <div className="flex flex-col h-full dark:bg-slate-900 transition-colors duration-300">
-      <div className="p-6 flex items-center justify-between gap-3">
+      <div
+        className={`relative flex items-center ${
+          isDesktopCollapsed ? 'px-3 py-4 justify-center' : 'p-6 justify-between gap-3'
+        }`}
+      >
         {(isOpen || isMobileOpen) && (
           <motion.div 
             initial={{ opacity: 0 }} 
@@ -90,21 +97,30 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
             </span>
           </motion.div>
         )}
-        {(!isOpen && !isMobileOpen) && (
-          <img
-            src="/logo.svg"
-            alt="StudyOs logo"
-            className="w-8 h-8 rounded-lg object-cover mx-auto"
-          />
-        )}
         
         {/* Toggle button for desktop */}
         {!isMobileOpen && (
           <button 
             onClick={() => setIsOpen(!isOpen)}
-            className="hidden lg:inline-flex ml-auto p-1.5 hover:bg-slate-100 rounded-lg transition-colors bg-white border border-slate-200 shadow-sm z-10 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700 dark:text-slate-300"
+            aria-label={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            title={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            className={`group hidden lg:inline-flex items-center justify-center rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-100 text-slate-600 shadow-[0_6px_18px_rgba(2,6,23,0.16)] transition-all duration-200 hover:border-primary-300 hover:text-primary-600 hover:shadow-[0_10px_24px_rgba(14,165,233,0.28)] active:scale-95 dark:border-slate-700/80 dark:from-slate-800 dark:to-slate-900 dark:text-slate-300 dark:hover:border-primary-500/60 dark:hover:text-primary-300 ${
+              isDesktopCollapsed
+                ? 'p-1.5'
+                : 'ml-auto p-1.5'
+            }`}
           >
-            {isOpen ? <X size={14} /> : <Menu size={14} />}
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900/5 transition-colors duration-200 group-hover:bg-primary-500/10 dark:bg-white/5 dark:group-hover:bg-primary-500/20">
+              <motion.span
+                key={isOpen ? 'collapse-icon' : 'expand-icon'}
+                initial={{ opacity: 0, scale: 0.8, x: isOpen ? -3 : 3 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+                className="inline-flex"
+              >
+                {isOpen ? <ChevronsLeft size={14} /> : <ChevronsRight size={14} />}
+              </motion.span>
+            </span>
           </button>
         )}
 

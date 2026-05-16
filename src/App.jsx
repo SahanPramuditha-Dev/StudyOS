@@ -39,6 +39,9 @@ import { STORAGE_KEYS } from './services/storage';
 import { playAlarmSound, stopAlarmSound, getIsPlaying, setIsPlaying } from './utils/alarmAudio';
 import toast from 'react-hot-toast';
 
+const SOUND_FRESH_WINDOW_MS = 90 * 1000;
+const SOUND_COOLDOWN_MS = 10 * 1000;
+
 const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -91,6 +94,7 @@ const App = () => {
     emailNotifications: { roleChanges: true, reminders: true }
   });
   const browserDeliveredRef = useRef(new Set());
+  const lastAlarmPlayedAtRef = useRef(0);
 
   const currentTabFromPath = (() => {
     const firstSegment = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
@@ -127,6 +131,13 @@ const App = () => {
     if (!notifications.length) return;
 
     const alarm = notificationSettings?.alarm || {};
+    const isFreshNotification = (notification) => {
+      if (!notification?.timestamp) return true;
+      const timestamp = new Date(notification.timestamp).getTime();
+      if (!Number.isFinite(timestamp)) return true;
+      return (Date.now() - timestamp) <= SOUND_FRESH_WINDOW_MS;
+    };
+
     const shouldNotify = (notification) => {
       if (!notification) return false;
       if (!['reminder', 'deadline', 'chat', 'chat-mention', 'chat-share'].includes(notification.type)) return false;
@@ -148,7 +159,15 @@ const App = () => {
         ) === index
       );
 
-      for (const notification of uniquePending) {
+      const sortedPending = [...uniquePending].sort((a, b) => {
+        const aTime = new Date(a?.timestamp || 0).getTime();
+        const bTime = new Date(b?.timestamp || 0).getTime();
+        return bTime - aTime;
+      });
+
+      let soundPlayedForBatch = false;
+
+      for (const notification of sortedPending) {
         browserDeliveredRef.current.add(notification.id);
         const isChatNotification = String(notification.type || '').startsWith('chat');
 
@@ -160,8 +179,16 @@ const App = () => {
         }
 
         if (!isChatNotification) {
-          // Sound guard: Skip if already playing
-          if (getIsPlaying()) {
+          const isFreshForSound = isFreshNotification(notification);
+          const withinCooldown = (Date.now() - lastAlarmPlayedAtRef.current) < SOUND_COOLDOWN_MS;
+
+          // Sound guard: play only once per delivery batch, only for fresh notifications, with cooldown protection.
+          if (soundPlayedForBatch || !isFreshForSound || withinCooldown) {
+            if (!isFreshForSound) {
+              console.log(`[App] Skipping sound for stale notification ${notification.id}`);
+            }
+          } else if (getIsPlaying()) {
+            soundPlayedForBatch = true;
             console.log(`[App] Skipping sound for notification ${notification.id} - already playing`);
           } else {
             setIsPlaying(true);
@@ -172,6 +199,8 @@ const App = () => {
                 repeatCount: Number(notification.soundRepeatCount ?? alarm.repeatCount ?? 1),
                 muted: Boolean(alarm.muted || notification.soundMode === 'mute' || alarm.enabled === false)
               });
+              lastAlarmPlayedAtRef.current = Date.now();
+              soundPlayedForBatch = true;
             } catch (error) {
               console.warn('[App] Alarm sound playback failed:', error);
             } finally {
