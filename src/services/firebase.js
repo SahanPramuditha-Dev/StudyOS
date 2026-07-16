@@ -22,7 +22,6 @@ const firebaseConfig = {
 const firebaseEnvMappings = [
   ["VITE_FIREBASE_API_KEY", firebaseConfig.apiKey],
   ["VITE_FIREBASE_AUTH_DOMAIN", firebaseConfig.authDomain],
-  ["VITE_FIREBASE_DATABASE_URL", firebaseConfig.databaseURL],
   ["VITE_FIREBASE_PROJECT_ID", firebaseConfig.projectId],
   ["VITE_FIREBASE_STORAGE_BUCKET", firebaseConfig.storageBucket],
   ["VITE_FIREBASE_MESSAGING_SENDER_ID", firebaseConfig.messagingSenderId],
