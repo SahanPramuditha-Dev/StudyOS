@@ -37,6 +37,9 @@ Frontend: React 19 + Vite + Tailwind CSS + MUI + Framer Motion
 Backend: Firebase (Auth/Firestore/Storage/Functions/Analytics)
 Services: Google Calendar API, GitHub API, SMTP Email (Functions)
 Hooks: Custom (useGoogleCalendar, useOnline, useStorage)
+Backend: Firebase (Auth/Firestore/Storage/Functions/Analytics)
+Services: Google Calendar API, GitHub API, SMTP Email (Functions)
+Hooks: Custom (useGoogleCalendar, useOnline, useStorage)
 Testing: Vitest
 Quality: ESLint + Prettier
 ```
@@ -47,7 +50,10 @@ Quality: ESLint + Prettier
 git clone https://github.com/yourusername/studyos.git
 cd studyos
 npm install
-cp .env.example .env.local  # Fill Firebase config
+cp .env.example .env.local
+
+# Important: Fill in your Firebase config in .env.local
+# Important: Set VITE_GOOGLE_CLIENT_ID in .env.local for Google Login to work
 npm run dev
 ```
 

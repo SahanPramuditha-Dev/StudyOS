@@ -20,16 +20,13 @@ const serializeValue = (value) => {
 export const useStorage = (key, initialValue) => {
   const { user, profile } = useAuth();
   const isHydratingFromCloud = useRef(false);
-  const storedValueRef = useRef(null);
-  const lastCloudValueRef = useRef(null);
-
   const [storedValue, setStoredValue] = useState(() => {
     const localItem = StorageService.get(key);
-    const initial = localItem !== null ? localItem : initialValue;
-    storedValueRef.current = initial;
-    lastCloudValueRef.current = serializeValue(localItem !== null ? localItem : null);
-    return initial;
+    return localItem !== null ? localItem : initialValue;
   });
+  
+  const storedValueRef = useRef(storedValue);
+  const lastCloudValueRef = useRef(serializeValue(StorageService.get(key) !== null ? StorageService.get(key) : null));
   const [isInitialized, setIsInitialized] = useState(() => !user);
 
   useEffect(() => {

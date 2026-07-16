@@ -46,7 +46,7 @@ const invalidFirebaseEnvVars = firebaseEnvMappings
   .map(([key]) => key);
 
 if (invalidFirebaseEnvVars.length > 0) {
-  throw new Error(
+  console.error(
     [
       "Firebase environment variables are missing or still set to placeholder values.",
       `Invalid variables: ${invalidFirebaseEnvVars.join(", ")}`,
