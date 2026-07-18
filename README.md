@@ -24,11 +24,25 @@
 
 ## 🖼️ Screenshots
 
-![Dashboard](src/assets/hero.png)
-![Projects](public/logo.svg) <!-- Replace with actual screenshots -->
-![Analytics Heatmap] <!-- Add hero.png cropped etc. -->
+![Dashboard](./Screenshots/Dashboard.png)
 
-Live Demo: [Open in Browser](http://localhost:5173) after `npm run dev`
+![Courses](./Screenshots/Courses.png)
+
+![Notes](./Screenshots/Notes.png)
+
+![Resources](./Screenshots/Resources.png)
+
+![Signin Page](./Screenshots/Signin Page.png)
+
+![Signup Page](./Screenshots/Signup Page.png)
+
+![Video Tracker](./Screenshots/Video Tracker.png)
+
+Live Demo: [https://studyos.sahanpramuditha.me/](https://studyos.sahanpramuditha.me/)
+
+GitHub: [SahanPramuditha-Dev/StudyOS](https://github.com/SahanPramuditha-Dev/StudyOS)
+
+
 
 ## 🛠️ Tech Stack
 
@@ -150,8 +164,9 @@ MIT License - see [LICENSE](LICENSE) (add if missing).
 ## 📞 Support
 
 - 💬 Discord/Forum (TBD)
-- 🐛 [Issues](https://github.com/yourusername/studyos/issues)
+- 🐛 [Issues](https://github.com/SahanPramuditha-Dev/StudyOS/issues)
 - 📧 Email via app contact form.
+
 
 ⭐ **Star on GitHub** if helpful!  
 [DEVELOPER_GUIDE](src/features/Projects/DEVELOPER_GUIDE.md) for advanced setup.
