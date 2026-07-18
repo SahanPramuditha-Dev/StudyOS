@@ -158,7 +158,7 @@ Commercial use, redistribution, and resale are prohibited without written permis
 
 If you are interested in licensing StudyOS for commercial use, please contact:
 
-your-email@example.com
+sahan.dev.tech@gmail.com
 
 ## 🚀 Roadmap
 
