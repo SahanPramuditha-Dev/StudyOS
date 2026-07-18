@@ -19,9 +19,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   PauseCircle,
-  ShieldAlert
+  ShieldAlert,
+  GripVertical
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 const CourseItem = ({
   course,
@@ -41,6 +45,22 @@ const CourseItem = ({
     .filter((a) => a.deadline && a.status !== 'Submitted')
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))[0] || null;
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: course.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 1,
+  };
+
   const preferredExternalUrl = course.playlistUrl || course.courseUrl || course.certificateUrl || '';
 
   const formatUpdatedLabel = (value) => {
@@ -53,6 +73,19 @@ const CourseItem = ({
       year: 'numeric'
     })}`;
   };
+
+  // Generate a mock 7-day sparkline array using the course id as a seed so it remains consistent
+  const getSparklineData = React.useMemo(() => {
+    const data = [];
+    let prev = 20;
+    const seedStr = String(course.id);
+    for (let i = 0; i < 7; i++) {
+      const seedNum = seedStr.charCodeAt(i % seedStr.length) || 50;
+      prev = Math.max(10, Math.min(100, prev + (seedNum % 30) - 15));
+      data.push({ day: i, value: prev });
+    }
+    return data;
+  }, [course.id]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -99,14 +132,23 @@ const CourseItem = ({
 
   return (
     <motion.div
+      ref={setNodeRef}
+      style={style}
       layout
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.92 }}
-      className="card group flex flex-col bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-primary-200/70 dark:hover:border-primary-500/30 transition-all"
+      className="card group flex flex-col bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-6 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-primary-200/70 dark:hover:border-primary-500/30 transition-all relative"
     >
       <div className="flex justify-between items-start gap-3 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
+          <div 
+            {...attributes} 
+            {...listeners} 
+            className="cursor-grab hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            <GripVertical size={16} />
+          </div>
           <button
             type="button"
             onClick={() => onToggleSelect?.(course.id)}
@@ -196,16 +238,33 @@ const CourseItem = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-          <HealthIcon size={14} className={healthConfig.color} />
-          <p className="text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
-            Health: {healthConfig.label}
-          </p>
-          {meta.scheduleLabel ? (
-            <span className="ml-auto text-[10px] font-black uppercase tracking-widest text-amber-500">
-              {meta.scheduleLabel}
-            </span>
-          ) : null}
+        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 rounded-lg">
+            <HealthIcon size={14} className={healthConfig.color} />
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{healthConfig.label}</span>
+          </div>
+          
+          <div className="h-8 w-24 opacity-60">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={getSparklineData}>
+                <defs>
+                  <linearGradient id={`colorValue${course.id}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <Area 
+                  type="monotone" 
+                  dataKey="value" 
+                  stroke="#3b82f6" 
+                  strokeWidth={2}
+                  fillOpacity={1} 
+                  fill={`url(#colorValue${course.id})`} 
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

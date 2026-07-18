@@ -3,6 +3,7 @@ import { Upload, Download, Trash2, Plus, FileUp, CheckCircle2 } from 'lucide-rea
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { nanoid } from 'nanoid';
+import Select from '../../../../components/ui/Select';
 
 const SubmissionTab = ({ assignment, onUpdate }) => {
   const [submissions, setSubmissions] = useState(assignment.submissions || []);
@@ -120,14 +121,15 @@ const SubmissionTab = ({ assignment, onUpdate }) => {
                 <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">
                   Type
                 </label>
-                <select
+                <Select
                   value={submissionType}
-                  onChange={(e) => setSubmissionType(e.target.value)}
+                  onChange={(val) => setSubmissionType(val)}
                   className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-500 outline-none font-medium text-slate-800 dark:text-white"
-                >
-                  <option value="Draft">Draft</option>
-                  <option value="Final">Final Submission</option>
-                </select>
+                  options={[
+                    { label: 'Draft', value: 'Draft' },
+                    { label: 'Final Submission', value: 'Final' }
+                  ]}
+                />
               </div>
             </div>
 

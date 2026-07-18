@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ResourcePreview from './ResourcePreview';
+import Select from '../../../components/ui/Select';
 
 const ResourceItem = ({
   res,
@@ -157,19 +158,15 @@ const ResourceItem = ({
           </a>
         </div>
         <div className="mt-3">
-          <select
+          <Select
             value={res.folderId || ''}
             onChange={(e) => onMove?.(res.id, e.target.value || null)}
             className="w-full text-[10px] font-black uppercase tracking-widest"
-            aria-label={`Move ${res.name} to folder`}
-          >
-            <option value="">Move to Root</option>
-            {folderOptions.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.pathLabel}
-              </option>
-            ))}
-          </select>
+            options={[
+              { label: 'Move to Root', value: '' },
+              ...folderOptions.map(folder => ({ label: folder.pathLabel, value: folder.id }))
+            ]}
+          />
         </div>
       </motion.div>
       <ResourcePreview 

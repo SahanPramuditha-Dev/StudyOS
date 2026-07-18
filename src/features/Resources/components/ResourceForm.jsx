@@ -10,6 +10,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Select from '../../../components/ui/Select';
 
 const ResourceForm = ({ editingItem, resourceForm, setResourceForm, onSubmit, onClose, courses, videos }) => {
   return (
@@ -56,17 +57,12 @@ const ResourceForm = ({ editingItem, resourceForm, setResourceForm, onSubmit, on
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Content Type</label>
               <div className="relative">
-                <select 
+                <Select 
                   className="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white outline-none transition-all font-bold appearance-none cursor-pointer" 
                   value={resourceForm.type} 
                   onChange={e => setResourceForm({...resourceForm, type: e.target.value})}
-                >
-                  <option className="dark:bg-slate-900">Link</option>
-                  <option className="dark:bg-slate-900">PDF</option>
-                  <option className="dark:bg-slate-900">Slides</option>
-                  <option className="dark:bg-slate-900">Docs</option>
-                  <option className="dark:bg-slate-900">Video</option>
-                </select>
+                  options={['Link', 'PDF', 'Slides', 'Docs', 'Video'].map(type => ({ label: type, value: type }))}
+                />
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
               </div>
             </div>
@@ -114,32 +110,31 @@ const ResourceForm = ({ editingItem, resourceForm, setResourceForm, onSubmit, on
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contextual Bridge</label>
               <div className="flex gap-3">
                 <div className="relative flex-1">
-                  <select 
+                  <Select 
                     className="w-full px-4 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white outline-none transition-all font-bold appearance-none cursor-pointer text-xs"
                     value={resourceForm.associatedType}
                     onChange={e => setResourceForm({...resourceForm, associatedType: e.target.value, associatedId: ''})}
-                  >
-                    <option className="dark:bg-slate-900" value="None">None</option>
-                    <option className="dark:bg-slate-900" value="Course">Course</option>
-                    <option className="dark:bg-slate-900" value="Video">Video</option>
-                  </select>
+                    options={[
+                      { label: 'None', value: 'None' },
+                      { label: 'Course', value: 'Course' },
+                      { label: 'Video', value: 'Video' }
+                    ]}
+                  />
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                 </div>
                 {resourceForm.associatedType !== 'None' && (
                   <div className="relative flex-[2]">
-                    <select 
-                      required
+                    <Select 
                       className="w-full px-4 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white outline-none transition-all font-bold appearance-none cursor-pointer text-xs"
                       value={resourceForm.associatedId}
                       onChange={e => setResourceForm({...resourceForm, associatedId: e.target.value})}
-                    >
-                      <option value="">Link to...</option>
-                      {resourceForm.associatedType === 'Course' ? courses.map(c => (
-                        <option key={c.id} value={c.id} className="dark:bg-slate-900">{c.title}</option>
-                      )) : videos.map(v => (
-                        <option key={v.id} value={v.id} className="dark:bg-slate-900">{v.title}</option>
-                      ))}
-                    </select>
+                      options={[
+                        { label: 'Link to...', value: '' },
+                        ...(resourceForm.associatedType === 'Course' 
+                          ? courses.map(c => ({ label: c.title, value: c.id }))
+                          : videos.map(v => ({ label: v.title, value: v.id })))
+                      ]}
+                    />
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
                   </div>
                 )}

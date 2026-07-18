@@ -10,7 +10,10 @@ import {
   Pencil,
   Trash2,
   X,
-  FolderTree
+  FolderTree,
+  Link2,
+  HardDrive,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -28,8 +31,11 @@ import ResourceItem from './components/ResourceItem';
 import ResourceForm from './components/ResourceForm';
 import ResourceFilter from './components/ResourceFilter';
 import ConfirmModal from '../../components/ConfirmModal';
+import BulkActionBar from '../../components/BulkActionBar';
+import { toggleSelectionId, toggleSelectAll, softArchiveByIds, restoreByIds, hardDeleteByIds } from '../../utils/entityOps';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
+import Select from '../../components/ui/Select';
 
 const Resources = () => {
 
@@ -55,6 +61,8 @@ const Resources = () => {
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [editingFolder, setEditingFolder] = useState(null);
+  
+  const [displayMode, setDisplayMode] = useState('grid');
   
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadFileName, setUploadFileName] = useState('');
@@ -527,6 +535,25 @@ const Resources = () => {
     [folders, getFolderPathLabel]
   );
 
+  const resourceStats = useMemo(() => {
+    const total = resources.length;
+    const links = resources.filter(r => r.type === 'Link').length;
+    const papers = resources.filter(r => r.category === 'paper' || Boolean(r.sourcePaperId) || r.type === 'PDF' || (Array.isArray(r.tags) && r.tags.includes('paper'))).length;
+    const totalSizeMB = resources.reduce((acc, r) => acc + (parseFloat(r.size) || 0), 0);
+    return {
+      total,
+      folders: folders.length,
+      links,
+      papers,
+      size: totalSizeMB > 1024 ? `${(totalSizeMB / 1024).toFixed(2)} GB` : `${totalSizeMB.toFixed(2)} MB`
+    };
+  }, [resources, folders]);
+
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filteredData.resources.map((n) => n.id);
+    setSelectedResourceIds((prev) => toggleSelectAll(prev, visibleIds));
+  };
+
   const renderFolderTree = (parentId = null, depth = 0) => {
     const nodes = folders
       .filter((f) => (f.parentId || null) === (parentId || null))
@@ -537,14 +564,14 @@ const Resources = () => {
           onClick={() => setCurrentFolderId(node.id)}
           onDrop={(e) => handleDropOnFolder(e, node.id)}
           onDragOver={(e) => e.preventDefault()}
-          className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 ${
+          className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
             currentFolderId === node.id
-              ? 'bg-primary-500 text-white'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              ? 'bg-primary-500 text-white shadow-md shadow-primary-500/20'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:shadow-sm'
           }`}
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
+          style={{ paddingLeft: `${12 + depth * 16}px` }}
         >
-          <FolderOpen size={12} />
+          <FolderOpen size={14} className={currentFolderId === node.id ? 'text-white' : 'text-slate-400'} />
           <span className="truncate">{node.name}</span>
         </button>
         {renderFolderTree(node.id, depth + 1)}
@@ -568,8 +595,35 @@ const Resources = () => {
             Export ZIP
           </button>
         ]}
-        className="mb-12"
+        className="mb-8"
       />
+
+      {/* Top Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Total Assets', value: resourceStats.total, icon: Layers, tint: 'text-sky-500', bg: 'bg-sky-500/10' },
+          { label: 'Total Folders', value: resourceStats.folders, icon: FolderOpen, tint: 'text-amber-500', bg: 'bg-amber-500/10' },
+          { label: 'Web Links', value: resourceStats.links, icon: Link2, tint: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+          { label: 'Total Size', value: resourceStats.size, icon: HardDrive, tint: 'text-violet-500', bg: 'bg-violet-500/10' }
+        ].map((stat) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
+                <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{stat.value}</p>
+              </div>
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stat.bg} ${stat.tint}`}>
+                <stat.icon size={20} />
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
 
 <ResourceFilter 
         searchTerm={searchTerm}
@@ -589,6 +643,8 @@ const Resources = () => {
         itemCount={resources.length}
         viewMode={viewMode}
         setViewMode={setViewMode}
+        displayMode={displayMode}
+        setDisplayMode={setDisplayMode}
       />
 
       <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} multiple />
@@ -646,46 +702,25 @@ const Resources = () => {
       )}
 
       {selectedResourceIds.length > 0 && (
-        <div className="mb-6 p-4 rounded-2xl border border-primary-200 dark:border-primary-800 bg-primary-50/70 dark:bg-primary-900/20 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-black text-primary-700 dark:text-primary-300">{selectedResourceIds.length} selected</span>
-          <select value={bulkTargetFolder} onChange={(e) => setBulkTargetFolder(e.target.value)} className="px-2 py-1 rounded-lg text-xs">
-            <option value="">Move to Root</option>
-            {folderOptions.map((opt) => <option key={`bulk-${opt.id}`} value={opt.id}>{opt.pathLabel}</option>)}
-          </select>
+        <BulkActionBar selectedCount={selectedResourceIds.length} onSelectVisible={toggleSelectAllVisible} onClear={clearSelection} className="mb-6">
+          <Select 
+            variant="ghost"
+            value={bulkTargetFolder} 
+            onChange={(e) => setBulkTargetFolder(e.target.value)} 
+            options={[
+              { label: 'Move to Root', value: '' },
+              ...folderOptions.map(opt => ({ label: opt.pathLabel, value: opt.id }))
+            ]}
+          />
           <button onClick={applyBulkMove} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">Move</button>
           <input value={bulkTagInput} onChange={(e) => setBulkTagInput(e.target.value)} placeholder="tag" className="px-2 py-1 rounded-lg text-xs w-24" />
           <button onClick={applyBulkTag} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">Tag</button>
           <button onClick={applyBulkDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-700">Delete</button>
-          <button onClick={clearSelection} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-200 text-slate-700">Clear</button>
-        </div>
+        </BulkActionBar>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <aside className="lg:col-span-3">
-          <div className="card p-4 space-y-3 sticky top-24">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
-              <FolderTree size={14} />
-              Explorer
-            </div>
-            <button
-              onClick={() => setCurrentFolderId(null)}
-              onDrop={(e) => handleDropOnFolder(e, null)}
-              onDragOver={(e) => e.preventDefault()}
-              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs font-bold ${
-                currentFolderId === null
-                  ? 'bg-primary-500 text-white'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              Root
-            </button>
-            <div className="max-h-[60vh] overflow-y-auto custom-scrollbar pr-1 space-y-1">
-              {renderFolderTree(null, 0)}
-            </div>
-          </div>
-        </aside>
+      <div className="w-full">
 
-        <section className="lg:col-span-9">
       {/* Grouped Resource Display */}
       <div className="mb-10 space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-xs font-black uppercase tracking-widest">
@@ -707,26 +742,8 @@ const Resources = () => {
             </React.Fragment>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {filteredData.folders.map((folder) => (
-            <button
-              key={folder.id}
-              onClick={() => setCurrentFolderId(folder.id)}
-              onDrop={(e) => handleDropOnFolder(e, folder.id)}
-              onDragOver={(e) => e.preventDefault()}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest inline-flex items-center gap-2 transition ${
-                currentFolderId === folder.id
-                  ? 'bg-primary-500 text-white'
-                  : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-500'
-              }`}
-            >
-              <FolderOpen size={14} />
-              {folder.name}
-            </button>
-          ))}
-        </div>
         {filteredData.folders.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mt-4">
             {filteredData.folders.map((folder) => (
               <div
                 key={`manage-${folder.id}`}
@@ -734,32 +751,35 @@ const Resources = () => {
                 onDragStart={(e) => handleDragStart(e, { type: 'folder', id: folder.id })}
                 onDrop={(e) => handleDropOnFolder(e, folder.id)}
                 onDragOver={(e) => e.preventDefault()}
-                className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between"
+                className="group p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all"
               >
-                <div className="flex items-center gap-2">
-                  <FolderOpen size={16} className="text-primary-500" />
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{folder.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => openFolderModal(folder)} className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-500">
+                <button 
+                  onClick={() => setCurrentFolderId(folder.id)}
+                  className="flex items-center gap-3 text-left hover:text-primary-500 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-500/10 flex items-center justify-center text-primary-500 shrink-0 group-hover:scale-110 transition-transform">
+                    <FolderOpen size={20} />
+                  </div>
+                  <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{folder.name}</span>
+                </button>
+                <div className="flex items-center justify-between gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-auto pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button onClick={() => openFolderModal(folder)} className="p-1.5 rounded-lg text-slate-400 hover:text-primary-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                     <Pencil size={14} />
                   </button>
-                  <select
+                  <Select
+                    variant="ghost"
                     value={folder.parentId || ''}
                     onChange={(e) => moveFolderToParent(folder.id, e.target.value || null)}
-                    className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700"
                     title="Move folder"
-                  >
-                    <option value="">Root</option>
-                    {folderOptions
-                      .filter((opt) => opt.id !== folder.id && !isDescendant(opt.id, folder.id))
-                      .map((opt) => (
-                        <option key={`parent-${folder.id}-${opt.id}`} value={opt.id}>
-                          {opt.pathLabel}
-                        </option>
-                      ))}
-                  </select>
-                  <button onClick={() => handleDeleteFolder(folder.id)} className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-rose-500">
+                    className="flex-1 text-[10px] w-full max-w-[80px]"
+                    options={[
+                      { label: 'Root', value: '' },
+                      ...folderOptions
+                        .filter((opt) => opt.id !== folder.id && !isDescendant(opt.id, folder.id))
+                        .map((opt) => ({ label: opt.pathLabel, value: opt.id }))
+                    ]}
+                  />
+                  <button onClick={() => handleDeleteFolder(folder.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -781,49 +801,127 @@ const Resources = () => {
               <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{items.length} Units</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-              <AnimatePresence mode="popLayout">
-                {items.map(res => (
-                  <ResourceItem 
-                    key={res.id}
-                    res={res}
-                    folderOptions={folderOptions.filter((opt) => opt.id !== (res.folderId || ''))}
-                    onMove={moveResourceToFolder}
-                    selected={selectedResourceIds.includes(res.id)}
-                    onToggleSelect={toggleResourceSelection}
-                    onDragStart={handleDragStart}
-                    onOpen={trackOpen}
-                    courses={courses}
-                    videos={videos}
-                    onDelete={deleteResource}
-                    onEdit={(r) => {
-                      setEditingItem({ type: 'resource', data: r });
-                      setResourceForm({...r, tags: r.tags?.join(', ') || ''});
-                      setIsResourceModalOpen(true);
-                    }}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
+            {displayMode === 'grid' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                <AnimatePresence mode="popLayout">
+                  {items.map(res => (
+                    <ResourceItem 
+                      key={res.id}
+                      res={res}
+                      folderOptions={folderOptions.filter((opt) => opt.id !== (res.folderId || ''))}
+                      onMove={moveResourceToFolder}
+                      selected={selectedResourceIds.includes(res.id)}
+                      onToggleSelect={toggleResourceSelection}
+                      onDragStart={handleDragStart}
+                      onOpen={trackOpen}
+                      courses={courses}
+                      videos={videos}
+                      onDelete={deleteResource}
+                      onEdit={(r) => {
+                        setEditingItem({ type: 'resource', data: r });
+                        setResourceForm({...r, tags: r.tags?.join(', ') || ''});
+                        setIsResourceModalOpen(true);
+                      }}
+                    />
+                  ))}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                <table className="w-full min-w-[920px] text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                    <tr className="text-[10px] uppercase tracking-widest text-slate-500">
+                      <th className="px-4 py-3 w-12">Sel</th>
+                      <th className="px-4 py-3">Asset Name</th>
+                      <th className="px-4 py-3">Type</th>
+                      <th className="px-4 py-3">Tags</th>
+                      <th className="px-4 py-3">Added</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map(res => (
+                      <tr key={res.id} className="border-b border-slate-100 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-200">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedResourceIds.includes(res.id)}
+                            onChange={() => toggleResourceSelection(res.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-bold">
+                          {res.name || 'Untitled'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[9px] font-black uppercase tracking-widest">
+                            {res.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {(res.tags || []).join(', ') || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {new Date(res.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => {
+                              trackOpen(res.id);
+                              window.open(res.url, '_blank');
+                            }} className="px-2.5 py-1.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 text-xs font-bold hover:bg-primary-100 transition-colors">
+                              Open
+                            </button>
+                            <button onClick={() => {
+                              setEditingItem({ type: 'resource', data: res });
+                              setResourceForm({...res, tags: res.tags?.join(', ') || ''});
+                              setIsResourceModalOpen(true);
+                            }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400">
+                              <Pencil size={14} />
+                            </button>
+                            <button onClick={() => deleteResource(res.id)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-rose-400">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         ))}
 
         {filteredData.resources.length === 0 && filteredData.folders.length === 0 && (
-          <EmptyState
-            icon={<FileSearch size={48} className="text-slate-200 dark:text-slate-700" />}
-            title="Nothing Here Yet"
-            description="Start with a folder, upload your first file, or add a link to build your knowledge base."
-            actions={(
-              <>
-                <button onClick={() => openFolderModal()} className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">Create Folder</button>
-                <button onClick={() => fileInputRef.current?.click()} className="px-5 py-3 rounded-xl bg-primary-500 text-white font-bold">Upload First File</button>
-                <button onClick={() => setIsResourceModalOpen(true)} className="px-5 py-3 rounded-xl bg-emerald-500 text-white font-bold">Link First Asset</button>
-              </>
-            )}
-          />
+          <div className="flex flex-col items-center justify-center p-12 overflow-hidden bg-slate-50/50 dark:bg-slate-900/30 rounded-[2rem] border border-slate-100 dark:border-slate-800/50 min-h-[400px]">
+            <div className="w-24 h-24 bg-primary-50 dark:bg-primary-900/20 rounded-full flex items-center justify-center mb-6 relative">
+              <div className="absolute inset-0 border-4 border-white dark:border-slate-800 rounded-full blur-sm opacity-50 mix-blend-overlay"></div>
+              <FileSearch size={36} className="text-primary-500 relative z-10" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-3 tracking-tight">
+              Knowledge Base Empty
+            </h3>
+            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md text-sm leading-relaxed mb-8 font-medium">
+              Start building your personal library. Create folders to organize, upload local files, or link to external assets.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button 
+                onClick={() => openFolderModal()} 
+                className="px-6 py-3 rounded-2xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border border-slate-200 dark:border-slate-700 hover:border-primary-300 transition-colors shadow-sm"
+              >
+                Create Folder
+              </button>
+              <button 
+                onClick={() => fileInputRef.current?.click()} 
+                className="px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-bold transition-colors shadow-lg shadow-primary-500/20"
+              >
+                Upload File
+              </button>
+            </div>
+          </div>
         )}
       </div>
-      </section>
       </div>
 
       {/* Resource Modal */}
@@ -843,7 +941,7 @@ const Resources = () => {
 
       <AnimatePresence>
         {isFolderModalOpen && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

@@ -1,16 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
-  Download, 
-  Eye, 
-  Edit3, 
-  Save, 
-  Layout, 
-  ChevronLeft,
+  FileText,
+  Clock,
+  CheckCircle2,
   BookOpen,
-  Link as LinkIcon,
-  Tag as TagIcon,
-  X,
-  FileText
+  Tag as TagIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
@@ -19,62 +13,62 @@ import { toggleSelectionId, toggleSelectAll, softArchiveByIds, restoreByIds, har
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 
-// Sub-components
-import NotesList from './components/NotesList';
-import NoteEditor from './components/NoteEditor';
-import NotePreview from './components/NotePreview';
+import NoteItem from './components/NoteItem';
+import NoteFilter from './components/NoteFilter';
+import NoteDetailSidebar from './components/NoteDetailSidebar';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 
 const Notes = () => {
-  // 1. State Management
   const [notes, setNotes] = useStorage(STORAGE_KEYS.NOTES, []);
+  const [folders, setFolders] = useStorage(STORAGE_KEYS.NOTE_FOLDERS, []);
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
   
-  const [activeNoteId, setActiveNoteId] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState('edit'); // 'edit', 'preview', 'split'
-  const [isMobileListOpen, setIsMobileListOpen] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterFolderId, setFilterFolderId] = useState('all'); // 'all', 'favorites', or specific folderId
+  const [sortBy, setSortBy] = useState('updated');
+  const [viewMode, setViewMode] = useState('grid');
+  const [showArchived, setShowArchived] = useState(false);
+  const [showInitialSkeleton, setShowInitialSkeleton] = useState(true);
+
   const [selectedNoteIds, setSelectedNoteIds] = useState([]);
   const [bulkTagInput, setBulkTagInput] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
 
-  // Modal states
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [noteToDelete, setNoteToDelete] = useState(null);
-  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [selectedNoteDetail, setSelectedNoteDetail] = useState(null);
+  const [editorViewMode, setEditorViewMode] = useState('split');
+  
+  const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '', title: '' });
 
-  // Derive active note from id
-  const activeNote = useMemo(() => 
-    notes.find(n => n.id === activeNoteId) || null
-  , [notes, activeNoteId]);
+  const [visibleCount, setVisibleCount] = useState(12);
+  const loadMoreRef = useRef(null);
 
-  // 2. Search & Filtering (Derived State)
-  const filteredNotes = useMemo(() => {
-    const query = searchQuery.toLowerCase().trim();
-    const scoped = notes
-      .filter((n) => (showArchived ? true : n.archived !== true))
-      .filter((n) => (showPinnedOnly ? n.pinned === true : true));
-    const searched = !query
-      ? scoped
-      : scoped.filter(n => 
-          (n.title || '').toLowerCase().includes(query) ||
-          (n.content || '').toLowerCase().includes(query) ||
-          (n.tags || []).some(t => t.toLowerCase().includes(query))
-        );
-    return searched.sort((a, b) => {
-      const pinA = a.pinned ? 1 : 0;
-      const pinB = b.pinned ? 1 : 0;
-      if (pinA !== pinB) return pinB - pinA;
-      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
-    });
-  }, [notes, searchQuery, showArchived, showPinnedOnly]);
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [searchTerm, filterFolderId, sortBy, viewMode, showArchived]);
 
-  // 3. CRUD Operations
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => prev + 12);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setShowInitialSkeleton(false), 450);
+    return () => clearTimeout(timeout);
+  }, []);
+
   const handleCreateNote = () => {
     const baseTitle = 'New Insight';
     const existingTitles = new Set(notes.map((n) => String(n.title || '').trim().toLowerCase()));
@@ -91,391 +85,354 @@ const Notes = () => {
       tags: [],
       courseId: '',
       videoId: '',
-      timestamp: null,
-      pinned: false,
+      folderId: filterFolderId !== 'all' && filterFolderId !== 'favorites' ? filterFolderId : '',
+      pinned: filterFolderId === 'favorites',
       archived: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     setNotes([newNote, ...notes]);
-    setActiveNoteId(newNote.id);
-    setIsMobileListOpen(false);
+    setSelectedNoteDetail(newNote);
     toast.success('Draft created');
   };
 
-  const updateActiveNote = useCallback((updates) => {
-    if (!activeNoteId) return;
-    const nextTitle = updates?.title !== undefined ? String(updates.title).trim() : undefined;
-    if (nextTitle !== undefined && (nextTitle.length < 2 || nextTitle.length > 120)) return;
-    const nextContent = updates?.content !== undefined ? String(updates.content) : undefined;
-    if (nextContent !== undefined && nextContent.length > 50000) return;
-    setNotes(prev => prev.map(n => 
-      n.id === activeNoteId 
-        ? { ...n, ...updates, title: nextTitle !== undefined ? nextTitle : n.title, updatedAt: new Date().toISOString() } 
-        : n
-    ));
-  }, [activeNoteId, setNotes]);
+  const updateSelectedNote = useCallback((updates) => {
+    if (!selectedNoteDetail) return;
+    
+    const timestamp = new Date().toISOString();
+    
+    setNotes(prev => prev.map(n => {
+      if (n.id === selectedNoteDetail.id) {
+        return { ...n, ...updates, updatedAt: timestamp };
+      }
+      return n;
+    }));
+    
+    setSelectedNoteDetail(prev => {
+      if (!prev) return prev;
+      return { ...prev, ...updates, updatedAt: timestamp };
+    });
+  }, [selectedNoteDetail, setNotes]);
 
-  const handleDeleteNote = (id) => {
-    setNoteToDelete(id);
-    setIsDeleteModalOpen(true);
-  };
+  const filteredAndSortedNotes = useMemo(() => {
+    const result = notes.filter((note) => {
+      const query = searchTerm.toLowerCase();
+      const isArchived = note.archived === true;
+      
+      if (!showArchived && isArchived) return false;
+      if (showArchived && !isArchived) return false;
 
-  const confirmDeleteNote = () => {
-    if (!noteToDelete) return;
-    setNotes(prev => prev.map(n => n.id === noteToDelete ? { ...n, archived: true, updatedAt: new Date().toISOString() } : n));
-    if (activeNoteId === noteToDelete) setActiveNoteId(null);
-    setNoteToDelete(null);
-    toast.success('Note archived');
-  };
+      const matchesSearch =
+        (note.title || '').toLowerCase().includes(query) ||
+        (note.content || '').toLowerCase().includes(query) ||
+        (note.tags || []).some((tag) => tag.toLowerCase().includes(query));
 
-  const toggleNoteSelection = (id) => {
-    setSelectedNoteIds((prev) => toggleSelectionId(prev, id));
-  };
+      let matchesFolder = true;
+      if (filterFolderId === 'favorites') {
+        matchesFolder = note.pinned === true;
+      } else if (filterFolderId !== 'all') {
+        matchesFolder = note.folderId === filterFolderId;
+      }
 
+      return matchesSearch && matchesFolder;
+    });
+
+    return result.sort((a, b) => {
+      if (sortBy === 'title') return (a.title || '').localeCompare(b.title || '');
+      if (sortBy === 'created') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      // default: updated
+      return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+    });
+  }, [notes, searchTerm, filterFolderId, showArchived, sortBy]);
+
+  const noteStats = useMemo(() => {
+    const activeNotes = notes.filter(n => !n.archived);
+    return {
+      total: activeNotes.length,
+      favorites: activeNotes.filter(n => n.pinned).length,
+      linked: activeNotes.filter(n => n.courseId || n.videoId).length,
+      words: activeNotes.reduce((acc, note) => acc + (note.content?.split(/\s+/).filter(Boolean).length || 0), 0)
+    };
+  }, [notes]);
+
+  const toggleNoteSelection = (id) => setSelectedNoteIds((prev) => toggleSelectionId(prev, id));
+  
   const toggleSelectAllVisible = () => {
-    const visibleIds = filteredNotes.map((n) => n.id);
+    const visibleIds = filteredAndSortedNotes.map((n) => n.id);
     setSelectedNoteIds((prev) => toggleSelectAll(prev, visibleIds));
   };
-
+  
   const clearSelection = () => setSelectedNoteIds([]);
 
-  const bulkArchive = () => {
-    if (!selectedNoteIds.length) return;
-    setNotes((prev) => softArchiveByIds(prev, selectedNoteIds));
-    if (selectedNoteIds.includes(activeNoteId)) setActiveNoteId(null);
-    toast.success(`Archived ${selectedNoteIds.length} note(s)`);
-    clearSelection();
-  };
-
-  const bulkRestore = () => {
-    if (!selectedNoteIds.length) return;
-    setNotes((prev) => restoreByIds(prev, selectedNoteIds));
-    toast.success(`Restored ${selectedNoteIds.length} note(s)`);
-    clearSelection();
-  };
-
-  const bulkHardDelete = () => {
-    if (!selectedNoteIds.length) return;
-    setBulkDeleteConfirmOpen(true);
-  };
-
-  const bulkAddTag = () => {
+  const applyBulkTag = () => {
     const tag = bulkTagInput.trim().toLowerCase();
     if (!selectedNoteIds.length || !tag) return;
     const selected = new Set(selectedNoteIds);
     setNotes((prev) => prev.map((n) => {
       if (!selected.has(n.id)) return n;
       const tags = Array.isArray(n.tags) ? n.tags : [];
-      return tags.includes(tag) ? n : { ...n, tags: [...tags, tag], updatedAt: new Date().toISOString() };
+      if (tags.includes(tag)) return n;
+      return { ...n, tags: [...tags, tag], updatedAt: new Date().toISOString() };
     }));
     toast.success(`Tagged ${selectedNoteIds.length} note(s)`);
     setBulkTagInput('');
   };
 
-  const togglePinNote = (id) => {
-    setNotes((prev) => prev.map((n) => n.id === id ? { ...n, pinned: !n.pinned, updatedAt: new Date().toISOString() } : n));
+  const handleBulkArchive = () => {
+    if (!selectedNoteIds.length) return;
+    setNotes((prev) => softArchiveByIds(prev, selectedNoteIds));
+    toast.success('Notes moved to trash');
+    clearSelection();
   };
 
-  // 4. Auto-Save Logic (Persistence)
-  // useStorage handles direct updates, but we can add a visual indicator or extra sync here if needed.
-  // The user requested a debounced save logic explicitly.
-  useEffect(() => {
-    if (!activeNote) return;
-    
-    const timeout = setTimeout(() => {
-      // Visual feedback for "Saved"
-      console.log('Knowledge synced to storage');
-    }, 1500);
-    
-    return () => clearTimeout(timeout);
-  }, [activeNote]);
-
-  // 5. Export Functionality
-  const exportNote = (format = 'md') => {
-    if (!activeNote) return;
-    const content = activeNote.content;
-    const filename = `${activeNote.title.replace(/\s+/g, '_').toLowerCase()}.${format}`;
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success(`Exported as ${format.toUpperCase()}`);
+  const handleBulkRestore = () => {
+    if (!selectedNoteIds.length) return;
+    setNotes((prev) => restoreByIds(prev, selectedNoteIds));
+    toast.success(`Restored ${selectedNoteIds.length} note(s)`);
+    clearSelection();
   };
 
-  // Tag Helpers
-  const handleAddTag = (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
-      const newTag = e.target.value.trim().toLowerCase();
-      if (!activeNote.tags.includes(newTag)) {
-        updateActiveNote({ tags: [...activeNote.tags, newTag] });
+  const handleBulkHardDelete = () => {
+    if (!selectedNoteIds.length) return;
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Permanently',
+      message: `Permanently delete ${selectedNoteIds.length} selected note(s)? This cannot be undone.`,
+      onConfirm: () => {
+        setNotes((prev) => hardDeleteByIds(prev, selectedNoteIds));
+        toast.success('Notes deleted permanently');
+        clearSelection();
       }
-      e.target.value = '';
-    }
-  };
-
-  const removeTag = (tagToRemove) => {
-    updateActiveNote({ 
-      tags: activeNote.tags.filter(t => t !== tagToRemove) 
     });
   };
 
+  const handleDelete = (id) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Permanently',
+      message: 'Permanently delete this note? This cannot be undone.',
+      onConfirm: () => {
+        setNotes((prev) => hardDeleteByIds(prev, [id]));
+        toast.success('Note deleted permanently');
+      }
+    });
+  };
+
+  const handleToggleArchive = (note) => {
+    const nextArchived = !(note.archived === true);
+    setNotes(prev => prev.map(n => n.id === note.id ? { ...n, archived: nextArchived, updatedAt: new Date().toISOString() } : n));
+    toast.success(nextArchived ? 'Note moved to trash' : 'Note restored');
+  };
+
+  const handleTogglePin = (id) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, pinned: !n.pinned, updatedAt: new Date().toISOString() } : n));
+  };
+
+  const hasActiveFilters = Boolean(searchTerm.trim()) || filterFolderId !== 'all' || showArchived;
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterFolderId('all');
+    setShowArchived(false);
+  };
+
   return (
-    <div className="max-w-7xl mx-auto pb-12">
-      <div className="flex flex-col gap-8">
-        <PageHeader
-          title="Knowledge Library"
-          description="Capture ideas, document code, and build your personal study wiki."
-          icon={<FileText size={28} />}
-          iconClassName="bg-primary-500 text-white shadow-xl shadow-primary-500/20"
-          action={(
-            <button
-              onClick={handleCreateNote}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-black shadow-xl shadow-primary-500/20 transition-all active:scale-95"
-            >
-              <Edit3 size={18} />
-              New Note
-            </button>
-          )}
-        />
+    <div className="w-full max-w-[1680px] mx-auto pb-12">
+      <PageHeader
+        title="Knowledge Library"
+        description="Capture ideas, document code, and build your personal study wiki"
+        icon={<FileText size={32} />}
+        className="mb-8"
+      />
 
-        <div className="flex gap-8 min-h-[calc(100vh-20rem)] relative">
-        {/* Notes List Sidebar */}
-        <motion.div 
-          className={`
-            ${activeNoteId && !isMobileListOpen ? 'hidden lg:flex' : 'flex'} 
-            w-full lg:w-96 flex-col h-full bg-white dark:bg-slate-900/50 rounded-[2.5rem] p-6 border border-slate-100 dark:border-slate-800 shadow-sm
-          `}
-        >
-          <NotesList 
-            notes={filteredNotes}
-            activeNote={activeNote}
-            onSelect={(note) => {
-              setActiveNoteId(note.id);
-              setIsMobileListOpen(false);
-            }}
-            onCreate={handleCreateNote}
-            onDelete={handleDeleteNote}
-            searchTerm={searchQuery}
-            setSearchTerm={setSearchQuery}
-            courses={courses}
-            videos={videos}
-            selectedNoteIds={selectedNoteIds}
-            onToggleSelect={toggleNoteSelection}
-            onTogglePin={togglePinNote}
-            showArchived={showArchived}
-            setShowArchived={setShowArchived}
-            showPinnedOnly={showPinnedOnly}
-            setShowPinnedOnly={setShowPinnedOnly}
-          />
-        </motion.div>
-
-        {selectedNoteIds.length > 0 && (
-          <BulkActionBar
-            selectedCount={selectedNoteIds.length}
-            onSelectVisible={toggleSelectAllVisible}
-            onClear={clearSelection}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-40 p-3 bg-primary-50/95 dark:bg-primary-900/30 backdrop-blur-sm shadow-xl"
+      {/* Top Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Total Notes', value: noteStats.total, icon: FileText, tint: 'text-sky-500', bg: 'bg-sky-500/10' },
+          { label: 'Favorites', value: noteStats.favorites, icon: CheckCircle2, tint: 'text-amber-500', bg: 'bg-amber-500/10' },
+          { label: 'Linked Notes', value: noteStats.linked, icon: BookOpen, tint: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+          { label: 'Words Written', value: noteStats.words, icon: TagIcon, tint: 'text-violet-500', bg: 'bg-violet-500/10' }
+        ].map((stat) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm"
           >
-            <input value={bulkTagInput} onChange={(e) => setBulkTagInput(e.target.value)} placeholder="tag" className="px-2 py-1 rounded-lg text-xs w-24" />
-            <button onClick={bulkAddTag} className="px-3 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">Add tag</button>
-            <button onClick={bulkRestore} className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">Restore</button>
-            <button onClick={bulkArchive} className="px-3 py-1 rounded-lg text-xs font-bold bg-rose-100 text-rose-700">Archive</button>
-            <button onClick={bulkHardDelete} className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-900 text-white">Hard delete</button>
-          </BulkActionBar>
-        )}
-
-        {/* Editor & Preview Workspace */}
-        <AnimatePresence mode="wait">
-          {activeNote ? (
-            <motion.div 
-              key="active-note-workspace"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden h-full"
-            >
-              {/* Header / Toolbar */}
-              <div className="p-6 lg:p-8 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between bg-slate-50/30 dark:bg-slate-900/30">
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <button 
-                    onClick={() => setIsMobileListOpen(true)}
-                    className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors shrink-0"
-                  >
-                    <ChevronLeft size={20} className="text-slate-400" />
-                  </button>
-                  <div className="space-y-1 flex-1 min-w-0">
-                    <input 
-                      className="bg-transparent border-none text-xl lg:text-2xl font-black text-slate-800 dark:text-white focus:ring-0 w-full truncate p-0"
-                      value={activeNote.title}
-                      onChange={(e) => updateActiveNote({ title: e.target.value })}
-                      placeholder="Note Title"
-                    />
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <Save size={10} className="text-green-500" />
-                      <span>Last synced {new Date(activeNote.updatedAt).toLocaleTimeString()}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl mr-2">
-                    <button 
-                      onClick={() => setViewMode('edit')}
-                      className={`p-2 rounded-xl transition-all ${viewMode === 'edit' ? 'bg-white dark:bg-slate-700 shadow-sm text-primary-600' : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Edit Mode"
-                    >
-                      <Edit3 size={18} />
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('split')}
-                      className={`hidden sm:block p-2 rounded-xl transition-all ${viewMode === 'split' ? 'bg-white dark:bg-slate-700 shadow-sm text-primary-600' : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Split View"
-                    >
-                      <Layout size={18} />
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('preview')}
-                      className={`p-2 rounded-xl transition-all ${viewMode === 'preview' ? 'bg-white dark:bg-slate-700 shadow-sm text-primary-600' : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Preview Mode"
-                    >
-                      <Eye size={18} />
-                    </button>
-                  </div>
-                  <button 
-                    onClick={() => exportNote()}
-                    className="hidden sm:flex p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-primary-500 transition-all"
-                    title="Export as Markdown"
-                  >
-                    <Download size={20} />
-                  </button>
-                  <button 
-                    onClick={() => setActiveNoteId(null)}
-                    className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-red-500 transition-all"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
+                <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{stat.value}</p>
               </div>
-
-              {/* Context Bar (Linking & Tags) */}
-              <div className="px-8 py-4 bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-50 dark:border-slate-800 flex flex-wrap items-center gap-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-500">
-                    <BookOpen size={14} />
-                  </div>
-                  <select 
-                    className="bg-transparent border-none text-xs font-black text-slate-500 uppercase tracking-widest focus:ring-0 p-0"
-                    value={activeNote.courseId}
-                    onChange={(e) => updateActiveNote({ courseId: e.target.value })}
-                  >
-                    <option value="">Link to Course</option>
-                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-500">
-                    <LinkIcon size={14} />
-                  </div>
-                  <select 
-                    className="bg-transparent border-none text-xs font-black text-slate-500 uppercase tracking-widest focus:ring-0 p-0"
-                    value={activeNote.videoId}
-                    onChange={(e) => updateActiveNote({ videoId: e.target.value })}
-                  >
-                    <option value="">Link to Video</option>
-                    {videos.map(v => <option key={v.id} value={v.id}>{v.title}</option>)}
-                  </select>
-                </div>
-
-                <div className="flex-1 flex items-center gap-3 min-w-[200px]">
-                  <div className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 text-primary-500">
-                    <TagIcon size={14} />
-                  </div>
-                  <div className="flex-1 flex flex-wrap items-center gap-2">
-                    {activeNote.tags.map((tag, i) => (
-                      <span key={i} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-[10px] font-black text-primary-600 uppercase tracking-widest group">
-                        #{tag}
-                        <button onClick={() => removeTag(tag)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all">
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                    <input 
-                      className="bg-transparent border-none text-[10px] font-black text-slate-400 uppercase tracking-widest focus:ring-0 p-0 w-24"
-                      placeholder="Add tag..."
-                      onKeyDown={handleAddTag}
-                    />
-                  </div>
-                </div>
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stat.bg} ${stat.tint}`}>
+                <stat.icon size={20} />
               </div>
-
-              {/* Editor/Preview Area */}
-              <div className="flex-1 flex overflow-hidden">
-                {(viewMode === 'edit' || viewMode === 'split') && (
-                  <NoteEditor 
-                    content={activeNote.content}
-                    onChange={(content) => updateActiveNote({ content })}
-                  />
-                )}
-                {viewMode === 'split' && <div className="w-px bg-slate-100 dark:bg-slate-800" />}
-                {(viewMode === 'preview' || viewMode === 'split') && (
-                  <NotePreview content={activeNote.content} />
-                )}
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div 
-              key="empty-state"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex-1 flex flex-col items-center justify-center p-12"
-            >
-              <EmptyState
-                icon={<FileText size={48} className="text-slate-200 dark:text-slate-800" />}
-                title="Knowledge Hub"
-                description="Capture insights, document code, and build your personal study wiki with Markdown support."
-                actions={(
-                  <button 
-                    onClick={handleCreateNote}
-                    className="px-8 py-3.5 rounded-2xl bg-primary-500 text-white font-black hover:bg-primary-600 transition-all shadow-xl shadow-primary-500/20 active:scale-95"
-                  >
-                    Start New Note
-                  </button>
-                )}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-        </div>
+            </div>
+          </motion.div>
+        ))}
       </div>
 
-      <ConfirmModal 
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={confirmDeleteNote}
-        title="Archive Note"
-        message="Are you sure you want to archive this knowledge piece? This will remove it from your notes collection."
-        confirmText="Archive"
-        type="danger"
+      <NoteFilter
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        filterFolderId={filterFolderId}
+        setFilterFolderId={setFilterFolderId}
+        folders={folders}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        onAdd={handleCreateNote}
+        noteCount={filteredAndSortedNotes.length}
+        showArchived={showArchived}
+        setShowArchived={setShowArchived}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
       />
+
+      {selectedNoteIds.length > 0 && (
+        <BulkActionBar selectedCount={selectedNoteIds.length} onSelectVisible={toggleSelectAllVisible} onClear={clearSelection} className="mb-6">
+          <input value={bulkTagInput} onChange={(e) => setBulkTagInput(e.target.value)} placeholder="tag" className="px-2 py-1 rounded-lg text-xs w-28" />
+          <button onClick={applyBulkTag} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-700">Add tag</button>
+          <button onClick={handleBulkRestore} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">Restore</button>
+          <button onClick={handleBulkArchive} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 text-rose-700">Trash</button>
+          <button onClick={handleBulkHardDelete} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white">Hard delete</button>
+        </BulkActionBar>
+      )}
+
+      {viewMode === 'grid' ? (
+        <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+          <AnimatePresence mode="popLayout">
+            {filteredAndSortedNotes.slice(0, visibleCount).map((note) => (
+              <NoteItem
+                key={note.id}
+                note={note}
+                onEdit={setSelectedNoteDetail}
+                onDelete={handleDelete}
+                onToggleArchive={handleToggleArchive}
+                onTogglePin={handleTogglePin}
+                courses={courses}
+                videos={videos}
+                selected={selectedNoteIds.includes(note.id)}
+                onToggleSelect={toggleNoteSelection}
+                viewMode="grid"
+              />
+            ))}
+          </AnimatePresence>
+
+          {showInitialSkeleton && notes.length === 0 &&
+            [...Array(3)].map((_, index) => (
+              <div key={`skeleton-${index}`} className="rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm animate-pulse">
+                <div className="flex justify-between mb-4">
+                  <div className="h-4 w-6 rounded bg-slate-200 dark:bg-slate-800" />
+                  <div className="h-4 w-4 rounded bg-slate-200 dark:bg-slate-800" />
+                </div>
+                <div className="h-6 w-3/4 rounded bg-slate-200 dark:bg-slate-800 mb-3" />
+                <div className="h-16 w-full rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5" />
+                <div className="h-8 w-1/3 rounded bg-slate-200 dark:bg-slate-800" />
+              </div>
+            ))}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <table className="w-full min-w-[920px] text-left">
+            <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+              <tr className="text-[10px] uppercase tracking-widest text-slate-500">
+                <th className="px-4 py-3">Sel</th>
+                <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Tags</th>
+                <th className="px-4 py-3">Linked</th>
+                <th className="px-4 py-3">Updated</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAndSortedNotes.slice(0, visibleCount).map((note) => {
+                const c = courses.find(cr => cr.id === note.courseId);
+                const v = videos.find(vr => vr.id === note.videoId);
+                return (
+                  <tr key={note.id} className="border-b border-slate-100 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-200">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedNoteIds.includes(note.id)}
+                        onChange={() => toggleNoteSelection(note.id)}
+                        className="w-4 h-4 rounded border-slate-300 text-primary-500 focus:ring-primary-500"
+                      />
+                    </td>
+                    <td className="px-4 py-3 font-bold flex items-center gap-2">
+                      {note.title || 'Untitled Note'}
+                      {note.pinned && <span className="text-[10px] text-amber-500 uppercase font-black">Pinned</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {(note.tags || []).join(', ') || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {c ? c.title : v ? v.title : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {new Date(note.updatedAt || note.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setSelectedNoteDetail(note)} className="px-2.5 py-1.5 rounded-lg bg-primary-500 text-white text-xs font-bold">Open</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {visibleCount < filteredAndSortedNotes.length && (
+        <div ref={loadMoreRef} className="h-20 w-full flex items-center justify-center mt-6">
+          <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+        </div>
+      )}
+
+      {!showInitialSkeleton && filteredAndSortedNotes.length === 0 && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+          <EmptyState
+            icon={<FileText size={48} className="text-slate-200 dark:text-slate-700" />}
+            title={hasActiveFilters ? 'No Notes Match Your Filters' : 'Knowledge Library Empty'}
+            description={hasActiveFilters
+              ? 'Try clearing filters or search to reveal more notes.'
+              : 'Create your first note to start building your personal wiki.'}
+            actions={(
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button onClick={handleCreateNote} className="px-8 py-4 rounded-2xl bg-primary-500 text-white font-black hover:bg-primary-600 shadow-xl shadow-primary-500/20 transition-all active:scale-95">
+                  Start First Note
+                </button>
+                {hasActiveFilters && (
+                  <button onClick={clearFilters} className="px-8 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-black transition-all active:scale-95">
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+            )}
+          />
+        </motion.div>
+      )}
+
+      <AnimatePresence>
+        {selectedNoteDetail && (
+          <NoteDetailSidebar
+            selectedNoteDetail={selectedNoteDetail}
+            setSelectedNoteDetail={setSelectedNoteDetail}
+            updateNote={updateSelectedNote}
+            viewMode={editorViewMode}
+            setViewMode={setEditorViewMode}
+            courses={courses}
+            videos={videos}
+          />
+        )}
+      </AnimatePresence>
+
       <ConfirmModal
-        isOpen={bulkDeleteConfirmOpen}
-        onClose={() => setBulkDeleteConfirmOpen(false)}
-        onConfirm={() => {
-          setNotes((prev) => hardDeleteByIds(prev, selectedNoteIds));
-          if (selectedNoteIds.includes(activeNoteId)) setActiveNoteId(null);
-          toast.success(`Deleted ${selectedNoteIds.length} note(s)`);
-          clearSelection();
-          setBulkDeleteConfirmOpen(false);
-        }}
-        title="Delete Notes Permanently"
-        message={`Permanently delete ${selectedNoteIds.length} selected note(s)? This cannot be undone.`}
-        confirmText="Delete"
+        isOpen={confirmConfig.isOpen}
+        onClose={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmConfig.onConfirm}
+        message={confirmConfig.message}
+        title={confirmConfig.title}
         type="danger"
       />
     </div>

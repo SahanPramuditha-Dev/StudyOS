@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   BarChart3,
@@ -10,6 +11,7 @@ import {
   Flag
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Select from '../../../components/ui/Select';
 
 const FieldLabel = ({ icon: Icon, text }) => (
   <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-2 ml-1 flex items-center gap-1.5">
@@ -19,8 +21,8 @@ const FieldLabel = ({ icon: Icon, text }) => (
 );
 
 const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose }) => {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -32,9 +34,9 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
         initial={{ opacity: 0, scale: 0.92, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.92, y: 20 }}
-        className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800"
+        className="relative w-full max-w-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-primary-500/10 overflow-hidden border border-slate-200/50 dark:border-slate-700/50 flex flex-col max-h-[90vh]"
       >
-        <div className="p-6 border-b border-slate-50 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="p-6 border-b border-slate-100 dark:border-slate-800/50 flex items-center justify-between bg-white/50 dark:bg-slate-800/30">
           <div>
             <h2 className="text-2xl font-black text-slate-800 dark:text-white">
               {editingCourse ? 'Update Course Hub' : 'Create Course Hub'}
@@ -54,7 +56,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel text="Course Title" />
               <input
                 required
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium"
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
                 placeholder="e.g. Advanced System Architecture"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -65,7 +67,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel text="Platform" />
               <input
                 required
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium"
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
                 placeholder="Coursera, Udemy, YouTube"
                 value={formData.platform}
                 onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
@@ -75,7 +77,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel text="Category" />
               <input
                 required
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium"
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
                 placeholder="Programming, Cloud, Math"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -84,42 +86,55 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
 
             <div>
               <FieldLabel text="Difficulty" />
-              <select
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-bold cursor-pointer"
+              <Select
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-bold cursor-pointer shadow-inner dark:shadow-none"
                 value={formData.difficulty}
-                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-              >
-                <option className="dark:bg-slate-900">Beginner</option>
-                <option className="dark:bg-slate-900">Intermediate</option>
-                <option className="dark:bg-slate-900">Advanced</option>
-              </select>
+                onChange={(val) => setFormData({ ...formData, difficulty: val })}
+                options={[
+                  { label: 'Beginner', value: 'Beginner' },
+                  { label: 'Intermediate', value: 'Intermediate' },
+                  { label: 'Advanced', value: 'Advanced' }
+                ]}
+              />
             </div>
 
             <div>
               <FieldLabel icon={Flag} text="Priority" />
-              <select
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-bold cursor-pointer"
+              <Select
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-bold cursor-pointer shadow-inner dark:shadow-none"
                 value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-              >
-                <option className="dark:bg-slate-900">Low</option>
-                <option className="dark:bg-slate-900">Medium</option>
-                <option className="dark:bg-slate-900">High</option>
-                <option className="dark:bg-slate-900">Critical</option>
-              </select>
+                onChange={(val) => setFormData({ ...formData, priority: val })}
+                options={[
+                  { label: 'Low', value: 'Low' },
+                  { label: 'Medium', value: 'Medium' },
+                  { label: 'High', value: 'High' },
+                  { label: 'Critical', value: 'Critical' }
+                ]}
+              />
             </div>
 
             <div>
               <FieldLabel text="Status" />
-              <select
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-bold cursor-pointer"
+              <Select
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-bold cursor-pointer shadow-inner dark:shadow-none"
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              >
-                <option className="dark:bg-slate-900">Active</option>
-                <option className="dark:bg-slate-900">Paused</option>
-                <option className="dark:bg-slate-900">Completed</option>
-              </select>
+                onChange={(val) => setFormData({ ...formData, status: val })}
+                options={[
+                  { label: 'Active', value: 'Active' },
+                  { label: 'Paused', value: 'Paused' },
+                  { label: 'Completed', value: 'Completed' }
+                ]}
+              />
+            </div>
+
+            <div>
+              <FieldLabel icon={Clock} text="Course Hours" />
+              <input
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
+                placeholder="e.g. 45h, 2.5h"
+                value={formData.courseHours || ''}
+                onChange={(e) => setFormData({ ...formData, courseHours: e.target.value })}
+              />
             </div>
           </div>
 
@@ -128,7 +143,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={LinkIcon} text="Course URL" />
               <input
                 type="url"
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium"
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
                 placeholder="https://..."
                 value={formData.courseUrl}
                 onChange={(e) => setFormData({ ...formData, courseUrl: e.target.value })}
@@ -138,7 +153,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={LinkIcon} text="Playlist URL" />
               <input
                 type="url"
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium"
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
                 placeholder="https://..."
                 value={formData.playlistUrl}
                 onChange={(e) => setFormData({ ...formData, playlistUrl: e.target.value })}
@@ -148,7 +163,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={LinkIcon} text="Certificate URL" />
               <input
                 type="url"
-                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium"
+                className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none"
                 placeholder="https://..."
                 value={formData.certificateUrl}
                 onChange={(e) => setFormData({ ...formData, certificateUrl: e.target.value })}
@@ -161,7 +176,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={Calendar} text="Start Date" />
               <input
                 type="date"
-                className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm shadow-inner dark:shadow-none focus:border-primary-500"
                 value={formData.startDate}
                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
               />
@@ -170,7 +185,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={Calendar} text="Target Date" />
               <input
                 type="date"
-                className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm shadow-inner dark:shadow-none focus:border-primary-500"
                 value={formData.targetDate}
                 onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
               />
@@ -179,7 +194,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={Calendar} text="Exam Date" />
               <input
                 type="date"
-                className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm shadow-inner dark:shadow-none focus:border-primary-500"
                 value={formData.examDate}
                 onChange={(e) => setFormData({ ...formData, examDate: e.target.value })}
               />
@@ -188,7 +203,7 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
               <FieldLabel icon={Calendar} text="Cert Deadline" />
               <input
                 type="date"
-                className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm"
+                className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 outline-none text-slate-700 dark:text-slate-200 text-sm shadow-inner dark:shadow-none focus:border-primary-500"
                 value={formData.certificateDeadline}
                 onChange={(e) => setFormData({ ...formData, certificateDeadline: e.target.value })}
               />
@@ -324,7 +339,8 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
           </div>
         </form>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -43,6 +43,7 @@ import toast from 'react-hot-toast';
 import PageHeader from '../../components/PageHeader';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import Select from '../../components/ui/Select';
 
 const ACCOUNT_OPTIONS = [
   { id: 'cash', label: 'Cash', icon: Wallet, tone: 'text-sky-600', bg: 'bg-sky-50 dark:bg-sky-500/10' },
@@ -854,35 +855,34 @@ const Budget = () => {
                     className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400 dark:text-white"
                   />
                 </div>
-                <select
+                <Select
+                  variant="ghost"
                   value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                >
-                  <option value="all">All Categories</option>
-                  {month.categories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.label}</option>
-                  ))}
-                </select>
-                <select
+                  onChange={(val) => setCategoryFilter(val)}
+                  options={[
+                    { label: 'All Categories', value: 'all' },
+                    ...month.categories.map(category => ({ label: category.label, value: category.id }))
+                  ]}
+                />
+                <Select
+                  variant="ghost"
                   value={accountFilter}
-                  onChange={(e) => setAccountFilter(e.target.value)}
-                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                >
-                  <option value="all">All Accounts</option>
-                  {month.accounts.map((account) => (
-                    <option key={account.id} value={account.id}>{account.label}</option>
-                  ))}
-                </select>
-                <select
+                  onChange={(val) => setAccountFilter(val)}
+                  options={[
+                    { label: 'All Accounts', value: 'all' },
+                    ...month.accounts.map(account => ({ label: account.label, value: account.id }))
+                  ]}
+                />
+                <Select
+                  variant="ghost"
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                >
-                  <option value="newest">Newest</option>
-                  <option value="highest">Highest</option>
-                  <option value="lowest">Lowest</option>
-                </select>
+                  onChange={(val) => setSortBy(val)}
+                  options={[
+                    { label: 'Newest', value: 'newest' },
+                    { label: 'Highest', value: 'highest' },
+                    { label: 'Lowest', value: 'lowest' }
+                  ]}
+                />
               </div>
             </div>
 
@@ -1038,24 +1038,18 @@ const Budget = () => {
                   className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                 />
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <select
+                  <Select
                     value={transfer.fromAccountId}
-                    onChange={(e) => setTransfer((prev) => ({ ...prev, fromAccountId: e.target.value }))}
+                    onChange={(val) => setTransfer((prev) => ({ ...prev, fromAccountId: val }))}
                     className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                  >
-                    {month.accounts.map((account) => (
-                      <option key={account.id} value={account.id}>{account.label}</option>
-                    ))}
-                  </select>
-                  <select
+                    options={month.accounts.map(account => ({ label: account.label, value: account.id }))}
+                  />
+                  <Select
                     value={transfer.toAccountId}
-                    onChange={(e) => setTransfer((prev) => ({ ...prev, toAccountId: e.target.value }))}
+                    onChange={(val) => setTransfer((prev) => ({ ...prev, toAccountId: val }))}
                     className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                  >
-                    {month.accounts.map((account) => (
-                      <option key={account.id} value={account.id}>{account.label}</option>
-                    ))}
-                  </select>
+                    options={month.accounts.map(account => ({ label: account.label, value: account.id }))}
+                  />
                 </div>
                 <button
                   type="button"
@@ -1151,24 +1145,18 @@ const Budget = () => {
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <select
+                <Select
                   value={newRecurring.categoryId}
-                  onChange={(e) => setNewRecurring((prev) => ({ ...prev, categoryId: e.target.value }))}
+                  onChange={(val) => setNewRecurring((prev) => ({ ...prev, categoryId: val }))}
                   className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                >
-                  {month.categories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.label}</option>
-                  ))}
-                </select>
-                <select
+                  options={month.categories.map(category => ({ label: category.label, value: category.id }))}
+                />
+                <Select
                   value={newRecurring.accountId}
-                  onChange={(e) => setNewRecurring((prev) => ({ ...prev, accountId: e.target.value }))}
+                  onChange={(val) => setNewRecurring((prev) => ({ ...prev, accountId: val }))}
                   className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                >
-                  {month.accounts.map((account) => (
-                    <option key={account.id} value={account.id}>{account.label}</option>
-                  ))}
-                </select>
+                  options={month.accounts.map(account => ({ label: account.label, value: account.id }))}
+                />
               </div>
               <button
                 type="button"

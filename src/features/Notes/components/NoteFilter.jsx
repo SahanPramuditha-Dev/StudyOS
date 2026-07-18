@@ -2,35 +2,25 @@ import React from 'react';
 import {
   Plus,
   Search,
-  RotateCcw,
   LayoutGrid,
   ArrowUpDown,
   Table2,
-  Filter
+  Folder
 } from 'lucide-react';
-import { Select } from '../../../components/ui/Select';
+import Select from '../../../components/ui/Select';
 
-const STATUS_FILTERS = ['All', 'Active', 'Paused', 'Completed', 'Archived'];
-
-const CourseFilter = ({
+const NoteFilter = ({
   searchTerm,
   setSearchTerm,
-  filterStatus,
-  setFilterStatus,
+  filterFolderId,
+  setFilterFolderId,
+  folders,
   sortBy,
   setSortBy,
-  onReset,
   onAdd,
-  courseCount,
+  noteCount,
   showArchived,
   setShowArchived,
-  statusCounts = {},
-  filterCategory,
-  setFilterCategory,
-  filterDifficulty,
-  setFilterDifficulty,
-  availableCategories = [],
-  availableDifficulties = [],
   viewMode,
   setViewMode
 }) => {
@@ -44,7 +34,7 @@ const CourseFilter = ({
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary-500 transition-colors" size={18} />
             <input
               type="text"
-              placeholder="Search courses, platforms, or tags..."
+              placeholder="Search notes, tags, or content..."
               className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm focus:ring-4 ring-primary-500/10 outline-none transition-all font-medium"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -53,20 +43,11 @@ const CourseFilter = ({
 
           <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={onReset}
-              className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shadow-sm active:scale-95"
-              title="Reset to default sample data"
-              aria-label="Reset data"
-            >
-              <RotateCcw size={18} />
-            </button>
-
-            <button
               onClick={onAdd}
               className="flex-1 md:flex-none flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-lg shadow-primary-500/25 active:scale-95"
             >
               <Plus size={18} />
-              Add Course
+              New Note
             </button>
           </div>
         </div>
@@ -74,26 +55,26 @@ const CourseFilter = ({
         {/* Second Row: Status Tabs & View Toggles */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800 pt-5">
           
-          {/* Left: Status Filters */}
+          {/* Left: Folder Filters */}
           <div className="flex flex-wrap items-center gap-2">
-            {STATUS_FILTERS.map((status) => {
-              const isActive = filterStatus === status;
-              const count = statusCounts[status] ?? 0;
+            {[
+              { id: 'all', name: 'All' },
+              { id: 'favorites', name: 'Favorites' },
+              ...(folders || [])
+            ].map((folder) => {
+              const isActive = filterFolderId === folder.id;
               return (
                 <button
-                  key={status}
+                  key={folder.id}
                   type="button"
-                  onClick={() => setFilterStatus(status)}
+                  onClick={() => setFilterFolderId(folder.id)}
                   className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
                     isActive
                       ? 'bg-primary-500 text-white border-primary-500 shadow-lg shadow-primary-500/20'
                       : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-primary-300 dark:hover:border-primary-500/40'
                   }`}
                 >
-                  {status}
-                  <span className={`ml-1.5 ${isActive ? 'text-white/90' : 'text-slate-400'}`}>
-                    {count}
-                  </span>
+                  {folder.name}
                 </button>
               );
             })}
@@ -104,7 +85,7 @@ const CourseFilter = ({
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <LayoutGrid size={16} className="text-primary-500" />
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                {courseCount} Showing
+                {noteCount} Showing
               </span>
             </div>
 
@@ -113,13 +94,12 @@ const CourseFilter = ({
               <Select
                 variant="ghost"
                 value={sortBy}
-                onChange={setSortBy}
+                onChange={(val) => setSortBy(val)}
+                aria-label="Sort notes"
                 options={[
-                  { label: 'Custom Order', value: 'custom' },
                   { label: 'Recently Updated', value: 'updated' },
-                  { label: 'Title (A-Z)', value: 'title' },
-                  { label: 'Highest Progress', value: 'progress' },
-                  { label: 'Platform', value: 'platform' },
+                  { label: 'Recently Created', value: 'created' },
+                  { label: 'Title (A-Z)', value: 'title' }
                 ]}
               />
             </div>
@@ -165,40 +145,12 @@ const CourseFilter = ({
             }`}
             title="Toggle archived visibility"
           >
-            {showArchived ? 'Including Archived' : 'Hide Archived'}
+            {showArchived ? 'Including Trash' : 'Hide Trash'}
           </button>
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-            <Filter size={15} className="text-primary-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Category</span>
-            <Select
-              variant="ghost"
-              value={filterCategory}
-              onChange={setFilterCategory}
-              options={[
-                { label: 'All', value: 'All' },
-                ...availableCategories.map(c => ({ label: c, value: c }))
-              ]}
-            />
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-            <Filter size={15} className="text-primary-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Difficulty</span>
-            <Select
-              variant="ghost"
-              value={filterDifficulty}
-              onChange={setFilterDifficulty}
-              options={[
-                { label: 'All', value: 'All' },
-                ...availableDifficulties.map(diff => ({ label: diff, value: diff }))
-              ]}
-            />
-          </div>
         </div>
       </div>
     </div>
   );
 };
 
-export default CourseFilter;
+export default NoteFilter;

@@ -11,6 +11,7 @@ import { getChatAttachmentLimitBytes, uploadChatAttachment, isValidChatAttachmen
 import { rtdb } from '../../services/firebase';
 import { onValue, ref, remove, set } from 'firebase/database';
 import { chatMessageNotification, chatMentionNotification, chatSharedContentNotification } from '../../utils/notificationBuilders';
+import Select from '../../components/ui/Select';
 
 const PRESENCE_STALE_MS = 90 * 1000;
 
@@ -1873,23 +1874,19 @@ const Chat = () => {
               <form onSubmit={handleCreateRoom} className="p-6 space-y-5">
                 <div className="space-y-2">
                   <label className="text-xs font-black uppercase tracking-widest text-slate-400">Room type</label>
-                  <select
+                  <Select
                     value={roomType}
-                    onChange={(e) => {
-                      const nextType = e.target.value;
-                      setRoomType(nextType);
-                      if (nextType === 'direct') {
+                    onChange={(val) => {
+                      setRoomType(val);
+                      if (val === 'direct') {
                         setRoomTitle('');
                         setContextType('general');
                         setContextId('');
                       }
                     }}
                     className="w-full rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none px-4 py-3 text-sm text-slate-800 dark:text-slate-100"
-                  >
-                    {ROOM_TYPES.map((type) => (
-                      <option key={type.key} value={type.key}>{type.label}</option>
-                    ))}
-                  </select>
+                    options={ROOM_TYPES.map(type => ({ label: type.label, value: type.key }))}
+                  />
                 </div>
 
                 {roomType === 'direct' ? (
@@ -1998,35 +1995,29 @@ const Chat = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-black uppercase tracking-widest text-slate-400">Context type</label>
-                      <select
+                      <Select
                         value={contextType}
-                        onChange={(e) => {
-                          setContextType(e.target.value);
+                        onChange={(val) => {
+                          setContextType(val);
                           setContextId('');
                         }}
                         className="w-full rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none px-4 py-3 text-sm text-slate-800 dark:text-slate-100"
-                      >
-                        {CONTEXT_TYPES.map((type) => (
-                          <option key={type.key} value={type.key}>{type.label}</option>
-                        ))}
-                      </select>
+                        options={CONTEXT_TYPES.map(type => ({ label: type.label, value: type.key }))}
+                      />
                     </div>
 
                     <div className="space-y-2">
                       <label className="text-xs font-black uppercase tracking-widest text-slate-400">Linked item</label>
-                      <select
+                      <Select
                         value={contextId}
-                        onChange={(e) => setContextId(e.target.value)}
+                        onChange={(val) => setContextId(val)}
                         disabled={contextType === 'general'}
                         className="w-full rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none px-4 py-3 text-sm text-slate-800 dark:text-slate-100 disabled:opacity-50"
-                      >
-                        <option value="">No linked item</option>
-                        {contextOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { label: 'No linked item', value: '' },
+                          ...contextOptions.map(option => ({ label: option.label, value: option.value }))
+                        ]}
+                      />
                     </div>
                   </div>
                   </>

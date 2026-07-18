@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
+import Select from '../../../components/ui/Select';
 
 const AssignmentForm = ({ formData, setFormData, onSubmit, onClose, isEditing, courses = [] }) => {
   const handleInputChange = (e) => {
@@ -61,17 +62,18 @@ const AssignmentForm = ({ formData, setFormData, onSubmit, onClose, isEditing, c
               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">
                 Status
               </label>
-              <select
+              <Select
                 name="status"
                 value={formData.status}
-                onChange={handleInputChange}
+                onChange={(val) => handleInputChange({ target: { name: 'status', value: val } })}
                 className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-500 outline-none font-medium text-slate-800 dark:text-white transition-all"
-              >
-                <option value="Not Started">Not Started</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Submitted">Submitted</option>
-                <option value="Late">Late</option>
-              </select>
+                options={[
+                  { label: 'Not Started', value: 'Not Started' },
+                  { label: 'In Progress', value: 'In Progress' },
+                  { label: 'Submitted', value: 'Submitted' },
+                  { label: 'Late', value: 'Late' }
+                ]}
+              />
             </div>
           </div>
 
@@ -81,17 +83,16 @@ const AssignmentForm = ({ formData, setFormData, onSubmit, onClose, isEditing, c
               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">
                 Course (Optional)
               </label>
-              <select
+              <Select
                 name="courseId"
                 value={formData.courseId}
-                onChange={handleInputChange}
+                onChange={(val) => handleInputChange({ target: { name: 'courseId', value: val } })}
                 className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-500 outline-none font-medium text-slate-800 dark:text-white transition-all"
-              >
-                <option value="">Select a course</option>
-                {courses.map(course => (
-                  <option key={course.id} value={course.id}>{course.title}</option>
-                ))}
-              </select>
+                options={[
+                  { label: 'Select a course', value: '' },
+                  ...courses.map(course => ({ label: course.title, value: course.id }))
+                ]}
+              />
             </div>
           )}
 

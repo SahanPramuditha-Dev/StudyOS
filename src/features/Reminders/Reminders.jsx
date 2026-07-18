@@ -25,6 +25,7 @@ import CalendarView from './components/CalendarView';
 import EventModal from './components/EventModal';
 import EventList from './components/EventList';
 import ReminderPanel from './components/ReminderPanel';
+import Select from '../../components/ui/Select';
 
 const MAX_EVENTS_PER_MONTH = 100;
 
@@ -437,24 +438,18 @@ const Reminders = () => {
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
           <Filter size={16} className="text-slate-400" />
-          <select
+          <Select
+            variant="ghost"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-sm font-bold"
-          >
-            {categories.map((category) => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-          <select
+            options={categories.map(category => ({ label: category, value: category }))}
+          />
+          <Select
+            variant="ghost"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-sm font-bold"
-          >
-            {['All', 'Upcoming', 'Completed', 'Missed'].map((status) => (
-              <option key={status} value={status}>{status}</option>
-            ))}
-          </select>
+            options={['All', 'Upcoming', 'Completed', 'Missed'].map(status => ({ label: status, value: status }))}
+          />
         </div>
       </div>
 

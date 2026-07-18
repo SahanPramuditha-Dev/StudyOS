@@ -70,6 +70,7 @@ class FirestoreService {
       uid: userId,
       email: profileData.email,
       name: profileData.name,
+      username: profileData.username || null,
       role: 'restricted',
       status: {
         isActive: true,
@@ -109,6 +110,156 @@ class FirestoreService {
       createdAt: now,
       lastLogin: now
     };
+  }
+
+  /**
+   * Resolves an email address from a given username.
+   * Returns null if not found.
+   */
+  static async getUserEmailByUsername(username) {
+    if (!username) return null;
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+    try {
+      const q = query(collection(db, 'users'), where('username', '==', cleanUsername), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs[0].data().email;
+      }
+      return null;
+    } catch (e) {
+      console.error('[FirestoreService] getUserEmailByUsername failed:', e);
+      return null;
+    }
+  }
+
+  static RESERVED_USERNAMES = [
+    'admin', 'administrator', 'support', 'help', 'system', 'root', 'owner', 'billing', 'api', 'developer'
+  ];
+
+  static validateUsernameFormat(username) {
+    if (!username) return 'Username is required.';
+    if (username.length < 3) return 'Username must be at least 3 characters.';
+    if (username.length > 20) return 'Username must be at most 20 characters.';
+    if (!/^[a-z0-9_.]+$/.test(username)) return 'Username can only contain letters, numbers, underscores, and periods.';
+    if (this.RESERVED_USERNAMES.includes(username)) return 'This username is reserved.';
+    return null; // Valid
+  }
+
+  static async checkUsernameAvailability(username) {
+    if (!username) return false;
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+    const formatError = this.validateUsernameFormat(cleanUsername);
+    if (formatError) return false;
+
+    // Check users collection
+    try {
+      const qUsers = query(collection(db, 'users'), where('username', '==', cleanUsername), limit(1));
+      const snapUsers = await getDocs(qUsers);
+      if (!snapUsers.empty) return false; // Username is taken by an active user
+    } catch (e) {
+      console.error('[FirestoreService] checkUsernameAvailability users check failed:', e);
+      throw new Error('users query failed: ' + e.message);
+    }
+
+    // Check username_history collection for 90-day holds
+    try {
+      const now = new Date().getTime();
+      const qHistory = query(collection(db, 'username_history'), where('username', '==', cleanUsername), limit(1));
+      const snapHistory = await getDocs(qHistory);
+      if (!snapHistory.empty) {
+        for (const doc of snapHistory.docs) {
+          const data = doc.data();
+          if (data.reserved_until && new Date(data.reserved_until).getTime() > now) {
+            return false;
+          }
+        }
+      }
+    } catch (historyErr) {
+      console.warn('[FirestoreService] checkUsernameAvailability history check failed (likely permissions):', historyErr);
+      // Continue and assume available if the history check is inaccessible to the client
+    }
+
+    return true;
+  }
+
+  static async suggestUsernames(baseUsername) {
+    if (!baseUsername) return [];
+    const cleanUsername = baseUsername.trim().toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_.]/g, '');
+    const suffixes = ['123', '.dev', '_2026', '.tech', 'OS'];
+    const suggestions = [];
+
+    for (const suffix of suffixes) {
+      if (suggestions.length >= 3) break;
+      const candidate = `${cleanUsername}${suffix}`.substring(0, 20);
+      const isAvailable = await this.checkUsernameAvailability(candidate);
+      if (isAvailable && !suggestions.includes(candidate)) {
+        suggestions.push(candidate);
+      }
+    }
+    return suggestions;
+  }
+
+  /**
+   * Set a unique username for a user, enforcing 30-day limits and maintaining history.
+   */
+  static async setUsername(userId, username) {
+    if (!userId || !username) return false;
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+    
+    const formatError = this.validateUsernameFormat(cleanUsername);
+    if (formatError) throw new Error(formatError);
+
+    try {
+      const isAvailable = await this.checkUsernameAvailability(cleanUsername);
+      if (!isAvailable) {
+        throw new Error('Username is already taken or unavailable.');
+      }
+
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.exists() ? userSnap.data() : null;
+
+      // 30 day limit check
+      if (userData?.username_changed_at) {
+        const lastChange = new Date(userData.username_changed_at).getTime();
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        if (new Date().getTime() - lastChange < thirtyDaysMs) {
+          const nextAvailable = new Date(lastChange + thirtyDaysMs).toLocaleDateString();
+          throw new Error(`Username can only be changed once every 30 days. Next change available on ${nextAvailable}.`);
+        }
+      }
+
+      // Store history if there's a previous username
+      if (userData?.username) {
+        const historyRef = collection(db, 'username_history');
+        const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+        await addDoc(historyRef, {
+          user_id: userId,
+          username: userData.username,
+          changed_at: new Date().toISOString(),
+          reserved_until: new Date(new Date().getTime() + ninetyDaysMs).toISOString()
+        });
+      }
+
+      const nowStr = new Date().toISOString();
+      await updateDoc(userRef, { 
+        username: cleanUsername,
+        username_changed_at: nowStr
+      });
+
+      const cached = getCachedEntry(userProfileCache, userId);
+      if (cached) {
+        cacheEntry(userProfileCache, userId, { 
+          ...cached.data, 
+          username: cleanUsername,
+          username_changed_at: nowStr
+        });
+      }
+      return true;
+    } catch (e) {
+      console.error('[FirestoreService] setUsername failed:', e);
+      throw e;
+    }
   }
 
   /**

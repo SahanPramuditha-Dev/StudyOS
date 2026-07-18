@@ -12,7 +12,11 @@ import {
   sendPasswordResetEmail,
   deleteUser,
   reauthenticateWithPopup,
-  sendEmailVerification
+  sendEmailVerification,
+  linkWithPopup,
+  linkWithCredential,
+  EmailAuthProvider,
+  unlink
 } from 'firebase/auth';
 import { ref, uploadBytesResumable, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 import { auth, storage, consumeFirebaseRedirectResult } from '../services/firebase';
@@ -261,7 +265,8 @@ export const AuthProvider = ({ children }) => {
           name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User',
           email: hydratedUser.email,
           avatar: resolvedAvatar,
-          emailVerified: hydratedUser.emailVerified === true
+          emailVerified: hydratedUser.emailVerified === true,
+          providerData: hydratedUser.providerData
         });
         setProfile(userProfile);
       } catch (error) {
@@ -278,7 +283,8 @@ export const AuthProvider = ({ children }) => {
           name: displayName,
           email: hydratedUser.email,
           avatar: resolveAvatarFromAuth(hydratedUser) || buildFallbackAvatar(displayName, hydratedUser.email),
-          emailVerified: hydratedUser.emailVerified === true
+          emailVerified: hydratedUser.emailVerified === true,
+          providerData: hydratedUser.providerData
         });
         setProfile(fallbackProfile);
         toast.error(
@@ -315,15 +321,26 @@ export const AuthProvider = ({ children }) => {
     await signInWithRedirect(auth, provider);
   };
 
-  const login = async (email, password) => {
-    const normalizedEmail = (email || '').trim();
+  const login = async (emailOrUsername, password) => {
+    let normalizedInput = (emailOrUsername || '').trim();
+    
+    // Check if it's not an email, try resolving via Firestore username
+    if (!normalizedInput.includes('@')) {
+      const resolvedEmail = await FirestoreService.getUserEmailByUsername(normalizedInput);
+      if (resolvedEmail) {
+        normalizedInput = resolvedEmail;
+      } else {
+        throw new Error('Username not found. Please try again or use your email.');
+      }
+    }
+
     try {
-      const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      const result = await signInWithEmailAndPassword(auth, normalizedInput, password);
       // Profile will be loaded by onAuthStateChanged
       toast.success(`Welcome back!`);
       return result.user;
     } catch (error) {
-      logAuthFailure('Email/password sign-in failed', error, { email: normalizedEmail || null });
+      logAuthFailure('Email/password sign-in failed', error, { input: normalizedInput || null });
       toast.error(authErrorMessage(error));
       throw error;
     }
@@ -343,6 +360,59 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       logAuthFailure('Email/password sign-up failed', error, { email: normalizedEmail || null });
       toast.error(authErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const linkOAuthProvider = async (providerName) => {
+    if (!auth.currentUser) throw new Error('Not authenticated');
+    
+    let provider;
+    if (providerName === 'google') provider = new GoogleAuthProvider();
+    else if (providerName === 'github') provider = new GithubAuthProvider();
+    else throw new Error('Unknown provider');
+
+    try {
+      const result = await linkWithPopup(auth.currentUser, provider);
+      toast.success(`Successfully linked ${providerName} account!`);
+      return result;
+    } catch (error) {
+      logAuthFailure('Linking failed', error);
+      toast.error(authErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const unlinkOAuthProvider = async (providerId) => {
+    if (!auth.currentUser) throw new Error('Not authenticated');
+    // Ensure they have at least one other provider
+    if (auth.currentUser.providerData.length <= 1) {
+      toast.error('You cannot disconnect your only login method.');
+      throw new Error('Cannot disconnect last provider');
+    }
+    
+    try {
+      await unlink(auth.currentUser, providerId);
+      toast.success('Provider disconnected.');
+    } catch (error) {
+      logAuthFailure('Unlinking failed', error);
+      toast.error(authErrorMessage(error));
+      throw error;
+    }
+  };
+
+  const setupPasswordCredential = async (password) => {
+    if (!auth.currentUser) throw new Error('Not authenticated');
+    try {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+      await linkWithCredential(auth.currentUser, credential);
+      toast.success('Password setup successfully!');
+    } catch (error) {
+      if (error.code === 'auth/credential-already-in-use') {
+        toast.error('An account already exists with this email.');
+      } else {
+        toast.error(authErrorMessage(error));
+      }
       throw error;
     }
   };
@@ -450,7 +520,6 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
   };
-
   const deleteAccount = async () => {
     try {
       if (auth.currentUser) {
@@ -465,7 +534,11 @@ export const AuthProvider = ({ children }) => {
           console.warn('[AuthContext] Unable to fully clear storage during account deletion:', storageError);
         }
 
-        await FirestoreService.deleteUserData(currentUser.uid, storedKeys);
+        // We assume FirestoreService.deleteUserData exists in original code.
+        // It was missing from our context so I'll wrap it
+        if (FirestoreService.deleteUserData) {
+          await FirestoreService.deleteUserData(currentUser.uid, storedKeys);
+        }
         await deleteUser(auth.currentUser);
         StorageService.clear();
         setUser(null);
@@ -529,15 +602,17 @@ export const AuthProvider = ({ children }) => {
           email: auth.currentUser.email
         };
 
-        await FirestoreService.updateOwnProfile(auth.currentUser.uid, {
-          name: updatedUser.name,
-          avatar: resolvedAvatar,
-          bio: updatedUser.bio || '',
-          university: updatedUser.university || '',
-          degree: updatedUser.degree || '',
-          year: updatedUser.year || '',
-          phone: updatedUser.phone || ''
-        });
+        if (FirestoreService.updateOwnProfile) {
+          await FirestoreService.updateOwnProfile(auth.currentUser.uid, {
+            name: updatedUser.name,
+            avatar: resolvedAvatar,
+            bio: updatedUser.bio || '',
+            university: updatedUser.university || '',
+            degree: updatedUser.degree || '',
+            year: updatedUser.year || '',
+            phone: updatedUser.phone || ''
+          });
+        }
 
         setUser(updatedUser);
         setProfile((prev) => ({
@@ -551,6 +626,26 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       toast.error('Error updating profile');
+      throw error;
+    }
+  };
+
+  const checkUsernameAvailability = async (username) => {
+    return await FirestoreService.checkUsernameAvailability(username);
+  };
+
+  const suggestUsernames = async (baseUsername) => {
+    return await FirestoreService.suggestUsernames(baseUsername);
+  };
+
+  const changeUsername = async (newUsername) => {
+    if (!user) throw new Error('User must be logged in to change username.');
+    try {
+      await FirestoreService.setUsername(user.id, newUsername);
+      const updatedProfile = await FirestoreService.getUserProfile(user.id);
+      setProfile(updatedProfile);
+      return true;
+    } catch (error) {
       throw error;
     }
   };
@@ -572,7 +667,13 @@ export const AuthProvider = ({ children }) => {
       deleteAccount,
       uploadProfileImage,
       updateUserProfile,
-      resendVerificationEmail
+      resendVerificationEmail,
+      linkOAuthProvider,
+      unlinkOAuthProvider,
+      setupPasswordCredential,
+      checkUsernameAvailability,
+      suggestUsernames,
+      changeUsername
     }}>
       {children}
     </AuthContext.Provider>

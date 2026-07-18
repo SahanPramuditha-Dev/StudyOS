@@ -1,5 +1,6 @@
 import React from 'react';
 import { LayoutGrid, Plus, BookOpen } from 'lucide-react';
+import Select from '../../../components/ui/Select';
 
 const ProjectSelector = ({ contexts, activeContextKey, onSelect, onNewProject, onNewAssignment }) => {
   const hasContexts = (contexts || []).length > 0;
@@ -15,20 +16,15 @@ const ProjectSelector = ({ contexts, activeContextKey, onSelect, onNewProject, o
           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-sky-400 pointer-events-none">
             <LayoutGrid size={18} />
           </div>
-          <select
-            className="w-full h-12 pl-11 pr-10 rounded-xl bg-slate-900/70 border border-sky-400/30 text-slate-100 font-bold uppercase tracking-wide text-[11px] outline-none cursor-pointer transition-all shadow-md group-hover:border-sky-300/60 focus:border-sky-300 focus:ring-4 ring-sky-400/20"
+          <Select
+            variant="ghost"
             value={activeContextKey || ''}
             onChange={(e) => onSelect(e.target.value)}
-          >
-            <option value="" className="bg-slate-900 text-slate-300">
-              {hasContexts ? 'Select Workspace Context' : 'No projects/assignments yet'}
-            </option>
-            {(contexts || []).map((item) => (
-              <option key={item.key} value={item.key} className="dark:bg-slate-900">
-                [{item.type}] {item.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { label: hasContexts ? 'Select Workspace Context' : 'No projects/assignments yet', value: '' },
+              ...(contexts || []).map(item => ({ label: `[${item.type}] ${item.label}`, value: item.key }))
+            ]}
+          />
         </div>
       </div>
 

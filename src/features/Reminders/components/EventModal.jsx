@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { X, Calendar, Clock, Zap, Tag, Bell, Repeat, Link as LinkIcon, FileText, AlertCircle, Volume2, Upload, BellOff, Music } from 'lucide-react';
+import Select from '../../../components/ui/Select';
 
 const categoryOptions = ['Study', 'Assignment', 'Exam', 'Project', 'Personal'];
 const reminderOptions = [5, 15, 60, 120];
@@ -121,55 +122,43 @@ const EventModal = ({
             </div>
             <div className="space-y-2">
               <FieldLabel icon={Tag} label="Category" description="Event type" />
-              <select
+              <Select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 title="Choose a category for this event"
                 className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-              >
-                {categoryOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                options={categoryOptions.map(option => ({ label: option, value: option }))}
+              />
             </div>
             <div className="space-y-2">
               <FieldLabel icon={AlertCircle} label="Priority" description="How urgent?" />
-              <select
+              <Select
                 value={formData.priority}
                 onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
                 title="Set the priority for this event"
                 className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-              >
-                {['Low', 'Medium', 'High'].map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                options={['Low', 'Medium', 'High'].map(option => ({ label: option, value: option }))}
+              />
             </div>
             <div className="space-y-2">
               <FieldLabel icon={Bell} label="Reminder" description="Notify before" />
-              <select
+              <Select
                 value={formData.reminderOffsetMinutes}
                 onChange={(e) => setFormData({ ...formData, reminderOffsetMinutes: Number(e.target.value) })}
                 title="Choose how long before the event you want a reminder"
                 className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-              >
-                {reminderOptions.map((minutes) => (
-                  <option key={minutes} value={minutes}>{minutes} min before</option>
-                ))}
-              </select>
+                options={reminderOptions.map(minutes => ({ label: `${minutes} min before`, value: minutes }))}
+              />
             </div>
             <div className="space-y-2">
               <FieldLabel icon={Repeat} label="Recurrence" description="Repeat pattern" />
-              <select
+              <Select
                 value={formData.recurring}
                 onChange={(e) => setFormData({ ...formData, recurring: e.target.value })}
                 title="Choose a recurrence schedule for this event"
                 className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-              >
-                {recurringOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+                options={recurringOptions.map(option => ({ label: option, value: option }))}
+              />
             </div>
             {formData.recurring === 'Custom' && (
               <div className="space-y-2">
@@ -192,55 +181,51 @@ const EventModal = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <FieldLabel icon={LinkIcon} label="Course" description="Link a course" />
-                <select
+                <Select
                   value={formData.relatedCourseId}
                   onChange={(e) => setFormData({ ...formData, relatedCourseId: e.target.value })}
                   className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-                >
-                  <option value="">No course linked</option>
-                  {courses.map((course) => (
-                    <option key={course.id} value={course.id}>{course.title}</option>
-                  ))}
-                </select>
+                  options={[
+                    { label: 'No course linked', value: '' },
+                    ...courses.map(course => ({ label: course.title, value: course.id }))
+                  ]}
+                />
               </div>
               <div className="space-y-2">
                 <FieldLabel icon={LinkIcon} label="Assignment" description="Link an assignment" />
-                <select
+                <Select
                   value={formData.relatedAssignmentId}
                   onChange={(e) => setFormData({ ...formData, relatedAssignmentId: e.target.value })}
                   className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-                >
-                  <option value="">No assignment linked</option>
-                  {assignments.map((assignment) => (
-                    <option key={assignment.id} value={assignment.id}>{assignment.title}</option>
-                  ))}
-                </select>
+                  options={[
+                    { label: 'No assignment linked', value: '' },
+                    ...assignments.map(assignment => ({ label: assignment.title, value: assignment.id }))
+                  ]}
+                />
               </div>
               <div className="space-y-2">
                 <FieldLabel icon={LinkIcon} label="Video" description="Link a video" />
-                <select
+                <Select
                   value={formData.relatedVideoId}
                   onChange={(e) => setFormData({ ...formData, relatedVideoId: e.target.value })}
                   className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-                >
-                  <option value="">No video linked</option>
-                  {videos.map((video) => (
-                    <option key={video.id} value={video.id}>{video.title}</option>
-                  ))}
-                </select>
+                  options={[
+                    { label: 'No video linked', value: '' },
+                    ...videos.map(video => ({ label: video.title, value: video.id }))
+                  ]}
+                />
               </div>
               <div className="space-y-2">
                 <FieldLabel icon={LinkIcon} label="Project" description="Link a project" />
-                <select
+                <Select
                   value={formData.relatedProjectId}
                   onChange={(e) => setFormData({ ...formData, relatedProjectId: e.target.value })}
                   className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-transparent focus:border-primary-300 outline-none transition cursor-pointer"
-                >
-                  <option value="">No project linked</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
-                  ))}
-                </select>
+                  options={[
+                    { label: 'No project linked', value: '' },
+                    ...projects.map(project => ({ label: project.name, value: project.id }))
+                  ]}
+                />
               </div>
             </div>
           </div>

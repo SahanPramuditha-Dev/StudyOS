@@ -3,6 +3,7 @@ import { Plus, Trash2, Edit2, GaugeCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { nanoid } from 'nanoid';
+import Select from '../../../../components/ui/Select';
 
 const TaskBreakdownTab = ({ assignment, onUpdate }) => {
   const [tasks, setTasks] = useState(assignment.tasks || []);
@@ -266,15 +267,16 @@ const TaskBreakdownTab = ({ assignment, onUpdate }) => {
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">
                       Priority
                     </label>
-                    <select
+                    <Select
                       value={formData.priority}
-                      onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value }))}
+                      onChange={(val) => setFormData(prev => ({ ...prev, priority: val }))}
                       className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-500 outline-none font-medium"
-                    >
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
+                      options={[
+                        { label: 'High', value: 'High' },
+                        { label: 'Medium', value: 'Medium' },
+                        { label: 'Low', value: 'Low' }
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">

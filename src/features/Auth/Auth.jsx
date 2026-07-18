@@ -203,14 +203,14 @@ const Auth = () => {
                     className="overflow-hidden"
                   >
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Universal ID / Name</label>
+                      <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Universal Name (Display Name)</label>
                       <div className="relative group">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
                         <input
-                          required
+                          required={!isLogin}
                           type="text"
                           placeholder="Commander John Doe"
-                          className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all dark:text-white font-bold text-sm"
+                          className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                           value={formData.name}
                           onChange={(event) => setFormData({ ...formData, name: event.target.value })}
                         />
@@ -221,14 +221,16 @@ const Auth = () => {
               </AnimatePresence>
 
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Neural Mailbox</label>
+                <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                  {isLogin ? 'Username or Email' : 'Email Address'}
+                </label>
                 <div className="relative group">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
                   <input
                     required
-                    type="email"
-                    placeholder="you@domain.com"
-                    className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all dark:text-white font-bold text-sm"
+                    type={isLogin ? 'text' : 'email'}
+                    placeholder={isLogin ? '@username or email@domain.com' : 'you@domain.com'}
+                    className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                     value={formData.email}
                     onChange={(event) => setFormData({ ...formData, email: event.target.value })}
                   />
@@ -249,23 +251,34 @@ const Auth = () => {
                   )}
                 </div>
                 <div className="relative group">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
                   <input
                     required
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••••••"
-                    className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all dark:text-white font-bold text-sm"
+                    className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                     value={formData.password}
                     onChange={(event) => setFormData({ ...formData, password: event.target.value })}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 dark:hover:text-slate-100 transition-colors p-1"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100 transition-colors p-1"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {!isLogin && formData.password.length > 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="flex gap-1 mt-2 px-1"
+                  >
+                    <div className={`h-1 flex-1 rounded-full ${formData.password.length > 0 ? 'bg-red-500' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
+                    <div className={`h-1 flex-1 rounded-full ${formData.password.length >= 6 ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
+                    <div className={`h-1 flex-1 rounded-full ${formData.password.length >= 8 && /[A-Z]/.test(formData.password) && /[0-9]/.test(formData.password) ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
+                  </motion.div>
+                )}
               </div>
 
               <button
@@ -278,7 +291,7 @@ const Auth = () => {
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                   ) : (
                     <>
-                      {isLogin ? 'Authenticate' : 'Initialize'}
+                      {isLogin ? 'Sign In' : 'Sign Up'}
                       <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
                     </>
                   )}
@@ -290,7 +303,7 @@ const Auth = () => {
             <div className="mt-6 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="h-px bg-slate-200 dark:bg-white/5 flex-1"></div>
-                <span className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em]">Social Integration</span>
+                <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">OR</span>
                 <div className="h-px bg-slate-200 dark:bg-white/5 flex-1"></div>
               </div>
 
@@ -299,7 +312,7 @@ const Auth = () => {
                   type="button"
                   onClick={handleGoogleLogin}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 py-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:border-primary-500/50 hover:bg-slate-50 dark:hover:bg-white/10 shadow-sm hover:shadow-xl hover:shadow-primary-500/5 transition-all duration-300 disabled:opacity-50 group"
+                  className="w-full flex items-center justify-center gap-3 py-3 rounded-xl bg-white dark:bg-white/5 border-2 border-slate-300 dark:border-white/10 hover:border-primary-500/50 hover:bg-slate-50 dark:hover:bg-white/10 shadow-sm hover:shadow-xl hover:shadow-primary-500/5 transition-all duration-300 disabled:opacity-50 group"
                 >
                   <div className="bg-white p-1 rounded-lg shadow-sm group-hover:scale-110 transition-transform duration-300">
                     <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -344,7 +357,7 @@ const Auth = () => {
               <Link to="/legal/terms" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Terms</Link>
               <Link to="/legal/support" className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">Support</Link>
             </div>
-              <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">
+              <p className="text-[9px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-[0.3em]">
               &copy; 2026 StudyOS System v2.0
               </p>
             </div>

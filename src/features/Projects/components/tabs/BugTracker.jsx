@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
+import Select from '../../../../components/ui/Select';
 
 const BugTracker = ({ project, onUpdate, onActivityAdd }) => {
   const [isCreating, setIsCreating] = useState(false);
@@ -148,28 +149,22 @@ const BugTracker = ({ project, onUpdate, onActivityAdd }) => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">Severity</label>
-                    <select
+                    <Select
                       value={newBug.severity}
                       onChange={(e) => setNewBug({ ...newBug, severity: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
-                    >
-                      {severities.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                      options={severities.map(s => ({ label: s, value: s }))}
+                    />
                   </div>
 
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase mb-2">Status</label>
-                    <select
+                    <Select
                       value={newBug.status}
                       onChange={(e) => setNewBug({ ...newBug, status: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
-                    >
-                      {statuses.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
+                      options={statuses.map(s => ({ label: s, value: s }))}
+                    />
                   </div>
                 </div>
 

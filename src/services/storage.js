@@ -2,6 +2,7 @@ const STORAGE_KEYS = {
   COURSES: 'studyos_courses',
   VIDEOS: 'studyos_videos',
   NOTES: 'studyos_notes',
+  NOTE_FOLDERS: 'studyos_note_folders',
   RESOURCES: 'studyos_resources',
   FOLDERS: 'studyos_folders',
   PAPERS: 'studyos_papers',

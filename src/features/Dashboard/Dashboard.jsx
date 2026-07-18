@@ -12,10 +12,13 @@ import {
   AlertCircle,
   Target,
   Activity,
-  Sparkles
+  Sparkles,
+  Bookmark,
+  PlayCircle
 } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import Select from '../../components/ui/Select';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -89,6 +92,67 @@ const Dashboard = ({ setActiveTab }) => {
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
   const [globalTasks] = useStorage('studyos_global_tasks', []);
   const [reminders] = useStorage(STORAGE_KEYS.REMINDERS, []);
+  const [resources] = useStorage(STORAGE_KEYS.RESOURCES, []);
+  const [planner] = useStorage(STORAGE_KEYS.WEEKLY_PLANNER, null);
+  const [activeContextKey] = useStorage('active_workspace_context', null);
+  const [timerHistory] = useStorage('timer_history', []);
+  const [goalsState] = useStorage(STORAGE_KEYS.GOALS, {
+    dailyStudyGoal: 120,
+    weeklyMinutesGoal: 600,
+    weeklySessionsGoal: 7,
+    sessionsByDate: {}
+  });
+
+  const todayKey = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const todayStudyMinutes = Number((goalsState?.sessionsByDate || {})[todayKey] || 0);
+  const dailyStudyGoal = Math.max(30, Number(goalsState?.dailyStudyGoal) || 120);
+  const dailyStudyProgress = Math.min(100, Math.round((todayStudyMinutes / dailyStudyGoal) * 100));
+
+  const todaysPlannerTasks = useMemo(() => {
+    if (!planner || !planner.columns) return [];
+    const d = new Date();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const todayName = dayNames[d.getDay()];
+    return planner.columns[todayName] || [];
+  }, [planner]);
+
+  const activeWorkspaceItem = useMemo(() => {
+    if (!activeContextKey) return null;
+    const [entityType, entityId] = String(activeContextKey).includes(':')
+      ? String(activeContextKey).split(':')
+      : ['project', activeContextKey];
+      
+    if (entityType === 'assignment') {
+      const a = assignments.find((a) => a.id === entityId);
+      return a ? { ...a, type: 'assignment' } : null;
+    }
+    const p = projects.find((p) => p.id === entityId);
+    return p ? { ...p, type: 'project' } : null;
+  }, [activeContextKey, projects, assignments]);
+
+  const todayFocusTime = useMemo(() => {
+    const today = new Date().toDateString();
+    return timerHistory
+      .filter(s => new Date(s.timestamp || Date.now()).toDateString() === today)
+      .reduce((acc, s) => acc + (s.duration || 0), 0);
+  }, [timerHistory]);
+
+  const totalFocusTime = useMemo(() => {
+    return timerHistory.reduce((acc, s) => acc + (s.duration || 0), 0);
+  }, [timerHistory]);
+  
+  const formatTimerDuration = (seconds) => {
+    if (!seconds) return '0m';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hrs > 0) return `${hrs}h ${mins}m`;
+    return `${mins}m`;
+  };
 
   const [activityTimeframe, setActivityTimeframe] = useState('7');
   const timeframeDays = useMemo(() => {
@@ -231,9 +295,25 @@ const Dashboard = ({ setActiveTab }) => {
         color: 'text-slate-700',
         bg: 'bg-slate-100',
         route: 'projects'
+      },
+      {
+        label: 'Videos Watched',
+        value: completedVideos,
+        icon: PlayCircle,
+        color: 'text-teal-600',
+        bg: 'bg-teal-50',
+        route: 'videos'
+      },
+      {
+        label: 'Completed Tasks',
+        value: completedTasks.length,
+        icon: Target,
+        color: 'text-indigo-600',
+        bg: 'bg-indigo-50',
+        route: 'tasks'
       }
     ],
-    [activeCourses, notes.length, pendingAssignments, submittedAssignments, activeProjects]
+    [activeCourses, notes.length, pendingAssignments, submittedAssignments, activeProjects, completedVideos, completedTasks.length]
   );
 
   const courseProgressScore = useMemo(() => {
@@ -365,10 +445,23 @@ const Dashboard = ({ setActiveTab }) => {
       });
     });
 
+    resources.forEach((resource) => {
+      const timestamp = resource.updatedAt || resource.createdAt || resource.addedAt;
+      if (!timestamp) return;
+      events.push({
+        title: `Resource: ${resource.title || 'Untitled resource'}`,
+        detail: resource.type || 'Link',
+        timestamp,
+        icon: Bookmark,
+        color: 'bg-cyan-500',
+        route: 'resources'
+      });
+    });
+
     return events
       .sort((left, right) => (toDateSafe(right.timestamp)?.getTime() || 0) - (toDateSafe(left.timestamp)?.getTime() || 0))
       .slice(0, 6);
-  }, [courses, notes, videos, projects, assignments, globalTasks]);
+  }, [courses, notes, videos, projects, assignments, globalTasks, resources]);
 
   const todayFocus = useMemo(
     () => courses.find((course) => String(course.status || '').toLowerCase() === 'active') || courses[0] || null,
@@ -395,22 +488,22 @@ const Dashboard = ({ setActiveTab }) => {
 
   return (
     <div className="space-y-10 max-w-7xl mx-auto pb-12 pt-4">
-      <section className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-12 md:p-16 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
-        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-16">
-          <div className="space-y-8 text-center lg:text-left flex-1">
+      <section className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-8 md:p-10 xl:p-16 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
+        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8 xl:gap-16">
+          <div className="space-y-6 xl:space-y-8 text-center lg:text-left flex-1">
             <div className="space-y-3">
-              <h2 className="text-4xl md:text-6xl font-black tracking-tight leading-tight">
+              <h2 className="text-4xl lg:text-5xl xl:text-6xl font-black tracking-tight leading-tight">
                 Ready for a <br />
                 <span className="text-primary-200">breakthrough?</span>
               </h2>
-              <p className="text-primary-100/90 max-w-xl text-lg md:text-2xl font-medium leading-relaxed">
+              <p className="text-primary-100/90 max-w-xl text-lg xl:text-xl font-medium leading-relaxed">
                 Track your progress, manage your courses, and master your learning journey all in one place.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-5 justify-center lg:justify-start pt-4">
+            <div className="flex flex-wrap items-center gap-4 xl:gap-5 justify-center lg:justify-start pt-2 xl:pt-4">
               <button
                 onClick={() => go('workspace')}
-                className="px-10 py-4 rounded-2xl bg-white text-primary-600 font-bold hover:bg-primary-50 transition-all hover:scale-105 active:scale-95 shadow-xl shadow-primary-500/10 flex items-center gap-2 group"
+                className="px-6 py-3 xl:px-8 xl:py-4 rounded-2xl bg-white text-primary-600 font-bold hover:bg-primary-50 transition-all hover:scale-105 active:scale-95 shadow-xl shadow-primary-500/10 flex items-center gap-2 group"
               >
                 <Plus size={24} />
                 Create Study Plan
@@ -418,7 +511,7 @@ const Dashboard = ({ setActiveTab }) => {
               </button>
               <button
                 onClick={() => go('review')}
-                className="px-10 py-4 rounded-2xl bg-primary-500/20 backdrop-blur-2xl border border-white/20 text-white font-bold hover:bg-primary-500/30 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                className="px-6 py-3 xl:px-8 xl:py-4 rounded-2xl bg-primary-500/20 backdrop-blur-2xl border border-white/20 text-white font-bold hover:bg-primary-500/30 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
               >
                 <TrendingUp size={24} />
                 Open Review Hub
@@ -426,16 +519,16 @@ const Dashboard = ({ setActiveTab }) => {
             </div>
           </div>
 
-          <div className="hidden xl:flex items-center gap-12 bg-white/5 backdrop-blur-3xl rounded-[3rem] p-12 border border-white/10 shadow-2xl">
+          <div className="hidden xl:flex items-center gap-8 xl:gap-12 bg-white/5 backdrop-blur-3xl rounded-[3rem] p-8 xl:p-12 border border-white/10 shadow-2xl">
             <div className="text-center">
-              <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{efficiencyScore}%</div>
+              <div className="text-5xl xl:text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{efficiencyScore}%</div>
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">
                 Efficiency Score
               </div>
             </div>
             <div className="w-px h-20 bg-white/10"></div>
             <div className="text-center">
-              <div className="text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{courses.length}</div>
+              <div className="text-5xl xl:text-6xl font-black mb-2 drop-shadow-lg tabular-nums">{courses.length}</div>
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-200/80">
                 Total Courses
               </div>
@@ -493,7 +586,7 @@ const Dashboard = ({ setActiveTab }) => {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/70 dark:bg-slate-900/40">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Next Deadline</p>
             {nextDeadlineAssignment ? (
@@ -523,10 +616,16 @@ const Dashboard = ({ setActiveTab }) => {
               Tasks in motion • {upcomingCount} upcoming reminders
             </p>
           </div>
+
+          <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/70 dark:bg-slate-900/40">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Focus Time</p>
+            <p className="mt-2 text-3xl font-black text-emerald-500 tabular-nums">{formatTimerDuration(todayFocusTime)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Today • {formatTimerDuration(totalFocusTime)} Total</p>
+          </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="flex flex-wrap justify-center gap-4">
         {stats.map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -534,7 +633,7 @@ const Dashboard = ({ setActiveTab }) => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
             onClick={() => stat.route && go(stat.route)}
-            className={`card group hover:-translate-y-1 ${stat.route ? 'cursor-pointer' : ''}`}
+            className={`card group hover:-translate-y-1 flex-1 min-w-[200px] basis-[calc(25%-1rem)] max-w-full ${stat.route ? 'cursor-pointer' : ''}`}
           >
             <div className="flex items-center gap-4">
               <div className={`w-14 h-14 rounded-2xl ${stat.bg} dark:bg-slate-800 flex items-center justify-center transition-transform group-hover:scale-110`}>
@@ -549,8 +648,118 @@ const Dashboard = ({ setActiveTab }) => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="card border-none bg-transparent shadow-none p-0">
+        <div className="flex items-center gap-2 mb-4 px-2">
+          <KanbanIcon className="text-accent-500" size={20} />
+          <h3 className="text-lg font-bold dark:text-white">Quick Actions</h3>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={() => go('courses')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <Plus size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-primary-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Course</p>
+          </button>
+          <button onClick={() => go('notes')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-accent-50 dark:hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <FileText size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-accent-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Note</p>
+          </button>
+          <button onClick={() => go('timer')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <Clock size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-orange-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Timer</p>
+          </button>
+          <button onClick={() => go('assignments')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <FileText size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-amber-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Assignments</p>
+          </button>
+          <button onClick={() => go('analytics')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-teal-50 dark:hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <TrendingUp size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-teal-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Analytics</p>
+          </button>
+          <button onClick={() => go('goals')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <Target size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-emerald-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Goals</p>
+          </button>
+          <button onClick={() => go('planner')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <Calendar size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Planner</p>
+          </button>
+          <button onClick={() => go('review')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <AlertCircle size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-rose-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Review Hub</p>
+          </button>
+          <button onClick={() => go('resources')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+            <Bookmark size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-cyan-500" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Resources</p>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left Column - Metrics */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="card overflow-hidden">
+            <h3 className="text-lg font-bold mb-4 dark:text-white">Efficiency Score</h3>
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="relative w-40 h-40 mb-4 flex items-center justify-center">
+                <svg className="w-full h-full -rotate-90">
+                  <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100 dark:text-slate-800" />
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="70"
+                    stroke="currentColor"
+                    strokeWidth="12"
+                    fill="transparent"
+                    strokeDasharray="440"
+                    strokeDashoffset={440 - (440 * efficiencyScore) / 100}
+                    className="text-primary-500 transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-4xl font-black dark:text-white">{efficiencyScore}</span>
+                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">%</span>
+                </div>
+              </div>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                Built from progress, completion rates, and streak momentum.
+              </p>
+            </div>
+          </div>
+
+          <div className="card overflow-hidden">
+            <h3 className="text-lg font-bold mb-4 dark:text-white flex items-center gap-2">
+              <Target className="text-emerald-500" size={20} />
+              Daily Study Goal
+            </h3>
+            <div className="flex flex-col items-center text-center py-4">
+              <div className="relative w-32 h-32 mb-4 flex items-center justify-center">
+                <svg className="w-full h-full -rotate-90">
+                  <circle cx="64" cy="64" r="54" stroke="currentColor" strokeWidth="10" fill="transparent" className="text-slate-100 dark:text-slate-800" />
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="54"
+                    stroke="currentColor"
+                    strokeWidth="10"
+                    fill="transparent"
+                    strokeDasharray="339.29"
+                    strokeDashoffset={339.29 - (339.29 * dailyStudyProgress) / 100}
+                    className="text-emerald-500 transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-black dark:text-white">{todayStudyMinutes}</span>
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">MINS</span>
+                </div>
+              </div>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                {dailyStudyProgress}% of {dailyStudyGoal} mins goal
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Center Column - Activity */}
+        <div className="lg:col-span-6 space-y-6">
           <div className="card">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -562,14 +771,15 @@ const Dashboard = ({ setActiveTab }) => {
                   Real tracked watch sessions for the last {timeframeDays} days
                 </p>
               </div>
-              <select
+              <Select
+                variant="ghost"
                 value={activityTimeframe}
-                onChange={(event) => setActivityTimeframe(event.target.value)}
-                className="bg-slate-50 dark:bg-slate-800 border-none text-sm font-semibold rounded-lg px-3 py-1.5 focus:ring-2 ring-primary-500/20 dark:text-white cursor-pointer outline-none transition-shadow"
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-              </select>
+                onChange={(val) => setActivityTimeframe(val)}
+                options={[
+                  { label: 'Last 7 days', value: '7' },
+                  { label: 'Last 30 days', value: '30' }
+                ]}
+              />
             </div>
             <div className="h-72 w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
@@ -604,137 +814,43 @@ const Dashboard = ({ setActiveTab }) => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="card">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
-                <Clock className="text-orange-500" size={20} />
-                Recent Activity
-              </h3>
-              <div className="space-y-4">
-                {recentActivities.map((activity) => (
-                  <div key={`${activity.title}-${activity.timestamp}`} className="flex gap-3">
-                    <div className={`w-1 h-10 rounded-full ${activity.color}`}></div>
-                    <div>
-                      <p className="text-sm font-bold dark:text-slate-200">{activity.title}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
-                        {activity.detail} • {formatRelativeTime(activity.timestamp)}
-                      </p>
-                    </div>
+          <div className="card">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
+              <Clock className="text-orange-500" size={20} />
+              Recent Activity
+            </h3>
+            <div className="space-y-4">
+              {recentActivities.map((activity) => (
+                <div key={`${activity.title}-${activity.timestamp}`} className="flex gap-3">
+                  <div className={`w-1 h-10 rounded-full ${activity.color}`}></div>
+                  <div>
+                    <p className="text-sm font-bold dark:text-slate-200">{activity.title}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                      {activity.detail} • {formatRelativeTime(activity.timestamp)}
+                    </p>
                   </div>
-                ))}
-                {recentActivities.length === 0 && (
-                  <p className="text-sm text-slate-400 text-center py-4">
-                    No recent activity found. Start by creating your first item.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
-                <KanbanIcon className="text-accent-500" size={20} />
-                Quick Actions
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => go('courses')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-left group"
-                >
-                  <Plus size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-primary-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Course</p>
-                </button>
-                <button
-                  onClick={() => go('notes')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-accent-50 dark:hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition-colors text-left group"
-                >
-                  <FileText size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-accent-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Note</p>
-                </button>
-                <button
-                  onClick={() => go('timer')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-left group"
-                >
-                  <Clock size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-orange-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Timer</p>
-                </button>
-                <button
-                  onClick={() => go('assignments')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-left group"
-                >
-                  <FileText size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-amber-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Assignments</p>
-                </button>
-                <button
-                  onClick={() => go('analytics')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-teal-50 dark:hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-left group"
-                >
-                  <TrendingUp size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-teal-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Analytics</p>
-                </button>
-                <button
-                  onClick={() => go('goals')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-left group"
-                >
-                  <Target size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-emerald-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Goals</p>
-                </button>
-                <button
-                  onClick={() => go('planner')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left group"
-                >
-                  <Calendar size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Planner</p>
-                </button>
-                <button
-                  onClick={() => go('review')}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors text-left group"
-                >
-                  <AlertCircle size={18} className="mb-2 text-slate-400 dark:text-slate-500 group-hover:text-rose-500" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Review Hub</p>
-                </button>
-              </div>
+                </div>
+              ))}
+              {recentActivities.length === 0 && (
+                <p className="text-sm text-slate-400 text-center py-4">
+                  No recent activity found. Start by creating your first item.
+                </p>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="space-y-8">
-          <div className="card overflow-hidden">
-            <h3 className="text-lg font-bold mb-4 dark:text-white">Efficiency Score</h3>
-            <div className="flex flex-col items-center text-center py-4">
-              <div className="relative w-40 h-40 mb-4 flex items-center justify-center">
-                <svg className="w-full h-full -rotate-90">
-                  <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100 dark:text-slate-800" />
-                  <circle
-                    cx="80"
-                    cy="80"
-                    r="70"
-                    stroke="currentColor"
-                    strokeWidth="12"
-                    fill="transparent"
-                    strokeDasharray="440"
-                    strokeDashoffset={440 - (440 * efficiencyScore) / 100}
-                    className="text-primary-500 transition-all duration-1000 ease-out"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-4xl font-black dark:text-white">{efficiencyScore}</span>
-                  <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">%</span>
-                </div>
-              </div>
-              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                Built from progress, completion rates, and streak momentum.
-              </p>
-            </div>
-          </div>
-
-          <div className="card bg-slate-900 text-white border-none">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+        {/* Right Column - Action & Focus */}
+        <div className="lg:col-span-3 space-y-6">
+          <div className="card bg-slate-900 text-white border-none relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/20 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 relative z-10">
               <Clock className="text-primary-400" size={20} />
               Today&apos;s Focus
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-4 relative z-10">
               {todayFocus ? (
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
                   <p className="text-sm font-bold text-white mb-1">{todayFocus.title}</p>
                   <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
                     <span>Progress</span>
@@ -745,18 +861,71 @@ const Dashboard = ({ setActiveTab }) => {
                   </div>
                 </div>
               ) : (
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center">
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-center backdrop-blur-sm">
                   <p className="text-sm text-slate-400">No active courses. Add one to start tracking!</p>
                 </div>
               )}
-              <button onClick={() => go('videos')} className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 transition-colors font-bold text-sm">
+              <button onClick={() => go('videos')} className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-600 transition-colors font-bold text-sm shadow-lg shadow-primary-500/20">
                 Start Session
               </button>
             </div>
           </div>
 
+          <div className="card border-none bg-slate-50 dark:bg-slate-900 shadow-inner">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-white">
+                <Calendar className="text-indigo-500" size={20} />
+                Today's Agenda
+              </h3>
+              <button onClick={() => go('planner')} className="text-xs font-bold text-indigo-500 hover:text-indigo-600 transition-colors">
+                View Planner
+              </button>
+            </div>
+            <div className="space-y-3">
+              {todaysPlannerTasks.length > 0 ? (
+                todaysPlannerTasks.slice(0, 3).map((task) => (
+                  <div key={task.id} className="flex items-start gap-3 p-3 rounded-xl bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700">
+                    <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 ${task.done ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 dark:border-slate-600'}`}>
+                      {task.done && <CheckCircle2 size={12} className="text-white mx-auto mt-[-1px]" />}
+                    </div>
+                    <p className={`text-sm font-medium ${task.done ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
+                      {task.title}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center rounded-xl bg-white dark:bg-slate-800 border border-dashed border-slate-200 dark:border-slate-700">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No tasks scheduled for today.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {activeWorkspaceItem && (
+            <div className="card">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
+                <Activity className="text-purple-500" size={20} />
+                Active Workspace
+              </h3>
+              <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/30 text-center">
+                <p className="text-xs font-black uppercase tracking-widest text-purple-600 dark:text-purple-400 mb-1">
+                  {activeWorkspaceItem.type === 'project' ? 'Project' : 'Assignment'}
+                </p>
+                <p className="text-sm font-bold text-slate-800 dark:text-white mb-4 line-clamp-1">
+                  {activeWorkspaceItem.title || activeWorkspaceItem.name}
+                </p>
+                <button
+                  onClick={() => go('workspace')}
+                  className="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-colors shadow-lg shadow-purple-600/20"
+                >
+                  Enter Workspace
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeTasks.length > 0 && (
-            <div className="card border-none bg-gradient-to-br from-accent-50 to-primary-50 dark:from-accent-900/20 dark:to-primary-900/20">
+            <div className="card border-none bg-gradient-to-br from-accent-50 to-primary-50 dark:from-accent-900/20 dark:to-primary-900/20 shadow-inner">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-accent-700 dark:text-accent-400">
                 <Target size={20} />
                 Resume Work

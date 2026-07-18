@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
+import Select from '../../../../components/ui/Select';
 
 const CodeSnippets = ({ project, onUpdate, onActivityAdd }) => {
   const [isCreating, setIsCreating] = useState(false);
@@ -141,15 +142,12 @@ const CodeSnippets = ({ project, onUpdate, onActivityAdd }) => {
 
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase mb-2">Language</label>
-                  <select
+                  <Select
                     value={newSnippet.language}
                     onChange={(e) => setNewSnippet({ ...newSnippet, language: e.target.value })}
                     className="w-full px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    {languages.map(lang => (
-                      <option key={lang} value={lang}>{lang.toUpperCase()}</option>
-                    ))}
-                  </select>
+                    options={languages.map(lang => ({ label: lang.toUpperCase(), value: lang }))}
+                  />
                 </div>
 
                 <div>

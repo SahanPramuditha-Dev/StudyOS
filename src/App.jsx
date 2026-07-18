@@ -25,6 +25,7 @@ import Reminders from './features/Reminders/Reminders';
 import Timer from './features/Timer/Timer';
 import GlobalSearch from './features/Search/Search';
 import Auth from './features/Auth/Auth';
+import CredentialSetup from './features/Auth/CredentialSetup';
 import Admin from './features/Admin/Admin';
 import Settings from './features/Settings/Settings';
 import Legal from './features/Legal/Legal';
@@ -436,6 +437,8 @@ const App = () => {
       );
     }
 
+
+
     return (
       <Routes>
         <Route path="/" element={<Dashboard setActiveTab={setActiveTab} />} />
@@ -470,6 +473,10 @@ const App = () => {
     );
   };
 
+  if (user && profile && !profile.username) {
+    return <CredentialSetup />;
+  }
+
   return (
     <>
       <div className="flex min-h-screen bg-slate-50 text-slate-900 selection:bg-primary-100 selection:text-primary-700 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
@@ -497,10 +504,13 @@ const App = () => {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setSearchOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-sm"
+                className="flex items-center gap-3 px-4 py-2 w-48 sm:w-64 rounded-full bg-slate-100 dark:bg-slate-900/50 border border-transparent dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors group shadow-sm"
               >
-                <Search size={16} />
-                <span>Search (Ctrl+K)</span>
+                <Search size={16} className="text-slate-400 group-hover:text-primary-500 transition-colors" />
+                <span className="flex-1 text-left text-sm font-medium">Search...</span>
+                <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-950 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-800 shadow-sm">
+                  CTRL K
+                </span>
               </button>
               <button
                 onClick={toggleTheme}
@@ -526,21 +536,14 @@ const App = () => {
                 >
                   <Bell size={20} />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 block h-3 w-3 rounded-full ring-2 ring-white bg-red-500 text-xs font-bold flex items-center justify-center text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full ring-2 ring-white dark:ring-slate-900 bg-red-500 text-[10px] font-bold flex items-center justify-center text-white">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
                   )}
                 </button>
                 {/* <AnimatePresence> */}
-                  {(() => {
-                    console.log('Portal condition check:', { notificationsOpen, documentExists: typeof document !== 'undefined' });
-                    const shouldRender = notificationsOpen && typeof document !== 'undefined';
-                    console.log('Should render portal:', shouldRender);
-                    if (shouldRender) {
-                      console.log('Creating portal...');
-                    }
-                    return shouldRender;
-                  })() && createPortal(
+                  {notificationsOpen && typeof document !== 'undefined' && createPortal(
                     <div className="fixed inset-0 z-[999999] pointer-events-none">
-                      {console.log('Portal content rendering...') || null}
                       <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -632,7 +635,7 @@ const App = () => {
                                         e.stopPropagation();
                                         handleNotificationClick(notification.id);
                                       }}
-                                      className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                      className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
                                     >
                                       Mark read
                                     </button>
@@ -642,7 +645,7 @@ const App = () => {
                                       e.stopPropagation();
                                       handleNotificationNavigate(notification);
                                     }}
-                                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
                                   >
                                     View details
                                   </button>
@@ -650,7 +653,7 @@ const App = () => {
                                     <>
                                       <button
                                         onClick={(e) => handleSnoozeClick(e, notification.id, notification.reminderId, 5)}
-                                        className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-200 dark:hover:bg-blue-500/20"
+                                        className="rounded-xl bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/20 transition-colors"
                                       >
                                         Snooze 5m
                                       </button>
@@ -659,25 +662,25 @@ const App = () => {
                                           e.stopPropagation();
                                           handleStopAlarmClick(e);
                                         }}
-                                        className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20"
+                                        className="rounded-xl bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20 transition-colors"
                                       >
                                         Stop Alarm
                                       </button>
                                       <button
                                         onClick={(e) => handleMuteReminderClick(e, notification)}
-                                        className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-semibold text-fuchsia-700 hover:bg-fuchsia-100 dark:bg-fuchsia-500/10 dark:text-fuchsia-200 dark:hover:bg-fuchsia-500/20"
+                                        className="rounded-xl bg-fuchsia-50 px-4 py-2 text-xs font-bold text-fuchsia-700 hover:bg-fuchsia-100 dark:bg-fuchsia-500/10 dark:text-fuchsia-300 dark:hover:bg-fuchsia-500/20 transition-colors"
                                       >
                                         Mute
                                       </button>
                                       <button
                                         onClick={(e) => handleUnmuteReminderClick(e, notification)}
-                                        className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-200 dark:hover:bg-violet-500/20"
+                                        className="rounded-xl bg-violet-50 px-4 py-2 text-xs font-bold text-violet-700 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20 transition-colors"
                                       >
                                         Unmute
                                       </button>
                                       <button
                                         onClick={(e) => handleReminderDoneClick(e, notification)}
-                                        className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
+                                        className="rounded-xl bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20 transition-colors"
                                       >
                                         Mark done
                                       </button>
@@ -691,32 +694,20 @@ const App = () => {
                         )}
                       </div>
                       {notifications.length > 0 && (
-                        <div className="border-t border-slate-100 dark:border-slate-800 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="text-sm text-slate-600 dark:text-slate-400">
+                        <div className="border-t border-slate-100 dark:border-slate-800 p-4 flex flex-row items-center justify-between">
+                          <div className="text-sm font-medium text-slate-600 dark:text-slate-400">
                             Showing {notifications.length} notification{notifications.length === 1 ? '' : 's'}
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMarkAllAsRead();
-                              }}
-                              disabled={unreadCount === 0}
-                              className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                            >
-                              Mark all read
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                clearReadNotifications();
-                              }}
-                              disabled={readCount === 0}
-                              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                            >
-                              Clear read
-                            </button>
-                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              clearReadNotifications();
+                            }}
+                            disabled={readCount === 0}
+                            className="rounded-xl border border-rose-200 dark:border-rose-900/50 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950/30 transition-colors"
+                          >
+                            Clear read
+                          </button>
                         </div>
                       )}
                       </motion.div>
@@ -746,8 +737,9 @@ const App = () => {
       <AnimatePresence>
         {searchOpen && (
           <GlobalSearch
-            setSearchOpen={setSearchOpen}
-            setActiveTab={setActiveTab}
+            isOpen={searchOpen}
+            onClose={() => setSearchOpen(false)}
+            onSelectTab={setActiveTab}
           />
         )}
       </AnimatePresence>

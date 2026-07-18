@@ -17,6 +17,7 @@ import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import Select from '../components/ui/Select';
 
 const Dashboard = ({ setActiveTab }) => {
   const navigate = useNavigate();
@@ -202,14 +203,15 @@ const Dashboard = ({ setActiveTab }) => {
                 </h3>
                 <p className="text-sm text-slate-400 dark:text-slate-500">Your study performance over the last 7 days</p>
               </div>
-              <select 
+              <Select 
                 value={activityTimeframe}
-                onChange={(e) => setActivityTimeframe(e.target.value)}
+                onChange={(val) => setActivityTimeframe(val)}
                 className="bg-slate-50 dark:bg-slate-800 border-none text-sm font-semibold rounded-lg px-3 py-1.5 focus:ring-2 ring-primary-500/20 dark:text-white cursor-pointer outline-none transition-shadow"
-              >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-              </select>
+                options={[
+                  { label: 'Last 7 days', value: '7' },
+                  { label: 'Last 30 days', value: '30' }
+                ]}
+              />
             </div>
             <div className="h-72 flex flex-col items-center justify-center bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
               <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">

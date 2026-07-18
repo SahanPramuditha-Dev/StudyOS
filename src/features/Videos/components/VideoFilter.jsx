@@ -2,37 +2,37 @@ import React from 'react';
 import {
   Plus,
   Search,
-  RotateCcw,
   LayoutGrid,
   ArrowUpDown,
   Table2,
-  Filter
+  Filter,
+  BarChart2,
+  Download,
+  ChevronDown
 } from 'lucide-react';
-import { Select } from '../../../components/ui/Select';
+import Select from '../../../components/ui/Select';
 
-const STATUS_FILTERS = ['All', 'Active', 'Paused', 'Completed', 'Archived'];
-
-const CourseFilter = ({
-  searchTerm,
-  setSearchTerm,
+const VideoFilter = ({
+  searchQuery,
+  setSearchQuery,
   filterStatus,
   setFilterStatus,
+  filterCourse,
+  setFilterCourse,
+  filterTag,
+  setFilterTag,
   sortBy,
   setSortBy,
-  onReset,
   onAdd,
-  courseCount,
+  videoCount,
   showArchived,
   setShowArchived,
-  statusCounts = {},
-  filterCategory,
-  setFilterCategory,
-  filterDifficulty,
-  setFilterDifficulty,
-  availableCategories = [],
-  availableDifficulties = [],
   viewMode,
-  setViewMode
+  setViewMode,
+  courses,
+  globalTags,
+  onOpenHistory,
+  onExportMenuToggle
 }) => {
   return (
     <div className="relative z-[90] mb-8 animate-in fade-in slide-in-from-bottom-4">
@@ -44,21 +44,28 @@ const CourseFilter = ({
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary-500 transition-colors" size={18} />
             <input
               type="text"
-              placeholder="Search courses, platforms, or tags..."
+              placeholder="Search videos..."
               className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-white shadow-sm focus:ring-4 ring-primary-500/10 outline-none transition-all font-medium"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={onReset}
-              className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all shadow-sm active:scale-95"
-              title="Reset to default sample data"
-              aria-label="Reset data"
+              onClick={onOpenHistory}
+              className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 transition-all shadow-sm active:scale-95"
+              title="Watch History"
             >
-              <RotateCcw size={18} />
+              <BarChart2 size={18} />
+            </button>
+
+            <button
+              onClick={onExportMenuToggle}
+              className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 transition-all shadow-sm active:scale-95"
+              title="Export Menu"
+            >
+              <Download size={18} />
             </button>
 
             <button
@@ -66,7 +73,7 @@ const CourseFilter = ({
               className="flex-1 md:flex-none flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-lg shadow-primary-500/25 active:scale-95"
             >
               <Plus size={18} />
-              Add Course
+              Add Video
             </button>
           </div>
         </div>
@@ -76,24 +83,25 @@ const CourseFilter = ({
           
           {/* Left: Status Filters */}
           <div className="flex flex-wrap items-center gap-2">
-            {STATUS_FILTERS.map((status) => {
-              const isActive = filterStatus === status;
-              const count = statusCounts[status] ?? 0;
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'inProgress', label: 'In Progress' },
+              { id: 'completed', label: 'Completed' },
+              { id: 'notStarted', label: 'Not Started' }
+            ].map((status) => {
+              const isActive = filterStatus === status.id;
               return (
                 <button
-                  key={status}
+                  key={status.id}
                   type="button"
-                  onClick={() => setFilterStatus(status)}
+                  onClick={() => setFilterStatus(status.id)}
                   className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
                     isActive
                       ? 'bg-primary-500 text-white border-primary-500 shadow-lg shadow-primary-500/20'
                       : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-primary-300 dark:hover:border-primary-500/40'
                   }`}
                 >
-                  {status}
-                  <span className={`ml-1.5 ${isActive ? 'text-white/90' : 'text-slate-400'}`}>
-                    {count}
-                  </span>
+                  {status.label}
                 </button>
               );
             })}
@@ -104,7 +112,7 @@ const CourseFilter = ({
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
               <LayoutGrid size={16} className="text-primary-500" />
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                {courseCount} Showing
+                {videoCount} Showing
               </span>
             </div>
 
@@ -113,13 +121,13 @@ const CourseFilter = ({
               <Select
                 variant="ghost"
                 value={sortBy}
-                onChange={setSortBy}
+                onChange={(val) => setSortBy(val)}
                 options={[
-                  { label: 'Custom Order', value: 'custom' },
-                  { label: 'Recently Updated', value: 'updated' },
+                  { label: 'Date Added', value: 'dateAdded' },
                   { label: 'Title (A-Z)', value: 'title' },
-                  { label: 'Highest Progress', value: 'progress' },
-                  { label: 'Platform', value: 'platform' },
+                  { label: 'Progress', value: 'progress' },
+                  { label: 'Watch Time', value: 'watchTime' },
+                  { label: 'Duration', value: 'duration' }
                 ]}
               />
             </div>
@@ -170,28 +178,28 @@ const CourseFilter = ({
 
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
             <Filter size={15} className="text-primary-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Category</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Course</span>
             <Select
               variant="ghost"
-              value={filterCategory}
-              onChange={setFilterCategory}
+              value={filterCourse}
+              onChange={(val) => setFilterCourse(val)}
               options={[
-                { label: 'All', value: 'All' },
-                ...availableCategories.map(c => ({ label: c, value: c }))
+                { label: 'All Courses', value: 'all' },
+                ...courses.map(course => ({ label: course.title, value: course.id }))
               ]}
             />
           </div>
 
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
             <Filter size={15} className="text-primary-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Difficulty</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tag</span>
             <Select
               variant="ghost"
-              value={filterDifficulty}
-              onChange={setFilterDifficulty}
+              value={filterTag}
+              onChange={(val) => setFilterTag(val)}
               options={[
-                { label: 'All', value: 'All' },
-                ...availableDifficulties.map(diff => ({ label: diff, value: diff }))
+                { label: 'All Tags', value: 'all' },
+                ...globalTags.map(tag => ({ label: tag.name, value: tag.id }))
               ]}
             />
           </div>
@@ -201,4 +209,4 @@ const CourseFilter = ({
   );
 };
 
-export default CourseFilter;
+export default VideoFilter;

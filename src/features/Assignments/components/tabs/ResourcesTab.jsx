@@ -5,6 +5,7 @@ import { Plus, Trash2, Edit2, Award, Link2, FileDown, FolderOpen } from 'lucide-
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { nanoid } from 'nanoid';
+import Select from '../../../../components/ui/Select';
 
 const ResourcesTab = ({ entity, onUpdate, onActivityAdd, entityType = 'Assignment' }) => {
   const label = entityType === 'Project' ? 'project' : 'assignment';
@@ -143,15 +144,12 @@ const newResource = {
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">
                     Category *
                   </label>
-                  <select
+                  <Select
                     value={formData.category}
-                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                    onChange={(val) => setFormData(prev => ({ ...prev, category: val }))}
                     className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-blue-500 outline-none font-medium text-slate-800 dark:text-white"
-                  >
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                    options={categories.map(cat => ({ label: cat, value: cat }))}
+                  />
                 </div>
               </div>
 

@@ -12,6 +12,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Select from '../../../components/ui/Select';
 
 const ReminderForm = ({ formData, setFormData, onSubmit, onClose, isEditing, existingCategories = [], courses = [] }) => {
   return (
@@ -148,16 +149,15 @@ const ReminderForm = ({ formData, setFormData, onSubmit, onClose, isEditing, exi
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Linked Course</label>
                 <div className="relative group">
                   <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-primary-500 transition-colors" size={18} />
-                  <select
+                  <Select
                     className="w-full pl-12 pr-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 text-slate-900 dark:text-white outline-none transition-all font-medium"
                     value={formData.relatedCourseId || ''}
                     onChange={e => setFormData({ ...formData, relatedCourseId: e.target.value })}
-                  >
-                    <option value="">None</option>
-                    {courses.map(course => (
-                      <option key={course.id} value={course.id}>{course.title}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { label: 'None', value: '' },
+                      ...courses.map(course => ({ label: course.title, value: course.id }))
+                    ]}
+                  />
                 </div>
               </div>
             </div>

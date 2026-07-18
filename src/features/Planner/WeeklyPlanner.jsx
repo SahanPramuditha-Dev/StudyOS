@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Plus, Move, CheckCircle2, Trash2 } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import Select from '../../components/ui/Select';
 
 const DAYS = [
   { id: 'monday', label: 'Mon', full: 'Monday' },
@@ -195,18 +196,13 @@ const WeeklyPlanner = () => {
               if (e.key === 'Enter') addTask();
             }}
           />
-          <select
+          <Select
+            variant="ghost"
             value={day}
-            onChange={(e) => setDay(e.target.value)}
-            className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-2.5 font-bold text-slate-700 dark:text-slate-200"
+            onChange={(val) => setDay(val)}
             title="Pick day for task"
-          >
-            {DAYS.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.full}
-              </option>
-            ))}
-          </select>
+            options={DAYS.map(d => ({ label: d.full, value: d.id }))}
+          />
           <button
             type="button"
             onClick={addTask}

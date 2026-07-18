@@ -19,6 +19,21 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
 
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
@@ -29,10 +44,12 @@ import { useReminders } from '../../context/ReminderContext';
 import CourseItem from './components/CourseItem';
 import CourseFilter from './components/CourseFilter';
 import CourseForm from './components/CourseForm';
+import CourseDetailSidebar from './components/CourseDetailSidebar';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
+import Select from '../../components/ui/Select';
 
 const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'];
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
@@ -159,6 +176,7 @@ const normalizeCourseModel = (course) => {
     difficulty: DIFFICULTIES.includes(course?.difficulty) ? course.difficulty : 'Beginner',
     priority: PRIORITIES.includes(course?.priority) ? course.priority : 'Medium',
     status: ['Active', 'Paused', 'Completed'].includes(course?.status) ? course.status : 'Active',
+    courseHours: safeString(course?.courseHours),
     trackingType,
     progress,
     tags: parseTags(course?.tags),
@@ -229,6 +247,49 @@ const Courses = () => {
   const nowRef = useRef(0);
   const [studyTimer, setStudyTimer] = useState({ isRunning: false, seconds: 0, startTime: null, course: null });
 
+  // Infinite Scroll State
+  const [visibleCount, setVisibleCount] = useState(12);
+  const loadMoreRef = useRef(null);
+
+  useEffect(() => {
+    setVisibleCount(12); // Reset when filters change
+  }, [searchTerm, filterStatus, filterCategory, filterDifficulty, sortBy, viewMode, showArchived]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => prev + 12);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+    return () => observer.disconnect();
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    
+    setCourses((items) => {
+      const oldIndex = items.findIndex((i) => i.id === active.id);
+      const newIndex = items.findIndex((i) => i.id === over.id);
+      
+      const newItems = arrayMove(items, oldIndex, newIndex);
+      // We will save the order explicitly
+      return newItems.map((item, index) => ({ ...item, order: index }));
+    });
+  };
+
   useEffect(() => {
     nowRef.current = Date.now();
   }, []);
@@ -275,6 +336,7 @@ const Courses = () => {
     difficulty: 'Beginner',
     priority: 'Medium',
     status: 'Active',
+    courseHours: '',
     trackingType: 'percentage',
     progress: 0,
     tags: '',
@@ -433,7 +495,10 @@ const Courses = () => {
       if (sortBy === 'progress') return b.progress - a.progress;
       if (sortBy === 'platform') return a.platform.localeCompare(b.platform);
       if (sortBy === 'priority') return getPriorityWeight(b.priority) - getPriorityWeight(a.priority);
-      if (sortBy === 'updated') return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+      if (sortBy === 'updated') return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+      if (sortBy === 'custom') {
+        return (a.order ?? 0) - (b.order ?? 0);
+      }
       return 0;
     });
   }, [normalizedCourses, searchTerm, filterStatus, showArchived, filterCategory, filterDifficulty, sortBy]);
@@ -1021,18 +1086,14 @@ const Courses = () => {
 
       {selectedCourseIds.length > 0 && (
         <BulkActionBar selectedCount={selectedCourseIds.length} onSelectVisible={toggleSelectAllVisible} onClear={clearSelection} className="mb-6">
-          <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className="px-2 py-1 rounded-lg text-xs">
-            <option value="Active">Active</option>
-            <option value="Paused">Paused</option>
-            <option value="Completed">Completed</option>
-          </select>
+          <Select variant="ghost" value={bulkStatus} onChange={(val) => setBulkStatus(val)} options={[
+            { label: 'Active', value: 'Active' },
+            { label: 'Paused', value: 'Paused' },
+            { label: 'Completed', value: 'Completed' }
+          ]} />
           <button onClick={applyBulkStatus} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">Set status</button>
 
-          <select value={bulkPriority} onChange={(e) => setBulkPriority(e.target.value)} className="px-2 py-1 rounded-lg text-xs">
-            {PRIORITIES.map((priority) => (
-              <option key={priority} value={priority}>{priority}</option>
-            ))}
-          </select>
+          <Select variant="ghost" value={bulkPriority} onChange={(val) => setBulkPriority(val)} options={PRIORITIES.map((priority) => ({ label: priority, value: priority }))} />
           <button onClick={applyBulkPriority} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-violet-100 text-violet-700">Set priority</button>
 
           <input value={bulkTagInput} onChange={(e) => setBulkTagInput(e.target.value)} placeholder="tag" className="px-2 py-1 rounded-lg text-xs w-28" />
@@ -1045,38 +1106,48 @@ const Courses = () => {
       )}
 
       {viewMode === 'grid' ? (
-        <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))' }}>
-          <AnimatePresence mode="popLayout">
-            {filteredAndSortedCourses.map((course) => (
-              <CourseItem
-                key={course.id}
-                course={course}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onToggleArchive={handleToggleArchive}
-                onViewResources={(target) => openCourseDetail(target, 'resources')}
-                onOpenDetail={(target) => openCourseDetail(target, 'overview')}
-                onContinue={handleContinueCourse}
-                assignments={assignments}
-                meta={courseMetaById[course.id] || {}}
-                selected={selectedCourseIds.includes(course.id)}
-                onToggleSelect={toggleCourseSelection}
-              />
-            ))}
-          </AnimatePresence>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={filteredAndSortedCourses.map(c => c.id)} strategy={rectSortingStrategy}>
+            <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))' }}>
+              <AnimatePresence mode="popLayout">
+                {filteredAndSortedCourses.slice(0, visibleCount).map((course) => (
+                  <CourseItem
+                    key={course.id}
+                    course={course}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onToggleArchive={handleToggleArchive}
+                    onViewResources={(target) => openCourseDetail(target, 'resources')}
+                    onOpenDetail={(target) => openCourseDetail(target, 'overview')}
+                    onContinue={handleContinueCourse}
+                    assignments={assignments}
+                    meta={courseMetaById[course.id] || {}}
+                    selected={selectedCourseIds.includes(course.id)}
+                    onToggleSelect={toggleCourseSelection}
+                  />
+                ))}
+              </AnimatePresence>
 
-          {showInitialSkeleton && normalizedCourses.length === 0 &&
-            [...Array(3)].map((_, index) => (
-              <div key={`skeleton-${index}`} className="rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm animate-pulse">
-                <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800 mb-4" />
-                <div className="h-7 w-3/4 rounded bg-slate-200 dark:bg-slate-800 mb-3" />
-                <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-800 mb-6" />
-                <div className="h-20 w-full rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5" />
-                <div className="h-2 w-full rounded bg-slate-200 dark:bg-slate-800 mb-3" />
-                <div className="h-4 w-28 rounded bg-slate-200 dark:bg-slate-800" />
+              {showInitialSkeleton && normalizedCourses.length === 0 &&
+                [...Array(3)].map((_, index) => (
+                  <div key={`skeleton-${index}`} className="rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm animate-pulse">
+                    <div className="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800 mb-4" />
+                    <div className="h-7 w-3/4 rounded bg-slate-200 dark:bg-slate-800 mb-3" />
+                    <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-800 mb-6" />
+                    <div className="h-20 w-full rounded-2xl bg-slate-100 dark:bg-slate-800 mb-5" />
+                    <div className="h-2 w-full rounded bg-slate-200 dark:bg-slate-800 mb-3" />
+                    <div className="h-4 w-28 rounded bg-slate-200 dark:bg-slate-800" />
+                  </div>
+                ))}
+            </div>
+            
+            {visibleCount < filteredAndSortedCourses.length && (
+              <div ref={loadMoreRef} className="h-20 w-full flex items-center justify-center mt-6">
+                <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
               </div>
-            ))}
-        </div>
+            )}
+          </SortableContext>
+        </DndContext>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <table className="w-full min-w-[920px] text-left">
@@ -1093,7 +1164,7 @@ const Courses = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredAndSortedCourses.map((course) => {
+              {filteredAndSortedCourses.slice(0, visibleCount).map((course) => {
                 const meta = courseMetaById[course.id] || {};
                 const targetDate = parseDate(course.targetDate);
                 return (
@@ -1135,6 +1206,12 @@ const Courses = () => {
               })}
             </tbody>
           </table>
+          
+          {visibleCount < filteredAndSortedCourses.length && (
+            <div ref={loadMoreRef} className="h-20 w-full flex items-center justify-center border-t border-slate-100 dark:border-slate-800">
+              <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+            </div>
+          )}
         </div>
       )}
 
@@ -1205,391 +1282,19 @@ const Courses = () => {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {selectedCourseDetail && (
-          <div className="fixed inset-0 z-50 flex justify-end">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedCourseDetail(null)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            />
-            <motion.aside
-              initial={{ x: 520, opacity: 0.8 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 520, opacity: 0.8 }}
-              className="relative w-full max-w-[760px] h-full bg-white dark:bg-slate-900 border-l border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-800 dark:text-white">{selectedCourseDetail.title}</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 font-semibold mt-1">
-                    {selectedCourseDetail.platform} - {selectedCourseDetail.category}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                      {selectedCourseDetail.status}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-lg bg-primary-500/10 text-[10px] font-black uppercase tracking-widest text-primary-600 dark:text-primary-300">
-                      {selectedCourseDetail.priority} Priority
-                    </span>
-                    {selectedDetailMeta?.health ? (
-                      <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-300">
-                        {selectedDetailMeta.health}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleContinueCourse(selectedCourseDetail)}
-                    className="px-3 py-2 rounded-xl bg-primary-500 text-white text-xs font-black uppercase tracking-widest hover:bg-primary-600"
-                  >
-                    Continue
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (studyTimer.isRunning && studyTimer.course?.id !== selectedCourseDetail.id) {
-                        toast.error(`A session is already running for ${studyTimer.course.title}`);
-                        return;
-                      }
-                      toggleStudySession(selectedCourseDetail);
-                    }}
-                    className={`px-3 py-2 rounded-xl text-white text-xs font-black uppercase tracking-widest ${
-                      studyTimer.isRunning && studyTimer.course?.id === selectedCourseDetail.id
-                        ? 'bg-rose-500 hover:bg-rose-600'
-                        : 'bg-blue-500 hover:bg-blue-600'
-                    }`}
-                  >
-                    {studyTimer.isRunning && studyTimer.course?.id === selectedCourseDetail.id ? 'End Session' : 'Start Session'}
-                  </button>
-                  <button onClick={() => handleEdit(selectedCourseDetail)} className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-primary-500">
-                    <FileText size={16} />
-                  </button>
-                  <button onClick={() => setSelectedCourseDetail(null)} className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-rose-500">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="px-5 pt-4 flex items-center gap-2 overflow-x-auto custom-scrollbar">
-                {[
-                  ['overview', 'Overview'],
-                  ['modules', 'Modules'],
-                  ['notes', 'Notes'],
-                  ['resources', 'Resources'],
-                  ['assignments', 'Assignments'],
-                  ['videos', 'Videos'],
-                  ['activity', 'Activity']
-                ].map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setDetailTab(id)}
-                    className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition ${
-                      detailTab === id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-50 dark:bg-slate-800 text-slate-500'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="p-5 h-[calc(100vh-10.5rem)] overflow-y-auto custom-scrollbar space-y-4">
-                {detailTab === 'overview' && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {[
-                        { label: 'Progress', value: `${selectedCourseDetail.progress}%` },
-                        { label: 'Modules', value: `${selectedDetailMeta?.moduleCompleted || 0}/${selectedDetailMeta?.moduleTotal || 0}` },
-                        { label: 'Time Spent', value: selectedCourseDetail.timeTracking?.current || '00:00:00' },
-                        { label: 'Difficulty', value: selectedCourseDetail.difficulty },
-                        { label: 'Priority', value: selectedCourseDetail.priority },
-                        { label: 'Health', value: selectedDetailMeta?.health || 'On Track' }
-                      ].map((item) => (
-                        <div key={item.label} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</p>
-                          <p className="text-sm font-black text-slate-800 dark:text-slate-100 mt-1">{item.value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Dates</p>
-                      <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        <p>Start: {selectedCourseDetail.startDate || 'Not set'}</p>
-                        <p>Target: {selectedCourseDetail.targetDate || 'Not set'}</p>
-                        <p>Exam: {selectedCourseDetail.examDate || 'Not set'}</p>
-                        <p>Cert Deadline: {selectedCourseDetail.certificateDeadline || 'Not set'}</p>
-                      </div>
-                    </div>
-
-                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 space-y-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Next Recommended Action</p>
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedDetailMeta?.nextAction || 'Continue your next module.'}</p>
-                    </div>
-
-                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Links</p>
-                      <div className="space-y-2">
-                        {[['Course URL', selectedCourseDetail.courseUrl], ['Playlist URL', selectedCourseDetail.playlistUrl], ['Certificate URL', selectedCourseDetail.certificateUrl]].map(([label, url]) => (
-                          <div key={label} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="font-bold text-slate-500">{label}</span>
-                            {url ? (
-                              <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary-500 font-bold hover:underline">
-                                Open <ExternalLink size={13} />
-                              </a>
-                            ) : (
-                              <span className="text-slate-400">Not set</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {detailTab === 'modules' && (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30">
-                      <p className="text-sm font-black text-slate-700 dark:text-slate-200 mb-3">Add Module / Lesson</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input
-                          value={moduleDraft.title}
-                          onChange={(e) => setModuleDraft((prev) => ({ ...prev, title: e.target.value }))}
-                          placeholder="Module title"
-                          className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <input
-                          value={moduleDraft.duration}
-                          onChange={(e) => setModuleDraft((prev) => ({ ...prev, duration: e.target.value }))}
-                          placeholder="Duration (e.g. 45m)"
-                          className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <input
-                          value={moduleDraft.notesLink}
-                          onChange={(e) => setModuleDraft((prev) => ({ ...prev, notesLink: e.target.value }))}
-                          placeholder="Notes link"
-                          className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <input
-                          value={moduleDraft.resourceLink}
-                          onChange={(e) => setModuleDraft((prev) => ({ ...prev, resourceLink: e.target.value }))}
-                          placeholder="Resource link"
-                          className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <input
-                          value={moduleDraft.videoUrl}
-                          onChange={(e) => setModuleDraft((prev) => ({ ...prev, videoUrl: e.target.value }))}
-                          placeholder="Video link"
-                          className="md:col-span-2 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                      </div>
-                      <button onClick={addModuleToSelectedCourse} className="mt-3 px-4 py-2 rounded-xl bg-primary-500 text-white text-xs font-black uppercase tracking-widest">
-                        Add Module
-                      </button>
-                    </div>
-
-                    {(selectedCourseDetail.modules || []).length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 font-bold">No modules yet. Add your first lesson.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {selectedCourseDetail.modules.map((module) => (
-                          <div key={module.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
-                            <div className="flex items-start gap-3">
-                              <input
-                                type="checkbox"
-                                checked={module.status === 'Completed'}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  updateModuleInSelectedCourse(
-                                    module.id,
-                                    (current) => ({
-                                      ...current,
-                                      status: checked ? 'Completed' : 'Not Started',
-                                      completed: checked
-                                    }),
-                                    `${checked ? 'Completed' : 'Unchecked'} module: ${module.title}`
-                                  );
-                                }}
-                                className="mt-1 w-4 h-4 rounded border-slate-300 text-primary-500"
-                              />
-                              <div className="flex-1">
-                                <p className="font-black text-slate-800 dark:text-slate-100">{module.title}</p>
-                                <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                                  <select
-                                    value={module.status}
-                                    onChange={(e) => {
-                                      const status = e.target.value;
-                                      updateModuleInSelectedCourse(
-                                        module.id,
-                                        (current) => ({
-                                          ...current,
-                                          status,
-                                          completed: status === 'Completed'
-                                        }),
-                                        `Module status changed: ${module.title} -> ${status}`
-                                      );
-                                    }}
-                                    className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-                                  >
-                                    {MODULE_STATUSES.map((status) => (
-                                      <option key={status} value={status}>{status}</option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    value={module.duration || ''}
-                                    onChange={(e) => {
-                                      const duration = e.target.value;
-                                      updateModuleInSelectedCourse(
-                                        module.id,
-                                        (current) => ({ ...current, duration }),
-                                        `Duration updated: ${module.title}`
-                                      );
-                                    }}
-                                    placeholder="Duration"
-                                    className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-                                  />
-                                  <button
-                                    onClick={() => removeModuleFromSelectedCourse(module.id)}
-                                    className="px-2.5 py-2 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-500/30 dark:hover:bg-rose-500/10"
-                                  >
-                                    <Trash2 size={14} className="inline mr-1" />
-                                    Remove
-                                  </button>
-                                </div>
-
-                                <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
-                                  {module.notesLink && (
-                                    <a href={module.notesLink} target="_blank" rel="noreferrer" className="text-indigo-500 inline-flex items-center gap-1">
-                                      <StickyNote size={13} /> Notes
-                                    </a>
-                                  )}
-                                  {module.resourceLink && (
-                                    <a href={module.resourceLink} target="_blank" rel="noreferrer" className="text-emerald-500 inline-flex items-center gap-1">
-                                      <LinkIcon size={13} /> Resource
-                                    </a>
-                                  )}
-                                  {module.videoUrl && (
-                                    <a href={module.videoUrl} target="_blank" rel="noreferrer" className="text-rose-500 inline-flex items-center gap-1">
-                                      <Video size={13} /> Video
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'notes' && (
-                  <div className="space-y-2">
-                    {(selectedDetailMeta?.courseNotes || []).length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 font-bold">No notes linked to this course yet.</div>
-                    ) : (
-                      selectedDetailMeta.courseNotes.map((note) => (
-                        <div key={note.id} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <p className="font-black text-slate-800 dark:text-white">{note.title}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{note.content?.replace(/<[^>]*>?/gm, '') || 'Empty note'}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'resources' && (
-                  <div className="space-y-2">
-                    {(selectedDetailMeta?.courseResources || []).length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 font-bold">No resources linked to this course.</div>
-                    ) : (
-                      selectedDetailMeta.courseResources.map((resource) => (
-                        <a
-                          key={resource.id}
-                          href={resource.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
-                        >
-                          <div>
-                            <p className="font-black text-slate-800 dark:text-white">{resource.name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{resource.type}</p>
-                          </div>
-                          <ExternalLink size={18} className="text-slate-400" />
-                        </a>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'assignments' && (
-                  <div className="space-y-2">
-                    {(selectedDetailMeta?.courseAssignments || []).length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 font-bold">No assignments linked to this course.</div>
-                    ) : (
-                      selectedDetailMeta.courseAssignments.map((assignment) => (
-                        <div key={assignment.id} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                          <p className="font-black text-slate-800 dark:text-white">{assignment.title || assignment.name || 'Assignment'}</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">{assignment.status || 'Not Started'}</p>
-                          {assignment.deadline && (
-                            <p className="text-xs text-amber-500 font-bold mt-1">Due {new Date(assignment.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'videos' && (
-                  <div className="space-y-2">
-                    {(selectedDetailMeta?.courseVideos || []).length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 font-bold">No videos linked to this course.</div>
-                    ) : (
-                      selectedDetailMeta.courseVideos.map((video) => (
-                        <a
-                          key={video.id}
-                          href={video.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
-                        >
-                          <div>
-                            <p className="font-black text-slate-800 dark:text-white">{video.title || 'Video'}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Progress {Math.round(Number(video.progress || 0))}%</p>
-                          </div>
-                          <Video size={18} className="text-rose-500" />
-                        </a>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'activity' && (
-                  <div className="space-y-2">
-                    {(selectedCourseDetail.activityLog || []).length === 0 ? (
-                      <div className="py-12 text-center text-slate-400 font-bold">No activity yet.</div>
-                    ) : (
-                      selectedCourseDetail.activityLog
-                        .slice()
-                        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-                        .map((entry) => (
-                          <div key={entry.id || `${entry.type}-${entry.createdAt}`} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20">
-                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{entry.message || entry.type}</p>
-                            <p className="text-[10px] uppercase tracking-widest text-slate-400 mt-1">
-                              {(entry.type || 'activity').replace(/_/g, ' ')} - {entry.createdAt ? new Date(entry.createdAt).toLocaleString('en-US') : 'Unknown time'}
-                            </p>
-                          </div>
-                        ))
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.aside>
-          </div>
-        )}
-      </AnimatePresence>
+      <CourseDetailSidebar
+        selectedCourseDetail={selectedCourseDetail}
+        selectedDetailMeta={selectedDetailMeta}
+        detailTab={detailTab}
+        setDetailTab={setDetailTab}
+        handleContinueCourse={handleContinueCourse}
+        studyTimer={studyTimer}
+        toggleStudySession={toggleStudySession}
+        handleEdit={handleEdit}
+        setSelectedCourseDetail={setSelectedCourseDetail}
+        updateModuleInSelectedCourse={updateModuleInSelectedCourse}
+        removeModuleFromSelectedCourse={removeModuleFromSelectedCourse}
+      />
 
       <ConfirmModal
         isOpen={confirmConfig.isOpen}

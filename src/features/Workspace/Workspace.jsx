@@ -37,6 +37,7 @@ import ProjectCode from './components/detail/ProjectCode';
 import ProjectTasks from './components/detail/ProjectTasks';
 import ProjectDocs from './components/detail/ProjectDocs';
 import ProjectSubmissions from './components/detail/ProjectSubmissions';
+import Select from '../../components/ui/Select';
 
 const Workspace = ({ activeProjectIdOverride, setActiveTab }) => {
   const [projects, setProjects] = useStorage(STORAGE_KEYS.PROJECTS, []);
@@ -335,15 +336,16 @@ const Workspace = ({ activeProjectIdOverride, setActiveTab }) => {
                     </div>
                     <div>
                       <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-2 ml-1">Pipeline Stage</label>
-                      <select 
+                      <Select 
                         className="w-full px-5 py-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-transparent focus:border-primary-500/20 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white font-black uppercase tracking-widest text-[10px] cursor-pointer"
                         value={newTask.columnId}
                         onChange={(e) => setNewTask({ ...newTask, columnId: e.target.value })}
-                      >
-                        <option value="todo" className="dark:bg-slate-900">To Do</option>
-                        <option value="doing" className="dark:bg-slate-900">In Progress</option>
-                        <option value="done" className="dark:bg-slate-900">Completed</option>
-                      </select>
+                        options={[
+                          { label: 'To Do', value: 'todo' },
+                          { label: 'In Progress', value: 'doing' },
+                          { label: 'Completed', value: 'done' }
+                        ]}
+                      />
                     </div>
                   </div>
                 </div>

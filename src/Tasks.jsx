@@ -5,6 +5,7 @@ import { useStorage } from './hooks/useStorage';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import PageHeader from './components/PageHeader';
+import Select from './components/ui/Select';
 
 const Tasks = () => {
   const [tasks, setTasks] = useStorage('studyos_global_tasks', []);
@@ -232,12 +233,17 @@ const Tasks = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1.5">Type</label>
-                      <select value={type} onChange={(e) => setType(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all">
-                        <option value="notes">Notes</option>
-                        <option value="assignment">Assignment</option>
-                        <option value="revision">Revision</option>
-                        <option value="project">Project</option>
-                      </select>
+                      <Select 
+                        value={type} 
+                        onChange={(val) => setType(val)} 
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
+                        options={[
+                          { label: 'Notes', value: 'notes' },
+                          { label: 'Assignment', value: 'assignment' },
+                          { label: 'Revision', value: 'revision' },
+                          { label: 'Project', value: 'project' }
+                        ]}
+                      />
                     </div>
                   </div>
                   
