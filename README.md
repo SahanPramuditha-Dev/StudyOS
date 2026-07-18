@@ -32,11 +32,11 @@
 
 ![Resources](./Screenshots/Resources.png)
 
-![Signin Page](./Screenshots/Signin Page.png)
+![Signin](./Screenshots/Signin.png)
 
-![Signup Page](./Screenshots/Signup Page.png)
+![Signup](./Screenshots/Signup.png)
 
-![Video Tracker](./Screenshots/Video Tracker.png)
+![VideoTracker](./Screenshots/VideoTracker.png)
 
 Live Demo: [https://studyos.sahanpramuditha.me/](https://studyos.sahanpramuditha.me/)
 
