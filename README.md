@@ -41,8 +41,6 @@ Live Demo: [https://studyos.sahanpramuditha.me/](https://studyos.sahanpramuditha
 
 GitHub: [SahanPramuditha-Dev/StudyOS](https://github.com/SahanPramuditha-Dev/StudyOS)
 
-
-
 ## 🛠️ Tech Stack
 
 ```
@@ -75,6 +73,7 @@ Open [http://localhost:5173](http://localhost:5173)
 ### Environment Setup
 
 Copy `.env.example` to `.env.local` and add:
+
 ```
 VITE_FIREBASE_API_KEY=your_key
 VITE_FIREBASE_AUTH_DOMAIN=yourproject.firebaseapp.com
@@ -151,7 +150,15 @@ Code of Conduct: Standard.
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) (add if missing).
+StudyOS is proprietary software.
+
+This repository is provided for personal, educational, and evaluation purposes only.
+
+Commercial use, redistribution, and resale are prohibited without written permission.
+
+If you are interested in licensing StudyOS for commercial use, please contact:
+
+your-email@example.com
 
 ## 🚀 Roadmap
 
@@ -166,10 +173,10 @@ MIT License - see [LICENSE](LICENSE) (add if missing).
 - 🐛 [Issues](https://github.com/SahanPramuditha-Dev/StudyOS/issues)
 - 📧 Email via app contact form.
 
-
 ⭐ **Star on GitHub** if helpful!  
 [DEVELOPER_GUIDE](src/features/Projects/DEVELOPER_GUIDE.md) for advanced setup.
 
 ---
 
 Built with ❤️ for students worldwide.
+
