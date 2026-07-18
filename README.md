@@ -24,17 +24,16 @@
 
 ## 🖼️ Screenshots
 
-![Dashboard](./Screenshots/Dashboard.png)
-
-![Courses](./Screenshots/Courses.png)
-
-![Notes](./Screenshots/Notes.png)
-
-![Resources](./Screenshots/Resources.png)
-
 ![Signin](./Screenshots/Signin.png)
 
 ![Signup](./Screenshots/Signup.png)
+
+![Dashboard](./Screenshots/Dashboard.png)
+
+![Courses](./Screenshots/Courses.png)
+![Notes](./Screenshots/Notes.png)
+
+![Resources](./Screenshots/Resources.png)
 
 ![VideoTracker](./Screenshots/VideoTracker.png)
 
