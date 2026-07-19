@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CreditCard, Wallet, Plus, X, Activity, Briefcase, GraduationCap, DollarSign, Gift } from 'lucide-react';
+import { CreditCard, Wallet, Plus, X, Activity, Briefcase, GraduationCap, DollarSign, Gift, Pencil } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 const incomeCategoryIcons = {
@@ -16,6 +16,8 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Salary');
+  const [editingIncome, setEditingIncome] = useState(null);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   const handleAddIncome = (e) => {
     e.preventDefault();
@@ -43,25 +45,47 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
     });
   };
 
+  const handleSaveIncomeEdit = (event) => {
+    event.preventDefault();
+    if (!editingIncome?.title || !editingIncome?.amount) return;
+    setBudgetData({
+      ...budgetData,
+      incomes: incomes.map((income) => income.id === editingIncome.id ? {
+        ...income,
+        title: editingIncome.title,
+        amount: Number(editingIncome.amount),
+        category: editingIncome.category,
+        date: new Date(editingIncome.date).toISOString(),
+        notes: editingIncome.notes || '',
+      } : income),
+    });
+    setEditingIncome(null);
+  };
+
   const totalSpent = expenses.reduce((acc, curr) => acc + curr.amount, 0);
   const totalIncome = incomes.reduce((acc, curr) => acc + curr.amount, 0);
   const netCashFlow = totalIncome - totalSpent;
 
-  // Calculate Financial Health Score (0 - 100)
+  // A funded budget with no spending is in its healthiest state. For all other
+  // cases, calculate the score from savings rate, budget use, and active goals.
   let healthScore = 0;
-  if (totalIncome > 0) {
-    const savingsRate = (totalIncome - totalSpent) / totalIncome;
-    healthScore += Math.max(0, Math.min(40, savingsRate * 100)); // Up to 40 pts for 40%+ savings rate
+  if (totalBudget > 0 && totalSpent === 0) {
+    healthScore = 100;
+  } else {
+    if (totalIncome > 0) {
+      const savingsRate = (totalIncome - totalSpent) / totalIncome;
+      healthScore += Math.max(0, Math.min(40, savingsRate * 100)); // Up to 40 pts for 40%+ savings rate
+    }
+    if (totalBudget > 0) {
+      const budgetUtil = totalSpent / totalBudget;
+      if (budgetUtil <= 0.8) healthScore += 40;
+      else if (budgetUtil <= 1.0) healthScore += 20;
+    }
+    if (savingsGoals.length > 0) {
+      healthScore += 20;
+    }
+    healthScore = Math.round(healthScore);
   }
-  if (totalBudget > 0) {
-    const budgetUtil = totalSpent / totalBudget;
-    if (budgetUtil <= 0.8) healthScore += 40;
-    else if (budgetUtil <= 1.0) healthScore += 20;
-  }
-  if (savingsGoals.length > 0) {
-    healthScore += 20;
-  }
-  healthScore = Math.round(healthScore);
 
   let scoreColor = 'text-amber-500';
   let scoreStroke = '#f59e0b';
@@ -91,8 +115,24 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
 
-  // Sparkline data (mocked slightly based on cashflow for visual flair)
-  const sparklineData = Array.from({length: 10}).map((_, i) => ({ value: Math.random() * 100 + 50 }));
+  const cashFlowHistory = useMemo(() => {
+    const entries = [
+      ...incomes.map((item) => ({ date: new Date(item.date), income: Number(item.amount) || 0, expense: 0 })),
+      ...expenses.map((item) => ({ date: new Date(item.date), income: 0, expense: Number(item.amount) || 0 })),
+    ].sort((a, b) => a.date - b.date).slice(-10);
+    return (entries.length ? entries : [{ income: 0, expense: 0 }]).reduce((history, entry) => {
+      const previousBalance = history.at(-1)?.balance || 0;
+      return [...history, { income: entry.income, expense: entry.expense, balance: previousBalance + entry.income - entry.expense }];
+    }, []);
+  }, [expenses, incomes]);
+
+  const scoreFactors = totalBudget > 0 && totalSpent === 0
+    ? [{ label: 'Fresh budget', value: 100, max: 100 }]
+    : [
+      { label: 'Budget use', value: totalBudget > 0 && totalSpent <= totalBudget ? 40 : 0, max: 40 },
+      { label: 'Savings rate', value: totalIncome > 0 ? Math.round(Math.max(0, Math.min(40, ((totalIncome - totalSpent) / totalIncome) * 100))) : 0, max: 40 },
+      { label: 'Savings goals', value: savingsGoals.length > 0 ? 20 : 0, max: 20 },
+    ];
 
   return (
     <motion.div 
@@ -116,6 +156,9 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
             </div>
             <p className={`text-xs font-semibold mt-2 opacity-80 ${scoreColor}`}>
               {healthScore >= 80 ? 'Excellent shape!' : healthScore >= 50 ? 'Doing okay.' : 'Needs attention.'}
+            </p>
+            <p className="mt-2 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+              {scoreFactors.map((factor) => `${factor.label} ${factor.value}/${factor.max}`).join(' · ')}
             </p>
           </div>
           
@@ -144,8 +187,8 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
           <div className="absolute inset-0 bg-white/5 dark:bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
           <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30">
              <ResponsiveContainer width="100%" height="100%">
-               <AreaChart data={sparklineData}>
-                 <Area type="monotone" dataKey="value" stroke="none" fill="#10b981" />
+               <AreaChart data={cashFlowHistory}>
+                 <Area type="monotone" dataKey="income" stroke="none" fill="#10b981" />
                </AreaChart>
              </ResponsiveContainer>
           </div>
@@ -163,8 +206,8 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
            <div className="absolute inset-0 bg-white/5 dark:bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
            <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30">
              <ResponsiveContainer width="100%" height="100%">
-               <AreaChart data={sparklineData}>
-                 <Area type="monotone" dataKey="value" stroke="none" fill="#f43f5e" />
+               <AreaChart data={cashFlowHistory}>
+                 <Area type="monotone" dataKey="expense" stroke="none" fill="#f43f5e" />
                </AreaChart>
              </ResponsiveContainer>
           </div>
@@ -258,7 +301,8 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
                       key={inc.id} 
-                      className="flex justify-between items-center p-4 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm group"
+                      onClick={() => setSelectedTransaction({ ...inc, type: 'income' })}
+                      className="flex cursor-pointer justify-between items-center p-4 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm group"
                     >
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-500 shadow-inner">
@@ -274,8 +318,15 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="text-emerald-500 font-black text-lg">+{currency}{inc.amount.toFixed(2)}</span>
+                        <button
+                          onClick={(event) => { event.stopPropagation(); setEditingIncome({ ...inc, date: new Date(inc.date).toISOString().slice(0, 10) }); }}
+                          className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all rounded-xl"
+                          aria-label={`Edit ${inc.title}`}
+                        >
+                          <Pencil size={16} />
+                        </button>
                         <button 
-                          onClick={() => handleDeleteIncome(inc.id)}
+                          onClick={(event) => { event.stopPropagation(); handleDeleteIncome(inc.id); }}
                           className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all rounded-xl"
                         >
                           <X size={16} />
@@ -312,7 +363,8 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: idx * 0.05 }}
                     key={exp.id} 
-                    className="flex justify-between items-center p-4 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm"
+                    onClick={() => setSelectedTransaction({ ...exp, type: 'expense' })}
+                    className="flex cursor-pointer justify-between items-center p-4 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors rounded-2xl border border-slate-100 dark:border-slate-700/50 shadow-sm"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-inner">
@@ -332,6 +384,27 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
         </motion.div>
         
       </div>
+      {editingIncome && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={() => setEditingIncome(null)}>
+          <form onSubmit={handleSaveIncomeEdit} onClick={(event) => event.stopPropagation()} className="w-full max-w-lg space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-800 dark:text-white">Edit income</h3><p className="text-xs font-medium text-slate-400">Update the source details and save.</p></div><button type="button" onClick={() => setEditingIncome(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button></div>
+            <input value={editingIncome.title} onChange={(event) => setEditingIncome({ ...editingIncome, title: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" placeholder="Income source" required />
+            <div className="grid grid-cols-2 gap-3"><input type="number" min="0" step="0.01" value={editingIncome.amount} onChange={(event) => setEditingIncome({ ...editingIncome, amount: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" placeholder="Amount" required /><input type="date" value={editingIncome.date} onChange={(event) => setEditingIncome({ ...editingIncome, date: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" required /></div>
+            <select value={editingIncome.category} onChange={(event) => setEditingIncome({ ...editingIncome, category: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">{Object.keys(incomeCategoryIcons).map((item) => <option key={item} value={item}>{item}</option>)}</select>
+            <textarea value={editingIncome.notes || ''} onChange={(event) => setEditingIncome({ ...editingIncome, notes: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" placeholder="Notes (optional)" rows="3" />
+            <div className="flex gap-3 pt-2"><button type="button" onClick={() => setEditingIncome(null)} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-500 dark:border-slate-700">Cancel</button><button className="flex-1 rounded-xl bg-emerald-500 py-3 text-sm font-bold text-white hover:bg-emerald-600">Save changes</button></div>
+          </form>
+        </div>
+      )}
+      {selectedTransaction && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={() => setSelectedTransaction(null)}>
+          <div onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start justify-between"><div><p className={`text-[10px] font-black uppercase tracking-widest ${selectedTransaction.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>{selectedTransaction.type}</p><h3 className="mt-1 text-xl font-black text-slate-800 dark:text-white">{selectedTransaction.title}</h3></div><button onClick={() => setSelectedTransaction(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button></div>
+            <div className="mt-6 grid grid-cols-2 gap-3 text-sm"><div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Amount</p><p className={`mt-1 text-lg font-black ${selectedTransaction.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>{selectedTransaction.type === 'income' ? '+' : '-'}{currency}{Number(selectedTransaction.amount).toFixed(2)}</p></div><div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Category</p><p className="mt-1 font-bold text-slate-800 dark:text-white">{selectedTransaction.category || 'Uncategorised'}</p></div><div className="col-span-2 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date</p><p className="mt-1 font-bold text-slate-800 dark:text-white">{new Date(selectedTransaction.date).toLocaleDateString()}</p></div>{selectedTransaction.notes && <div className="col-span-2 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Notes</p><p className="mt-1 text-slate-600 dark:text-slate-300">{selectedTransaction.notes}</p></div>}</div>
+            <button onClick={() => { if (selectedTransaction.type === 'income') setEditingIncome({ ...selectedTransaction, date: new Date(selectedTransaction.date).toISOString().slice(0, 10) }); setSelectedTransaction(null); }} className="mt-5 w-full rounded-xl bg-cyan-500 py-3 text-sm font-bold text-white hover:bg-cyan-600">{selectedTransaction.type === 'income' ? 'Edit income' : 'Edit in Expenses'}</button>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };

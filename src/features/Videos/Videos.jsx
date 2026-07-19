@@ -147,7 +147,6 @@ const Videos = () => {
 
   // Modals / panels
   const [isModalOpen,       setIsModalOpen]      = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [showExportMenu,    setShowExportMenu]   = useState(false);
   const [isHistoryOpen,     setIsHistoryOpen]    = useState(false);
   const fileInputRef = useRef(null);
@@ -169,9 +168,6 @@ const Videos = () => {
   // Player (DO NOT TOUCH PLAYER LOGIC)
   const [isPlaying,    setIsPlaying]    = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-
-  // Editing
-  const [videoToDelete,   setVideoToDelete]   = useState(null);
 
   // Add video modal
   const [modalForm,      setModalForm]      = useState({ url: '', title: '', courseId: '', projectId: '' });
@@ -598,14 +594,21 @@ const Videos = () => {
     toast.success('Video added to learning queue!');
   };
 
-  const handleDeleteVideo = (id) => { setVideoToDelete(id); setIsDeleteModalOpen(true); };
-  const confirmDeleteVideo = () => {
-    if (!videoToDelete) return;
-    setVideos(videos.map(v =>
-      v.id === videoToDelete ? { ...v, archived: true, updatedAt: new Date().toISOString() } : v
-    ));
-    if (activeVideoId === videoToDelete) setActiveVideoId(null);
-    setVideoToDelete(null); toast.success('Video archived');
+  const handleDeleteVideo = (id) => {
+    const video = videos.find((item) => item.id === id);
+    if (!video) return;
+
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Video',
+      message: `Permanently delete “${video.title}”? This cannot be undone.`,
+      onConfirm: () => {
+        setVideos((prev) => prev.filter((item) => item.id !== id));
+        setSelectedVideoIds((prev) => prev.filter((videoId) => videoId !== id));
+        if (activeVideoId === id) setActiveVideoId(null);
+        toast.success('Video deleted');
+      },
+    });
   };
 
   const handleToggleArchive = (video) => {

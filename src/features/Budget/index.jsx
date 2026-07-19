@@ -10,6 +10,8 @@ import SubscriptionsTracker from './SubscriptionsTracker';
 import StudentLoansTracker from './StudentLoansTracker';
 import BudgetCalendar from './BudgetCalendar';
 import FinancialReports from './FinancialReports';
+import BudgetPlanner from './BudgetPlanner';
+import BudgetOperations from './BudgetOperations';
 import QuickAddExpenseModal from './QuickAddExpenseModal';
 import { useStorage } from '../../hooks/useStorage';
 import PageHeader from '../../components/PageHeader';
@@ -19,6 +21,28 @@ const BudgetHub = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [budgetData, setBudgetData] = useStorage('budget_data', { isSetupComplete: false, currency: '$' });
+
+  // Create each active monthly recurring item once its scheduled day arrives.
+  useEffect(() => {
+    const recurringItems = budgetData.recurringTransactions || [];
+    if (!recurringItems.length) return;
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${now.getMonth()}`;
+    const dueItems = recurringItems.filter((item) => item.active && now.getDate() >= item.dayOfMonth && item.lastProcessedMonth !== monthKey);
+    if (!dueItems.length) return;
+
+    const timestamp = now.toISOString();
+    setBudgetData((previous) => ({
+      ...previous,
+      expenses: [...(previous.expenses || []), ...dueItems.filter((item) => item.type === 'expense').map((item) => ({
+        id: crypto.randomUUID(), title: item.title, amount: item.amount, category: 'Bills', date: timestamp, recurringId: item.id,
+      }))],
+      incomes: [...(previous.incomes || []), ...dueItems.filter((item) => item.type === 'income').map((item) => ({
+        id: crypto.randomUUID(), title: item.title, amount: item.amount, category: 'Other', date: timestamp, recurringId: item.id,
+      }))],
+      recurringTransactions: recurringItems.map((item) => dueItems.some((due) => due.id === item.id) ? { ...item, lastProcessedMonth: monthKey } : item),
+    }));
+  }, [budgetData.recurringTransactions, setBudgetData]);
 
   // Keyboard shortcut for Quick Add Expense (Cmd+E or Ctrl+E)
   useEffect(() => {
@@ -57,6 +81,8 @@ const BudgetHub = () => {
       case 'loans': return <StudentLoansTracker budgetData={budgetData} setBudgetData={setBudgetData} />;
       case 'calendar': return <BudgetCalendar budgetData={budgetData} />;
       case 'reports': return <FinancialReports budgetData={budgetData} />;
+      case 'plan': return <BudgetPlanner budgetData={budgetData} setBudgetData={setBudgetData} />;
+      case 'tools': return <BudgetOperations budgetData={budgetData} setBudgetData={setBudgetData} />;
       default: return <BudgetDashboard budgetData={budgetData} setBudgetData={setBudgetData} />;
     }
   };
@@ -69,11 +95,13 @@ const BudgetHub = () => {
     { id: 'subscriptions', label: 'Subs' },
     { id: 'loans', label: 'Loans' },
     { id: 'calendar', label: 'Calendar' },
-    { id: 'reports', label: 'Reports' }
+    { id: 'reports', label: 'Reports' },
+    { id: 'plan', label: 'Plan' },
+    { id: 'tools', label: 'Tools' }
   ];
 
   return (
-    <div className="w-full max-w-[1680px] mx-auto pb-24 lg:pb-12">
+    <div className="w-full max-w-[1680px] mx-auto">
       <PageHeader
         title="Finance Hub"
         description="Manage your budget, track expenses, and plan your financial goals"
@@ -128,7 +156,7 @@ const BudgetHub = () => {
         ))}
       </div>
 
-      <div className="sticky top-[60px] z-[90] bg-white/80 dark:bg-slate-950/80 backdrop-blur-md pt-4 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+      <div className="sticky top-0 z-20 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md pt-4 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
         <div className="flex items-center gap-2 overflow-x-auto pb-3 custom-scrollbar">
           {tabs.map((tab) => (
             <button

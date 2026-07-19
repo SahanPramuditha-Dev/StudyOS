@@ -9,6 +9,7 @@ import {
   Link as LinkIcon,
   Calendar,
   Flag,
+  FileText,
   Sparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';

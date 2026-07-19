@@ -17,7 +17,8 @@ const BudgetSetup = ({ budgetData, setBudgetData, onClose, isInitialSetup = fals
     { symbol: '€', name: 'EUR' },
     { symbol: '£', name: 'GBP' },
     { symbol: '¥', name: 'JPY' },
-    { symbol: '₹', name: 'INR' }
+    { symbol: '₹', name: 'INR' },
+    { symbol: 'LKR', name: 'Sri Lankan Rupee' }
   ];
 
   const handleAddCategory = (e) => {

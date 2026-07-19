@@ -32,7 +32,7 @@ const AssignmentFilter = ({
   setViewMode
 }) => {
   return (
-    <div className="relative z-[90] mb-8 animate-in fade-in slide-in-from-bottom-4">
+    <div className="relative mb-8 animate-in fade-in slide-in-from-bottom-4">
       <div className="rounded-[2rem] border border-slate-100 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur-sm p-4 md:p-5 shadow-sm flex flex-col gap-5">
         
         {/* Top Row: Search and Primary Actions */}

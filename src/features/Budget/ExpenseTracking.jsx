@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Banknote, X, Paperclip, Users, SplitSquareHorizontal, Search, Download, Trash2, CheckSquare } from 'lucide-react';
+import { Banknote, X, Paperclip, Users, SplitSquareHorizontal, Search, Download, Trash2, CheckSquare, Pencil } from 'lucide-react';
 import { suggestCategory } from './utils';
 
 const ExpenseTracking = ({ budgetData, setBudgetData }) => {
@@ -20,6 +20,7 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [selectedExpenses, setSelectedExpenses] = useState([]);
+  const [editingExpense, setEditingExpense] = useState(null);
 
   useEffect(() => {
     if (!categories.includes(category)) {
@@ -51,6 +52,8 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
         splitCount: isSplit ? splitCount : null,
         category,
         hasReceipt,
+        receiptName: hasReceipt ? 'Receipt attached' : '',
+        notes: '',
         date: new Date().toISOString()
       };
       setBudgetData({
@@ -70,6 +73,25 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
       ...budgetData,
       expenses: budgetData.expenses.filter(exp => exp.id !== id)
     });
+  };
+
+  const handleSaveEdit = (event) => {
+    event.preventDefault();
+    if (!editingExpense?.title || !editingExpense?.amount) return;
+    setBudgetData({
+      ...budgetData,
+      expenses: (budgetData.expenses || []).map((expense) => expense.id === editingExpense.id ? {
+        ...expense,
+        title: editingExpense.title,
+        amount: Number(editingExpense.amount),
+        category: editingExpense.category,
+        date: new Date(editingExpense.date).toISOString(),
+        notes: editingExpense.notes || '',
+        hasReceipt: Boolean(editingExpense.hasReceipt),
+        receiptName: editingExpense.hasReceipt ? (editingExpense.receiptName || 'Receipt attached') : '',
+      } : expense),
+    });
+    setEditingExpense(null);
   };
 
   const filteredExpenses = (budgetData.expenses || [])
@@ -376,6 +398,16 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
+                        setEditingExpense({ ...exp, date: new Date(exp.date).toISOString().slice(0, 10) });
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 transition-all rounded-xl shrink-0"
+                      title="Edit expense"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleDelete(exp.id);
                       }}
                       className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all rounded-xl shrink-0"
@@ -390,6 +422,21 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
           </div>
         </motion.div>
       </div>
+      <AnimatePresence>
+        {editingExpense && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={() => setEditingExpense(null)}>
+            <motion.form initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} onSubmit={handleSaveEdit} onClick={(event) => event.stopPropagation()} className="w-full max-w-lg space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-800 dark:text-white">Edit transaction</h3><p className="text-xs font-medium text-slate-400">Update the details and save your changes.</p></div><button type="button" onClick={() => setEditingExpense(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"><X size={18} /></button></div>
+              <input value={editingExpense.title} onChange={(event) => setEditingExpense({ ...editingExpense, title: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" placeholder="Title" required />
+              <div className="grid grid-cols-2 gap-3"><input type="number" min="0" step="0.01" value={editingExpense.amount} onChange={(event) => setEditingExpense({ ...editingExpense, amount: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" placeholder="Amount" required /><input type="date" value={editingExpense.date} onChange={(event) => setEditingExpense({ ...editingExpense, date: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" required /></div>
+              <select value={editingExpense.category} onChange={(event) => setEditingExpense({ ...editingExpense, category: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+              <textarea value={editingExpense.notes || ''} onChange={(event) => setEditingExpense({ ...editingExpense, notes: event.target.value })} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" placeholder="Notes (optional)" rows="3" />
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300"><input type="checkbox" checked={Boolean(editingExpense.hasReceipt)} onChange={(event) => setEditingExpense({ ...editingExpense, hasReceipt: event.target.checked })} className="h-4 w-4 rounded text-cyan-500" /> Receipt attached</label>
+              <div className="flex gap-3 pt-2"><button type="button" onClick={() => setEditingExpense(null)} className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-500 dark:border-slate-700">Cancel</button><button className="flex-1 rounded-xl bg-cyan-500 py-3 text-sm font-bold text-white hover:bg-cyan-600">Save changes</button></div>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
