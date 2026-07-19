@@ -22,6 +22,7 @@ import {
   ListTodo,
   Clock,
   Wallet,
+  GraduationCap,
   ChevronsLeft,
   ChevronsRight
 } from 'lucide-react';
@@ -31,7 +32,7 @@ import { useAuth } from '../context/AuthContext';
 
 const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => {
   const [isOpen, setIsOpen] = useState(true);
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, hasPermission } = useAuth();
 
   const toPath = (id) => {
     if (id === 'dashboard') return '/dashboard';
@@ -49,6 +50,7 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
     { id: 'resources', icon: FolderOpen, label: 'Resources', permission: 'resources' },
     { id: 'projects', icon: GithubIcon, label: 'Projects', permission: 'projects' },
     { id: 'assignments', icon: FileText, label: 'Assignments', permission: 'assignments' },
+    { id: 'grades', icon: GraduationCap, label: 'Grades', permission: 'assignments' },
     { id: 'workspace', icon: Kanban, label: 'Workspace', permission: 'workspace' },
     { id: 'tasks', icon: ListTodo, label: 'Tasks' },
     { id: 'timer', icon: Clock, label: 'Timer' },
@@ -64,9 +66,8 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
   // Filter menu items based on permissions
   const filteredMenuItems = menuItems.filter(item => {
     if (isAdmin) return true;
-    if (!profile?.permissions) return true;
     if (!item.permission) return true;
-    return profile.permissions[item.permission] !== false;
+    return hasPermission(item.permission);
   });
 
   const adminItem = isAdmin ? { id: 'admin', icon: ShieldAlert, label: 'Admin Panel' } : null;

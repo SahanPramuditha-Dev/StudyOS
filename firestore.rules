@@ -180,16 +180,15 @@ service cloud.firestore {
         'lastActiveAt',
         'presence',
         'lastLogin',
-        'updatedAt'
+        'updatedAt',
+        'username',
+        'username_changed_at',
+        'usage'
       ]);
     }
 
     match /users/{userId} {
-      // Short-circuit: own uid first so we never touch admin get() for normal users / new profiles.
-      allow read: if isAuthenticated() && (
-        request.auth.uid == userId ||
-        (ownProfileExists() && getOwnProfile().get('role', 'restricted') in ['admin', 'superadmin'])
-      );
+      allow read: if isAuthenticated();
       allow create: if isCreatingOwnProfile(userId);
       allow update: if (isOwner(userId) && isSafeSelfProfileUpdate()) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
@@ -198,7 +197,7 @@ service cloud.firestore {
     // Read: owner may load their own synced blobs; module gates apply on writes only.
     match /users/{userId}/data/{document} {
       allow read: if (isOwner(userId) && isActive()) || isAdmin();
-      allow write: if (isOwner(userId) && isActive() && isVerified() && hasModuleAccess(document) && withinLimits()) || isAdmin();
+      allow write: if (isOwner(userId) && isActive() && hasModuleAccess(document) && withinLimits()) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
     }
 
@@ -245,6 +244,11 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin();
       allow update, delete: if false;
+    }
+
+    match /username_history/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
     }
   }
 }

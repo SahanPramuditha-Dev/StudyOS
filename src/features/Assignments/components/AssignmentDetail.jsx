@@ -89,7 +89,7 @@ const AssignmentDetail = ({ assignment, onBack, onUpdate }) => {
           <div className="absolute -top-1/2 -right-1/2 w-96 h-96 rounded-full bg-white blur-3xl"></div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-6 py-12 relative z-10">
+        <div className="w-full max-w-[1680px] mx-auto px-6 py-12 relative z-10">
           {/* Back Button */}
           <button
             onClick={onBack}
@@ -170,10 +170,10 @@ const AssignmentDetail = ({ assignment, onBack, onUpdate }) => {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="w-full max-w-[1680px] mx-auto px-6 py-12">
         {/* Tabs Navigation */}
-        <div className="mb-8 overflow-x-auto">
-          <div className="flex gap-2 pb-2 min-w-min">
+        <div className="mb-8 overflow-x-auto pb-2">
+          <div className="flex gap-2 w-max">
             {tabs.map(tab => {
               const TabIcon = tab.icon;
               return (

@@ -8,10 +8,13 @@ import {
   Tag as TagIcon,
   Link as LinkIcon,
   Calendar,
-  Flag
+  Flag,
+  Sparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import Select from '../../../components/ui/Select';
+import { generateCourseSyllabus } from '../../../services/aiService';
 
 const FieldLabel = ({ icon: Icon, text }) => (
   <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-2 ml-1 flex items-center gap-1.5">
@@ -21,6 +24,25 @@ const FieldLabel = ({ icon: Icon, text }) => (
 );
 
 const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose }) => {
+  const [isGenerating, setIsGenerating] = React.useState(false);
+
+  const handleGenerateSyllabus = async () => {
+    if (!formData.title) {
+      toast.error('Please enter a Course Title first');
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const syllabus = await generateCourseSyllabus(formData.title);
+      setFormData({ ...formData, syllabus });
+      toast.success('Syllabus generated successfully!');
+    } catch (e) {
+      toast.error('Failed to generate syllabus');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
       <motion.div
@@ -136,6 +158,27 @@ const CourseForm = ({ editingCourse, formData, setFormData, onSubmit, onClose })
                 onChange={(e) => setFormData({ ...formData, courseHours: e.target.value })}
               />
             </div>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <FieldLabel icon={FileText} text="Course Syllabus / Outline" />
+              <button
+                type="button"
+                onClick={handleGenerateSyllabus}
+                disabled={isGenerating}
+                className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-3 py-1 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
+              >
+                {isGenerating ? <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={12} />}
+                {isGenerating ? 'Generating...' : 'AI Generate'}
+              </button>
+            </div>
+            <textarea
+              className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 outline-none text-slate-900 dark:text-white transition-all font-medium shadow-inner dark:shadow-none min-h-[120px] custom-scrollbar"
+              placeholder="Paste or generate a course syllabus outline here..."
+              value={formData.syllabus || ''}
+              onChange={(e) => setFormData({ ...formData, syllabus: e.target.value })}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

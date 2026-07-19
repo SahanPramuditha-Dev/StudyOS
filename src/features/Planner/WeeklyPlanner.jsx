@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Plus, Move, CheckCircle2, Trash2 } from 'lucide-react';
+import { CalendarClock, Plus, Move, CheckCircle2, Trash2, Sparkles } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { autoScheduleWeek } from '../../services/aiService';
 import Select from '../../components/ui/Select';
+import toast from 'react-hot-toast';
 
 const DAYS = [
   { id: 'monday', label: 'Mon', full: 'Monday' },
@@ -44,6 +46,9 @@ const WeeklyPlanner = () => {
     weekStart: currentWeekStart,
     columns: createEmptyColumns()
   });
+  const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
+  const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
+  const [isScheduling, setIsScheduling] = useState(false);
   const [title, setTitle] = useState('');
   const [day, setDay] = useState('monday');
   const [dragging, setDragging] = useState(null);
@@ -153,6 +158,67 @@ const WeeklyPlanner = () => {
     });
   };
 
+  const handleAutoSchedule = async () => {
+    setIsScheduling(true);
+    const toastId = toast.loading('AI is analyzing and scheduling your tasks...');
+    try {
+      // Gather uncompleted tasks from projects and assignments
+      const tasksToSchedule = [];
+      
+      projects?.forEach(project => {
+        if (project.status === 'Ongoing' && project.board) {
+          project.board.todo?.forEach(t => tasksToSchedule.push(`Project (${project.name}): ${t.title}`));
+          project.board.doing?.forEach(t => tasksToSchedule.push(`Project (${project.name}): ${t.title}`));
+        }
+      });
+      
+      assignments?.forEach(assignment => {
+        if (assignment.status !== 'Completed') {
+          tasksToSchedule.push(`Assignment: ${assignment.title}`);
+        }
+      });
+
+      if (tasksToSchedule.length === 0) {
+        toast.dismiss(toastId);
+        toast.error('No pending project or assignment tasks found to schedule!');
+        setIsScheduling(false);
+        return;
+      }
+
+      const schedule = await autoScheduleWeek(tasksToSchedule);
+      
+      setPlanner((prev) => {
+        const safe = prev && typeof prev === 'object' ? prev : {};
+        const cols = { ...createEmptyColumns(), ...(safe.columns || {}) };
+        
+        // Add new tasks to existing ones
+        Object.keys(schedule).forEach(day => {
+          const aiTasks = (schedule[day] || []).map(title => ({
+            id: `wk-ai-${Date.now()}-${Math.random()}`,
+            title,
+            done: false,
+            createdAt: new Date().toISOString()
+          }));
+          
+          if (cols[day]) {
+            cols[day] = [...aiTasks, ...cols[day]];
+          }
+        });
+
+        return {
+          weekStart: currentWeekStart,
+          columns: cols
+        };
+      });
+
+      toast.success('Schedule optimized!', { id: toastId });
+    } catch (error) {
+      toast.error('Failed to auto-schedule tasks', { id: toastId });
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
   const total = DAYS.reduce((acc, d) => acc + (normalized.columns[d.id] || []).length, 0);
   const done = DAYS.reduce(
     (acc, d) => acc + (normalized.columns[d.id] || []).filter((t) => t.done).length,
@@ -172,9 +238,17 @@ const WeeklyPlanner = () => {
               Drag tasks between days. Incomplete tasks carry forward automatically every week.
             </p>
           </div>
-          <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
-            {done}/{total} completed
-          </div>
+            <div className="text-sm font-bold text-slate-600 dark:text-slate-300">
+              {done}/{total} completed
+            </div>
+            <button
+              onClick={handleAutoSchedule}
+              disabled={isScheduling}
+              className="px-4 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 dark:text-indigo-300 font-bold rounded-xl text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              <Sparkles size={16} className={isScheduling ? 'animate-pulse' : ''} />
+              Auto-Schedule
+            </button>
         </div>
         <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
           <div

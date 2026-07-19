@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Select from '../../../components/ui/Select';
+import AIRecommendations from '../../../components/AIRecommendations';
+import ReactMarkdown from 'react-markdown';
 
 const MODULE_STATUSES = ['Not Started', 'In Progress', 'Completed'];
 
@@ -313,6 +315,19 @@ const CourseDetailSidebar = ({
                           ))}
                         </div>
                       </div>
+
+                      <AIRecommendations title={selectedCourseDetail.title} description={selectedCourseDetail.category} />
+                      
+                      {selectedCourseDetail.syllabus && (
+                        <div className="p-5 rounded-[2rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-sm">
+                          <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                            <FileText size={14} /> Course Syllabus
+                          </p>
+                          <div className="prose prose-sm dark:prose-invert prose-indigo max-w-none">
+                            <ReactMarkdown>{selectedCourseDetail.syllabus}</ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

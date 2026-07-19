@@ -6,14 +6,108 @@ import {
   GripVertical,
   Calendar,
   Flag,
-  Clock,
   X,
-  ArrowRight
+  Timer as TimerIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import Select from '../../../../components/ui/Select';
+import { useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+const SortableTaskItem = ({ task, columnId, projectId, onDelete, getPriorityColor }) => {
+  const navigate = useNavigate();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: task.id, data: { task, columnId } });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-500/30 transition-all group relative"
+    >
+      <div className="flex items-start gap-2 mb-2">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 mt-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <GripVertical size={16} />
+        </div>
+        <div className="flex-1">
+          <h4 className="font-bold text-slate-900 dark:text-white text-sm mb-1">
+            {task.title}
+          </h4>
+          {task.description && (
+            <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
+              {task.description}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => navigate('/timer', { state: { projectId, taskId: task.id } })}
+          className="px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 transition-all opacity-0 group-hover:opacity-100 absolute top-2 right-10"
+          title="Start Pomodoro"
+        >
+          <TimerIcon size={14} />
+        </button>
+        <button
+          onClick={() => onDelete(task.id, columnId)}
+          className="px-2 py-1 rounded bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-200 transition-all opacity-0 group-hover:opacity-100 absolute top-2 right-2"
+          title="Delete Task"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 mt-3 text-xs flex-wrap pl-6">
+        {task.priority && (
+          <span className={`px-2 py-0.5 rounded-full font-bold ${getPriorityColor(task.priority)}`}>
+            <Flag size={10} className="inline mr-1" />
+            {task.priority}
+          </span>
+        )}
+        {task.dueDate && (
+          <span className="px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 font-bold flex items-center gap-1">
+            <Calendar size={10} />
+            {new Date(task.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+          </span>
+        )}
+        {task.timeSpent > 0 && (
+          <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-bold flex items-center gap-1 ml-auto">
+            <TimerIcon size={10} />
+            {Math.max(1, Math.round((task.timeSpent || 0) / 60))}m
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const TaskManager = ({ project, onUpdate, onActivityAdd }) => {
   const [isCreating, setIsCreating] = useState(false);
@@ -24,12 +118,24 @@ const TaskManager = ({ project, onUpdate, onActivityAdd }) => {
     dueDate: '',
     priority: 'Medium'
   });
+  const [activeId, setActiveId] = useState(null);
 
   const columns = [
     { id: 'todo', label: 'To Do', color: 'bg-slate-100 dark:bg-slate-800' },
     { id: 'doing', label: 'In Progress', color: 'bg-blue-100 dark:bg-blue-500/10' },
     { id: 'done', label: 'Completed', color: 'bg-green-100 dark:bg-green-500/10' }
   ];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const handleCreateTask = () => {
     if (!newTask.title.trim()) {
@@ -57,22 +163,6 @@ const TaskManager = ({ project, onUpdate, onActivityAdd }) => {
     setIsCreating(false);
   };
 
-  const handleMoveTask = (taskId, fromColumn, toColumn) => {
-    const task = board[fromColumn].find(t => t.id === taskId);
-    if (!task) return;
-
-    const updatedBoard = {
-      todo: board.todo.filter(t => t.id !== taskId),
-      doing: board.doing.filter(t => t.id !== taskId),
-      done: board.done.filter(t => t.id !== taskId)
-    };
-
-    updatedBoard[toColumn] = [task, ...updatedBoard[toColumn]];
-    setBoard(updatedBoard);
-    onUpdate({ ...project, board: updatedBoard });
-    onActivityAdd('task_moved', `Moved task to ${columns.find(c => c.id === toColumn)?.label}`);
-  };
-
   const handleDeleteTask = (taskId, fromColumn) => {
     const updatedBoard = {
       ...board,
@@ -92,6 +182,96 @@ const TaskManager = ({ project, onUpdate, onActivityAdd }) => {
     };
     return colors[priority] || colors['Medium'];
   };
+
+  const handleDragStart = (event) => {
+    const { active } = event;
+    setActiveId(active.id);
+  };
+
+  const handleDragOver = (event) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (activeId === overId) return;
+
+    const isActiveTask = active.data.current?.task;
+    const isOverTask = over.data.current?.task;
+    
+    if (!isActiveTask) return;
+
+    const activeContainer = active.data.current.columnId;
+    // If over is a task, it has a columnId in data. If over is a container (column), its id is the columnId
+    const overContainer = isOverTask ? over.data.current.columnId : over.id;
+
+    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      return;
+    }
+
+    setBoard((prev) => {
+      const activeItems = prev[activeContainer];
+      const overItems = prev[overContainer];
+      
+      const activeIndex = activeItems.findIndex(t => t.id === activeId);
+      const overIndex = isOverTask 
+        ? overItems.findIndex(t => t.id === overId)
+        : overItems.length;
+
+      return {
+        ...prev,
+        [activeContainer]: [
+          ...prev[activeContainer].filter(item => item.id !== activeId)
+        ],
+        [overContainer]: [
+          ...prev[overContainer].slice(0, overIndex),
+          activeItems[activeIndex],
+          ...prev[overContainer].slice(overIndex, prev[overContainer].length)
+        ]
+      };
+    });
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    const activeContainer = active.data.current?.columnId;
+    const overContainer = over.data.current?.task ? over.data.current.columnId : over.id;
+
+    if (!activeContainer || !overContainer) return;
+
+    if (activeContainer === overContainer) {
+      const activeIndex = board[activeContainer].findIndex(t => t.id === activeId);
+      const overIndex = board[overContainer].findIndex(t => t.id === overId);
+
+      if (activeIndex !== overIndex) {
+        const newBoard = {
+          ...board,
+          [activeContainer]: arrayMove(board[activeContainer], activeIndex, overIndex)
+        };
+        setBoard(newBoard);
+        onUpdate({ ...project, board: newBoard });
+      }
+    } else {
+      // The actual move was handled in handleDragOver, just sync to parent
+      onUpdate({ ...project, board });
+      const movedTask = board[overContainer].find(t => t.id === activeId);
+      if (movedTask) {
+        onActivityAdd('task_moved', `Moved task to ${columns.find(c => c.id === overContainer)?.label}`);
+      }
+    }
+  };
+
+  const activeTask = activeId 
+    ? [...board.todo, ...board.doing, ...board.done].find(t => t.id === activeId)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -201,94 +381,70 @@ const TaskManager = ({ project, onUpdate, onActivityAdd }) => {
       </button>
 
       {/* Kanban Board */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {columns.map(column => (
-          <motion.div
-            key={column.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`rounded-xl p-4 min-h-[400px] ${column.color}`}
-          >
-            <h3 className="font-black text-slate-900 dark:text-white mb-4 flex items-center justify-between">
-              {column.label}
-              <span className="px-2 py-1 rounded-full bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-xs font-bold">
-                {board[column.id]?.length || 0}
-              </span>
-            </h3>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {columns.map(column => (
+            <motion.div
+              key={column.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`rounded-xl p-4 min-h-[400px] flex flex-col ${column.color}`}
+            >
+              <h3 className="font-black text-slate-900 dark:text-white mb-4 flex items-center justify-between">
+                {column.label}
+                <span className="px-2 py-1 rounded-full bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-xs font-bold">
+                  {board[column.id]?.length || 0}
+                </span>
+              </h3>
 
-            <div className="space-y-3">
-              <AnimatePresence>
-                {(board[column.id] || []).map((task) => (
-                  <motion.div
-                    key={task.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-700 hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-500/30 transition-all group"
-                  >
-                    <div className="flex items-start gap-2 mb-2">
-                      <GripVertical size={16} className="text-slate-400 mt-1 flex-shrink-0 opacity-0 group-hover:opacity-100" />
-                      <div className="flex-1">
-                        <h4 className="font-bold text-slate-900 dark:text-white text-sm mb-1">
-                          {task.title}
-                        </h4>
-                        {task.description && (
-                          <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                            {task.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+              <div className="flex-1 space-y-3" id={column.id}>
+                <SortableContext
+                  items={(board[column.id] || []).map(t => t.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {(board[column.id] || []).map((task) => (
+                    <SortableTaskItem
+                      key={task.id}
+                      task={task}
+                      columnId={column.id}
+                      projectId={project.id}
+                      onDelete={handleDeleteTask}
+                      getPriorityColor={getPriorityColor}
+                    />
+                  ))}
+                </SortableContext>
 
-                    <div className="flex items-center gap-2 mb-3 text-xs flex-wrap">
-                      {task.priority && (
-                        <span className={`px-2 py-0.5 rounded-full font-bold ${getPriorityColor(task.priority)}`}>
-                          <Flag size={10} className="inline mr-1" />
-                          {task.priority}
-                        </span>
-                      )}
-                      {task.dueDate && (
-                        <span className="px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 font-bold flex items-center gap-1">
-                          <Calendar size={10} />
-                          {new Date(task.dueDate).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                        </span>
-                      )}
-                    </div>
+                {(board[column.id] || []).length === 0 && (
+                  <div className="py-8 text-center text-slate-500 text-sm">
+                    No tasks yet
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
 
-                    {/* Move Buttons */}
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                      {columns
-                        .filter(c => c.id !== column.id)
-                        .map(targetColumn => (
-                          <button
-                            key={targetColumn.id}
-                            onClick={() => handleMoveTask(task.id, column.id, targetColumn.id)}
-                            className="flex-1 py-1 px-2 rounded text-xs font-bold bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-400 hover:bg-primary-200 transition-all flex items-center justify-center gap-1"
-                          >
-                            <ArrowRight size={10} />
-                            {targetColumn.label.split(' ')[0]}
-                          </button>
-                        ))}
-                      <button
-                        onClick={() => handleDeleteTask(task.id, column.id)}
-                        className="px-2 py-1 rounded bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-200 transition-all"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {(board[column.id] || []).length === 0 && (
-                <div className="py-8 text-center text-slate-500 text-sm">
-                  No tasks yet
+        <DragOverlay>
+          {activeTask ? (
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-primary-400 shadow-xl opacity-80 cursor-grabbing">
+              <div className="flex items-start gap-2 mb-2">
+                <GripVertical size={16} className="text-slate-400 mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm mb-1">
+                    {activeTask.title}
+                  </h4>
                 </div>
-              )}
+              </div>
             </div>
-          </motion.div>
-        ))}
-      </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       {/* Progress Summary */}
       <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-100 dark:border-slate-800">

@@ -15,7 +15,8 @@ import {
   orderBy,
   addDoc,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  getCountFromServer
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from './firebase';
@@ -61,6 +62,35 @@ const getCachedCollectionData = (userId, key) => {
  * All data is scoped under the user's unique ID (uid).
  */
 class FirestoreService {
+  // --- Platform Settings ---
+  
+  static async getPlatformSettings() {
+    try {
+      const docRef = doc(db, 'settings', 'platform');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data();
+      }
+      return { maintenanceMode: false, allowNewSignups: true, globalAnnouncement: '' };
+    } catch (error) {
+      console.error('[FirestoreService] Error fetching platform settings:', error);
+      return { maintenanceMode: false, allowNewSignups: true, globalAnnouncement: '' };
+    }
+  }
+
+
+
+  static async updatePlatformSettings(settings) {
+    try {
+      const docRef = doc(db, 'settings', 'platform');
+      await setDoc(docRef, settings, { merge: true });
+      return true;
+    } catch (error) {
+      console.error('[FirestoreService] Error updating platform settings:', error);
+      throw error;
+    }
+  }
+
   /**
    * Default user profile shape (Firestore + client fallback when cloud init fails).
    */
@@ -371,6 +401,34 @@ class FirestoreService {
   }
 
   /**
+   * Admin: Fast aggregate query to count users without reading documents.
+   */
+  static async getAdminDashboardStats() {
+    try {
+      const usersRef = collection(db, 'users');
+      
+      // Get total users
+      const totalSnap = await getCountFromServer(usersRef);
+      const totalUsers = totalSnap.data().count;
+
+      // Get active users (status.isActive == true)
+      const activeQuery = query(usersRef, where('status.isActive', '==', true));
+      const activeSnap = await getCountFromServer(activeQuery);
+      const activeUsers = activeSnap.data().count;
+
+      // Get blocked users
+      const blockedQuery = query(usersRef, where('status.isBlocked', '==', true));
+      const blockedSnap = await getCountFromServer(blockedQuery);
+      const blockedUsers = blockedSnap.data().count;
+
+      return { totalUsers, activeUsers, blockedUsers };
+    } catch (error) {
+      console.error('[FirestoreService] Error getting dashboard stats:', error);
+      return { totalUsers: 0, activeUsers: 0, blockedUsers: 0 };
+    }
+  }
+
+  /**
    * Admin: Fetches user profiles with pagination
    * @param {number} pageSize 
    * @param {any} lastDoc - The last document snapshot from previous fetch
@@ -577,7 +635,9 @@ class FirestoreService {
       }
       cacheEntry(userDataCache, cacheKey, data);
     } catch (error) {
-      console.error(`[FirestoreService] Error saving to Firestore [${key}]:`, error);
+      if (error?.code !== 'permission-denied' && !error?.message?.includes('Missing or insufficient permissions')) {
+        console.error(`[FirestoreService] Error saving to Firestore [${key}]:`, error);
+      }
       throw error;
     }
   }
@@ -967,6 +1027,23 @@ class FirestoreService {
       const messages = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
       callback(messages);
     });
+  }
+
+  static async getMoreChatMessages(roomId, oldestCreatedAt) {
+    if (!roomId || !oldestCreatedAt) return [];
+    try {
+      const q = query(
+        FirestoreService.chatMessagesCollection(roomId),
+        orderBy('createdAt', 'desc'),
+        startAfter(oldestCreatedAt),
+        limit(50)
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+    } catch (error) {
+      console.error('[FirestoreService] Error fetching older messages:', error);
+      return [];
+    }
   }
 
   static async sendChatMessage(roomId, {

@@ -408,6 +408,11 @@ export const AuthProvider = ({ children }) => {
       await linkWithCredential(auth.currentUser, credential);
       toast.success('Password setup successfully!');
     } catch (error) {
+      if (error.code === 'auth/provider-already-linked') {
+        // If it's already linked from a previous partial attempt, just proceed
+        console.log('Provider already linked, proceeding...');
+        return;
+      }
       if (error.code === 'auth/credential-already-in-use') {
         toast.error('An account already exists with this email.');
       } else {
@@ -565,7 +570,10 @@ export const AuthProvider = ({ children }) => {
     if (!auth.currentUser) throw new Error('Not authenticated');
     
     const fileRef = ref(storage, `users/${auth.currentUser.uid}/profile_${Date.now()}`);
-    const uploadTask = uploadBytesResumable(fileRef, file);
+    const metadata = {
+      cacheControl: 'public, max-age=31536000',
+    };
+    const uploadTask = uploadBytesResumable(fileRef, file, metadata);
 
     return new Promise((resolve, reject) => {
       uploadTask.on('state_changed', 

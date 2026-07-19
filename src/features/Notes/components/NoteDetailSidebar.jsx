@@ -78,7 +78,7 @@ const NoteDetailSidebar = ({
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <div className="space-y-1 flex-1 min-w-0">
               <input 
-                className="bg-transparent border-none text-xl lg:text-2xl font-black text-slate-800 dark:text-white focus:ring-0 w-full truncate p-0"
+                className="bg-transparent border-none outline-none focus:outline-none text-xl lg:text-2xl font-black text-slate-800 dark:text-white focus:ring-0 w-full truncate p-0"
                 value={selectedNoteDetail.title}
                 onChange={(e) => updateNote({ title: e.target.value })}
                 placeholder="Note Title"
@@ -170,7 +170,7 @@ const NoteDetailSidebar = ({
                 </span>
               ))}
               <input 
-                className="bg-transparent border-none text-xs font-bold text-slate-400 focus:text-slate-700 dark:focus:text-slate-200 focus:ring-0 p-0 w-24 placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                className="bg-transparent border-none outline-none focus:outline-none text-xs font-bold text-slate-400 focus:text-slate-700 dark:focus:text-slate-200 focus:ring-0 p-0 w-24 placeholder:text-slate-300 dark:placeholder:text-slate-600"
                 placeholder="Add tag..."
                 onKeyDown={handleAddTag}
               />

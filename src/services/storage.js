@@ -23,6 +23,8 @@ const STORAGE_KEYS = {
   STUDY_PREFS: 'studyos_study_prefs',
   NOTIF_SETTINGS: 'studyos_notif_settings',
   PRIVACY: 'studyos_privacy',
+  SEMESTERS: 'studyos_semesters',
+  ACADEMIC_SETTINGS: 'studyos_academic_settings',
 };
 
 const defaultSchemas = {

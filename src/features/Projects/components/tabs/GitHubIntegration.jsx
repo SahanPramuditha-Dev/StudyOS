@@ -10,26 +10,34 @@ import {
   Plus,
   Settings,
   RefreshCw,
-  LogOut
+  LogOut,
+  Sparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { generateGeminiResponse } from '../../../../services/aiService';
 import { auth } from '../../../../services/firebase';
+import ReactMarkdown from 'react-markdown';
 
 const GitHubIntegration = ({ project, onUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [repoUrl, setRepoUrl] = useState(project.repo || '');
   const [branches, setBranches] = useState(project.branches || []);
   const [commits, setCommits] = useState(project.commits || []);
+  
+  // AI Feature State
+  const [isAiSummarizing, setIsAiSummarizing] = useState(false);
+  const [aiSummary, setAiSummary] = useState('');
+
   const [userRepos, setUserRepos] = useState([]);
   const [repoSearch, setRepoSearch] = useState('');
   const [showRepoPicker, setShowRepoPicker] = useState(!project.repo);
   const [showAdvanced, setShowAdvanced] = useState(!project.repo);
   const [githubToken, setGithubToken] = useState(
-    typeof window !== 'undefined' ? sessionStorage.getItem('github_token') : null
+    typeof window !== 'undefined' ? localStorage.getItem('github_token') : null
   );
   const [githubUser, setGithubUser] = useState(
-    typeof window !== 'undefined' ? sessionStorage.getItem('github_user') : null
+    typeof window !== 'undefined' ? localStorage.getItem('github_user') : null
   );
   const [isFetching, setIsFetching] = useState(false);
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
@@ -80,7 +88,7 @@ const GitHubIntegration = ({ project, onUpdate }) => {
 
       setUserRepos(formattedRepos);
       if (typeof window !== 'undefined') {
-        sessionStorage.setItem('github_repos', JSON.stringify(formattedRepos));
+        localStorage.setItem('github_repos', JSON.stringify(formattedRepos));
       }
       if (!project.repo) {
         setShowRepoPicker(true);
@@ -96,7 +104,7 @@ const GitHubIntegration = ({ project, onUpdate }) => {
 
   useEffect(() => {
     if (githubToken) {
-      const cachedRepos = typeof window !== 'undefined' ? sessionStorage.getItem('github_repos') : null;
+      const cachedRepos = typeof window !== 'undefined' ? localStorage.getItem('github_repos') : null;
       if (cachedRepos) {
         try {
           setUserRepos(JSON.parse(cachedRepos));
@@ -145,19 +153,35 @@ const GitHubIntegration = ({ project, onUpdate }) => {
         throw new Error('GitHub access token was not returned.');
       }
 
-      sessionStorage.setItem('github_token', accessToken);
-      sessionStorage.setItem('github_user', githubUserName);
+      localStorage.setItem('github_token', accessToken);
+      localStorage.setItem('github_user', githubUserName);
       setGithubToken(accessToken);
       setGithubUser(githubUserName);
       setShowAdvanced(true);
-
-      toast.success(`Connected with GitHub as ${githubUserName}`);
-      await fetchGitHubRepos(accessToken);
+      toast.success('GitHub Connected!');
     } catch (error) {
       console.error('[GitHub] Connect error:', error);
-      toast.error(error?.code === 'auth/popup-closed-by-user'
-        ? 'GitHub sign-in was cancelled.'
-        : 'Failed to connect GitHub account');
+      
+      // If the GitHub account is already linked to another StudyOS account,
+      // Firebase throws 'credential-already-in-use'. We can still extract the 
+      // OAuth access token from the error and use it for this session!
+      if (error.code === 'auth/credential-already-in-use') {
+        const credential = GithubAuthProvider.credentialFromError(error);
+        const accessToken = credential?.accessToken;
+        
+        if (accessToken) {
+          const githubUserName = error.customData?.email?.split('@')[0] || 'GitHub User';
+          localStorage.setItem('github_token', accessToken);
+          localStorage.setItem('github_user', githubUserName);
+          setGithubToken(accessToken);
+          setGithubUser(githubUserName);
+          setShowAdvanced(true);
+          toast.success('GitHub Connected (Session Only)');
+          return;
+        }
+      }
+
+      toast.error(error.message || 'Failed to connect GitHub');
     }
   };
 
@@ -245,8 +269,8 @@ const GitHubIntegration = ({ project, onUpdate }) => {
         }
       );
 
-      if (branchesResponse.status === 404) {
-        toast.error('Repository not found or not accessible');
+      if (!branchesResponse.ok) {
+        toast.error('Failed to fetch branches. Check repository access.');
         setIsFetching(false);
         return;
       }
@@ -271,6 +295,12 @@ const GitHubIntegration = ({ project, onUpdate }) => {
           }
         }
       );
+
+      if (!commitsResponse.ok) {
+        toast.error('Failed to fetch commits. Check repository access.');
+        setIsFetching(false);
+        return;
+      }
 
       const commitsData = await commitsResponse.json();
       const formattedCommits = (Array.isArray(commitsData) ? commitsData : []).map(c => ({
@@ -300,10 +330,70 @@ const GitHubIntegration = ({ project, onUpdate }) => {
     }
   }, [activeRepoUrl, githubToken, onUpdate, project]);
 
+  const generateAiSummary = async () => {
+    setIsAiSummarizing(true);
+    setAiSummary('');
+    
+    try {
+      // Gather context from Kanban board if it exists
+      let taskContext = '';
+      if (project.board) {
+        const todo = project.board.todo || [];
+        const doing = project.board.doing || [];
+        taskContext = `\n\nCurrent Tasks:\n- In Progress: ${doing.map(t => t.title).join(', ') || 'None'}\n- Up Next: ${todo.map(t => t.title).slice(0, 3).join(', ') || 'None'}`;
+      }
+
+      // Build a detailed prompt based on real commit history and project context
+      let prompt = `You are a world-class AI Tech Lead and Code Reviewer. Analyze this project's recent GitHub activity and current context.
+Project Name: ${project.name}
+${project.description ? `Description: ${project.description}` : ''}
+Total Branches: ${branches.length}${taskContext}
+
+Recent Commits (latest first):
+`;
+      
+      const recentCommits = commits.slice(0, 15);
+      if (recentCommits.length === 0) {
+        prompt += `(No commits found yet.)\n`;
+      } else {
+        recentCommits.forEach(c => {
+          const hash = (c.sha || c.id || c.hash || '').substring(0, 7);
+          const msg = c.commit?.message || c.message || 'No message';
+          const author = c.commit?.author?.name || c.author?.name || c.author?.login || 'Unknown';
+          prompt += `- [${hash}] ${msg} (by ${author})\n`;
+        });
+      }
+      
+      prompt += `
+Based on this data, write a highly professional, detailed 3-paragraph summary. 
+IMPORTANT RULES:
+1. If there is very little commit activity (e.g. just an initial commit), DO NOT just state the obvious. Instead, analyze the Project Name, Description, and Tasks to infer what they are building, and provide a detailed Technical Roadmap or Architecture Recommendations for this specific type of project!
+2. If there are many commits, analyze the actual code changes, patterns, and velocity. 
+3. Always end with 3 specific, actionable "Recommended Next Steps".
+4. Format beautifully using Markdown (bold text, lists, and headers). Do not use placeholders.`;
+
+      // Call the real Gemini API
+      const fullText = await generateGeminiResponse(prompt);
+      
+      // Simulate typing effect for the real response
+      let currentText = '';
+      for (let i = 0; i < fullText.length; i++) {
+        currentText += fullText[i];
+        setAiSummary(currentText);
+        await new Promise(r => setTimeout(r, 10)); // 10ms per character
+      }
+    } catch (error) {
+      toast.error('AI Summary failed: ' + error.message);
+      setAiSummary('Error generating summary. Please check your API key and connection.');
+    } finally {
+      setIsAiSummarizing(false);
+    }
+  };
+
   const handleDisconnect = () => {
-    sessionStorage.removeItem('github_token');
-    sessionStorage.removeItem('github_user');
-    sessionStorage.removeItem('github_repos');
+    localStorage.removeItem('github_token');
+    localStorage.removeItem('github_user');
+    localStorage.removeItem('github_repos');
     lastSyncedRepoRef.current = '';
     setGithubToken(null);
     setGithubUser(null);
@@ -321,7 +411,7 @@ const GitHubIntegration = ({ project, onUpdate }) => {
     const hasSavedProjectData = (project.branches?.length || 0) > 0 || (project.commits?.length || 0) > 0;
     const alreadySynced = lastSyncedRepoRef.current === activeRepoUrl;
 
-    if (alreadySynced && hasSavedProjectData) {
+    if (alreadySynced) {
       return;
     }
 
@@ -423,26 +513,49 @@ const GitHubIntegration = ({ project, onUpdate }) => {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <div className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selected Repo</p>
-              <p className="font-bold text-slate-900 dark:text-white">
-                {repoInfo ? `${repoInfo.owner}/${repoInfo.repo}` : 'Not connected yet'}
-              </p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <Github size={20} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Selected Repo</p>
+                <p className="font-bold text-slate-900 dark:text-white truncate text-sm" title={repoInfo ? `${repoInfo.owner}/${repoInfo.repo}` : 'Not connected'}>
+                  {repoInfo ? `${repoInfo.owner}/${repoInfo.repo}` : 'Not connected'}
+                </p>
+              </div>
             </div>
-            <div className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Branches</p>
-              <p className="font-bold text-slate-900 dark:text-white">{branches.length}</p>
+
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <GitBranch size={20} />
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Branches</p>
+                <p className="font-black text-slate-900 dark:text-white text-lg leading-none">{branches.length}</p>
+              </div>
             </div>
-            <div className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Commits</p>
-              <p className="font-bold text-slate-900 dark:text-white">{commits.length}</p>
+
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <GitCommit size={20} />
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Commits</p>
+                <p className="font-black text-slate-900 dark:text-white text-lg leading-none">{commits.length}</p>
+              </div>
             </div>
-            <div className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Last Sync</p>
-              <p className="font-bold text-slate-900 dark:text-white">
-                {project.lastGithubUpdate ? new Date(project.lastGithubUpdate).toLocaleString() : 'Never'}
-              </p>
+
+            <div className="p-4 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                <Calendar size={20} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Last Sync</p>
+                <p className="font-bold text-slate-900 dark:text-white truncate text-sm">
+                  {project.lastGithubUpdate ? new Date(project.lastGithubUpdate).toLocaleDateString() : 'Never'}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -609,6 +722,68 @@ const GitHubIntegration = ({ project, onUpdate }) => {
         </motion.div>
       )}
 
+      {/* AI Summary Section */}
+      {githubToken && repoInfo && commits.length > 0 && (
+        <div className="bg-gradient-to-br from-indigo-500/5 to-purple-500/5 dark:from-indigo-500/10 dark:to-purple-500/10 border border-indigo-500/20 dark:border-indigo-500/30 rounded-2xl p-6 relative overflow-hidden group">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between relative z-10 gap-4">
+            <div className="flex items-start gap-4 flex-1">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition-transform">
+                <Sparkles size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  AI Code Review
+                  {isAiSummarizing && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </span>
+                  )}
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
+                  Get an instant, intelligent summary of your project's recent progress.
+                </p>
+                
+                {(aiSummary || isAiSummarizing) && (
+                  <div className="mt-4 p-4 rounded-xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-md border border-white/40 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 leading-relaxed shadow-sm">
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1">
+                      <ReactMarkdown>{aiSummary}</ReactMarkdown>
+                    </div>
+                    {isAiSummarizing && <span className="inline-block w-1.5 h-4 bg-indigo-500 ml-1 animate-pulse align-middle mt-1" />}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="shrink-0 flex items-center gap-2">
+              {!isAiSummarizing && !aiSummary && (
+                <button 
+                  onClick={generateAiSummary}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-95"
+                >
+                  <Sparkles size={18} />
+                  Analyze Progress
+                </button>
+              )}
+              {!isAiSummarizing && aiSummary && (
+                <button 
+                  onClick={generateAiSummary}
+                  className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-500 hover:text-indigo-500 shadow-sm"
+                  title="Regenerate Analysis"
+                >
+                  <RefreshCw size={18} />
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* Decorative background glow */}
+          <div className="absolute -top-20 -right-20 w-64 h-64 bg-purple-500/10 blur-3xl rounded-full pointer-events-none" />
+          <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-indigo-500/10 blur-3xl rounded-full pointer-events-none" />
+        </div>
+      )}
+
       {/* Branches Section */}
       {githubToken && repoInfo && (
         <div className="space-y-4">
@@ -641,15 +816,22 @@ const GitHubIntegration = ({ project, onUpdate }) => {
                   key={branch.name}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-500/30 transition-all"
+                  className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-500/30 transition-all group"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <GitBranch className="text-slate-400" size={18} />
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-500 group-hover:bg-primary-100 group-hover:text-primary-600 transition-colors shrink-0">
+                        <GitBranch size={18} />
+                      </div>
                       <div>
-                        <h4 className="font-bold text-slate-900 dark:text-white">{branch.name}</h4>
-                        <p className="text-xs text-slate-500 mt-1">
-                          {branch.lastCommit}
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-slate-900 dark:text-white">{branch.name}</h4>
+                          {(branch.name === 'main' || branch.name === 'master') && (
+                            <span className="px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[9px] font-black uppercase tracking-widest">Default</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono mt-0.5">
+                          <span className="text-slate-400">commit </span>{branch.lastCommit}
                         </p>
                       </div>
                     </div>
@@ -657,7 +839,8 @@ const GitHubIntegration = ({ project, onUpdate }) => {
                       href={`${repoUrl || project.repo}/tree/${branch.name}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary-500 transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-2.5 rounded-xl text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 transition-all"
+                      title="View branch on GitHub"
                     >
                       <ExternalLink size={16} />
                     </a>
@@ -693,50 +876,53 @@ const GitHubIntegration = ({ project, onUpdate }) => {
           {commits.length === 0 ? (
             <p className="text-center text-slate-500 py-4">No commits yet</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {commits.map((commit, idx) => (
                 <motion.div
                   key={commit.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-500/30 transition-all"
+                  className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:shadow-lg hover:border-primary-200 dark:hover:border-primary-500/30 transition-all group flex items-start justify-between"
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0 pt-1">
-                      <span className="inline-block w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-500/20 text-primary-600 dark:text-primary-400 text-xs font-black flex items-center justify-center">
-                        {commit.hash?.substring(0, 2).toUpperCase()}
+                  <div className="flex items-start gap-4 min-w-0">
+                    <div className="flex-shrink-0 pt-0.5">
+                      <span className="inline-flex w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-black items-center justify-center group-hover:scale-105 transition-transform border border-slate-200 dark:border-slate-700 shadow-sm">
+                        {commit.author?.substring(0, 2).toUpperCase() || 'GH'}
                       </span>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-slate-900 dark:text-white break-words">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-900 dark:text-white truncate">
                         {commit.message}
                       </h4>
-                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-                        <div className="flex items-center gap-1">
-                          <User size={12} />
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] font-semibold text-slate-500">
+                        <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                          <User size={12} className="text-slate-400" />
                           {commit.author}
-                        </div>
-                        <span>•</span>
-                        <div className="flex items-center gap-1">
-                          <Calendar size={12} />
-                          {new Date(commit.date).toLocaleDateString()}
-                        </div>
-                        <span>•</span>
-                        <code className="text-slate-400">{commit.hash}</code>
+                        </span>
+                        <span className="text-slate-300 dark:text-slate-700">•</span>
+                        <span className="flex items-center gap-1.5">
+                          <Calendar size={12} className="text-slate-400" />
+                          {new Date(commit.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        </span>
+                        <span className="text-slate-300 dark:text-slate-700">•</span>
+                        <span className="font-mono text-primary-500 bg-primary-50 dark:bg-primary-500/10 px-2 py-0.5 rounded-md">
+                          {commit.hash}
+                        </span>
                       </div>
                     </div>
-                    {activeRepoUrl && (
-                      <a
-                        href={`${activeRepoUrl}/commit/${commit.hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-primary-500 transition-all flex-shrink-0"
-                      >
-                        <ExternalLink size={16} />
-                      </a>
-                    )}
                   </div>
+                  {activeRepoUrl && (
+                    <a
+                      href={`${activeRepoUrl}/commit/${commit.hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2.5 rounded-xl text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 transition-all flex-shrink-0 opacity-0 group-hover:opacity-100"
+                      title="View commit on GitHub"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                  )}
                 </motion.div>
               ))}
             </div>

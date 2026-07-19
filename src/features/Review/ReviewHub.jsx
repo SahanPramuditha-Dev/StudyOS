@@ -120,7 +120,7 @@ const ReviewHub = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-8">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
       <section className="card">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

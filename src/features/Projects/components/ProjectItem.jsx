@@ -12,11 +12,12 @@ import {
   AlertCircle,
   Tag,
   Database,
-  Timer
+  Timer,
+  Check
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
+const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace, isSelected, onSelect }) => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'Ongoing': return 'bg-green-100 text-green-600 dark:bg-green-500/10 dark:text-green-400';
@@ -64,66 +65,84 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
   return (
     <motion.div 
       layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="group relative bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-primary-500/5 hover:border-primary-100 dark:hover:border-primary-500/20 transition-all duration-500"
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.92 }}
+      className="glass group relative flex flex-col p-6 rounded-[2rem] hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary-500/10 transition-all duration-300 overflow-hidden"
     >
-      <div className="flex justify-between items-start mb-6">
-        <div className="flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-700 dark:text-slate-300 group-hover:scale-110 group-hover:bg-primary-500 group-hover:text-white transition-all duration-500">
-            <Code size={28} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-xl font-black text-slate-800 dark:text-white group-hover:text-primary-500 transition-colors">
-                {project.name}
-              </h3>
-              {project.subject && (
-                <span className="px-2 py-0.5 rounded-lg bg-primary-50 dark:bg-primary-500/10 text-primary-500 text-[9px] font-black uppercase tracking-widest">
-                  {project.subject}
-                </span>
-              )}
-            </div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-              {project.stack || 'No Stack Defined'}
-            </p>
+      <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+      <div className="relative z-10 flex flex-col h-full">
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(project.id);
+            }}
+            className={`w-5 h-5 rounded-md border flex items-center justify-center text-[10px] font-black transition-all ${
+              isSelected
+                ? 'bg-primary-500 border-primary-500 text-white shadow-md shadow-primary-500/30'
+                : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-transparent hover:border-primary-400'
+            }`}
+            aria-label={`Select ${project.name}`}
+          >
+            ✓
+          </button>
+          <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-primary-500 group-hover:bg-primary-500 group-hover:text-white transition-all shadow-sm">
+            <Code size={20} />
           </div>
         </div>
 
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-4 group-hover:translate-x-0 ml-4">
           <button 
             onClick={() => onEdit(project)}
-            className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-primary-500 hover:bg-primary-50 transition-all"
+            className="p-2 rounded-xl text-slate-400 hover:text-primary-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
             title="Edit Project"
           >
-            <Edit3 size={18} />
+            <Edit3 size={14} />
           </button>
           <button 
             onClick={() => onDelete(project.id)}
-            className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+            className="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
             title="Delete Project"
           >
-            <Trash2 size={18} />
+            <Trash2 size={14} />
           </button>
         </div>
       </div>
 
-      <div className="space-y-6">
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 line-clamp-2 min-h-[40px]">
+      <div className="flex-1 flex flex-col space-y-5">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <h4 className="text-lg font-black text-slate-800 dark:text-white line-clamp-1 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-primary-500 group-hover:to-purple-500 transition-all" title={project.name}>
+              {project.name}
+            </h4>
+            {project.subject && (
+              <span className="px-2.5 py-1 rounded-lg bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 text-[9px] font-black uppercase tracking-widest shadow-sm">
+                {project.subject}
+              </span>
+            )}
+          </div>
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+            {project.stack || 'No Stack Defined'}
+          </p>
+        </div>
+
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-2 min-h-[40px] leading-relaxed">
           {project.description || 'No description provided for this architectural vision.'}
         </p>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className={`px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest ${getStatusColor(project.status)}`}>
+        <div className="flex items-center gap-2 flex-wrap mt-auto">
+          <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${getStatusColor(project.status)}`}>
             {project.status}
           </span>
-          <span className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 ${getPriorityColor(project.priority)}`}>
-            <AlertCircle size={12} />
+          <span className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 ${getPriorityColor(project.priority)}`}>
+            <AlertCircle size={10} />
             {project.priority}
           </span>
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 text-slate-400">
-            <Database size={12} />
+          <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest bg-slate-50 dark:bg-slate-800 text-slate-400">
+            <Database size={10} />
             {storageMB} MB
           </span>
         </div>
@@ -150,40 +169,41 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace }) => {
           </div>
 
           {deadlineInfo && (
-            <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-400">
-                  <Timer size={14} />
+                  <Timer size={12} />
                 </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Deadline</span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Deadline</span>
               </div>
-              <span className={`text-[10px] font-black uppercase tracking-widest ${deadlineInfo.color}`}>
+              <span className={`text-[9px] font-black uppercase tracking-widest ${deadlineInfo.color}`}>
                 {deadlineInfo.text}
               </span>
             </div>
           )}
         </div>
 
-        <div className="flex gap-3 pt-2">
+        <div className="flex gap-2 pt-2 mt-auto">
           <button 
             onClick={() => onOpenWorkspace(project.id)}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-primary-500 text-white text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-primary-500/20 hover:bg-primary-600 hover:shadow-primary-500/30 transition-all active:scale-95 group"
+            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 hover:bg-primary-500 hover:text-white text-slate-700 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 hover:shadow-lg hover:shadow-primary-500/25 group/btn"
           >
-            <LayoutGrid size={16} />
+            <LayoutGrid size={14} className="transition-transform group-hover/btn:scale-110" />
             View Details
-            <ExternalLink size={14} className="group-hover:translate-x-1 transition-transform" />
+            <ExternalLink size={14} className="group-hover/btn:translate-x-1 transition-transform" />
           </button>
           {project.repo && (
             <a 
               href={project.repo} 
               target="_blank" 
               rel="noreferrer"
-              className="px-5 flex items-center justify-center rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-900/10"
+              className="w-[56px] flex items-center justify-center rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 hover:bg-slate-800 dark:hover:bg-white hover:text-white dark:hover:text-slate-900 text-slate-700 dark:text-slate-200 transition-all active:scale-95 hover:shadow-lg group/gh"
               title="View on GitHub"
             >
-              <Github size={18} />
+              <Github size={18} className="transition-transform group-hover/gh:scale-110" />
             </a>
           )}
+        </div>
         </div>
       </div>
     </motion.div>

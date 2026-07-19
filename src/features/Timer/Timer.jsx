@@ -20,7 +20,10 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/PageHeader';
 import { useStorage } from '../../hooks/useStorage';
+import { STORAGE_KEYS } from '../../services/storage';
 import { playAlarmSound, stopAlarmSound } from '../../utils/alarmAudio';
+import Select from '../../components/ui/Select';
+import { useLocation } from 'react-router-dom';
 
 const POMODORO_TIME = 25 * 60;
 const SHORT_BREAK = 5 * 60;
@@ -138,8 +141,20 @@ const Timer = () => {
   const [streak, setStreak] = useStorage('timer_streak', 0);
   const [history, setHistory] = useStorage('timer_history', []);
   const [soundEnabled] = useStorage('timer_sound_enabled', true);
+  
+  const location = useLocation();
+  const [projects, setProjects] = useStorage(STORAGE_KEYS.PROJECTS, []);
+  const [selectedProjectId, setSelectedProjectId] = useState(location.state?.projectId || 'none');
+  const [selectedTaskId, setSelectedTaskId] = useState(location.state?.taskId || 'none');
 
   const intervalRef = useRef(null);
+
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const availableTasks = selectedProject?.board ? [
+    ...(selectedProject.board.todo || []),
+    ...(selectedProject.board.doing || []),
+    ...(selectedProject.board.done || [])
+  ] : [];
 
   const currentMode = MODES.find((item) => item.id === mode) || MODES[0];
   const activeDuration = customDuration ?? currentMode.time;
@@ -179,6 +194,36 @@ const Timer = () => {
       [...prev, { mode: sessionMode, completedAt, duration: activeDuration }].slice(-50)
     );
     setTotalSessions((prev) => prev + 1);
+
+    if (selectedProjectId !== 'none') {
+      setProjects(prev => prev.map(p => {
+        if (p.id === selectedProjectId) {
+          const newTime = (p.timeSpent || 0) + activeDuration;
+          const newActivity = {
+            id: `act-${Date.now()}`,
+            type: 'focus_session',
+            detail: `Completed a ${formatMinutes(activeDuration)} focus block`,
+            timestamp: new Date().toISOString()
+          };
+          
+          let updatedBoard = p.board;
+          if (selectedTaskId !== 'none' && p.board) {
+             const updateTaskInColumn = (tasks = []) => tasks.map(t => 
+                 t.id === selectedTaskId ? { ...t, timeSpent: (t.timeSpent || 0) + activeDuration } : t
+             );
+             updatedBoard = {
+                 ...p.board,
+                 todo: updateTaskInColumn(p.board.todo),
+                 doing: updateTaskInColumn(p.board.doing),
+                 done: updateTaskInColumn(p.board.done),
+             };
+          }
+
+          return { ...p, timeSpent: newTime, activity: [newActivity, ...(p.activity || [])], board: updatedBoard };
+        }
+        return p;
+      }));
+    }
 
     if (sessionMode === 'focus' || sessionMode === 'custom') {
       setCycleCount((prev) => {
@@ -254,7 +299,7 @@ const Timer = () => {
   }, []);
 
   return (
-    <div className="relative mx-auto flex max-w-7xl flex-col gap-5 px-4 pb-6 pt-4 sm:px-6 lg:h-[calc(100vh-4.5rem)] lg:overflow-hidden">
+    <div className="relative mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 pb-6 pt-4 sm:px-6 lg:h-[calc(100vh-4.5rem)] lg:overflow-hidden">
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-56 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_58%),radial-gradient(circle_at_right,rgba(56,189,248,0.08),transparent_30%)] dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),transparent_52%),radial-gradient(circle_at_right,rgba(59,130,246,0.08),transparent_28%)]" />
       <PageHeader
         title="Timer"
@@ -271,6 +316,46 @@ const Timer = () => {
           </button>
         }
       />
+
+      {/* Project & Task Selection */}
+      <section className="card flex flex-col sm:flex-row items-center gap-4">
+        <div className="flex items-center gap-4 flex-1 w-full">
+          <Brain className="text-indigo-500 hidden sm:block" size={24} />
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-white">What are you focusing on?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Time will be logged to the selected project or task.</p>
+          </div>
+        </div>
+        <div className="flex w-full sm:w-auto items-center gap-3 flex-col sm:flex-row">
+          <div className="w-full sm:w-56">
+            <Select
+              value={selectedProjectId}
+              onChange={(val) => {
+                 setSelectedProjectId(val);
+                 setSelectedTaskId('none');
+              }}
+              disabled={isRunning}
+              options={[
+                { label: '-- General Focus --', value: 'none' },
+                ...projects.map(p => ({ label: p.name, value: p.id }))
+              ]}
+            />
+          </div>
+          {selectedProjectId !== 'none' && (
+            <div className="w-full sm:w-56">
+              <Select
+                value={selectedTaskId}
+                onChange={(val) => setSelectedTaskId(val)}
+                disabled={isRunning}
+                options={[
+                  { label: '-- No Specific Task --', value: 'none' },
+                  ...availableTasks.map(t => ({ label: t.title, value: t.id }))
+                ]}
+              />
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="card">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

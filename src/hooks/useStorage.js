@@ -12,6 +12,8 @@ const serializeValue = (value) => {
   }
 };
 
+const hydratedSessionKeys = new Set();
+
 /**
  * useStorage provides cloud-first persistent state synced with Firestore.
  * The hook keeps local persistence immediate, hydrates from Firestore once,
@@ -59,6 +61,13 @@ export const useStorage = (key, initialValue) => {
       lastCloudValueRef.current = serializeValue(storedValueRef.current);
       return undefined;
     }
+    const sessionKey = `${userId}_${key}`;
+    if (hydratedSessionKeys.has(sessionKey)) {
+      isHydratingFromCloud.current = false;
+      setIsInitialized(true);
+      lastCloudValueRef.current = serializeValue(storedValueRef.current);
+      return undefined;
+    }
 
     let cancelled = false;
     setIsInitialized(false);
@@ -67,6 +76,8 @@ export const useStorage = (key, initialValue) => {
       try {
         const cloudData = await FirestoreService.getUserData(userId, key);
         if (cancelled) return;
+
+        hydratedSessionKeys.add(sessionKey);
 
         if (cloudData !== null) {
           isHydratingFromCloud.current = true;
@@ -110,6 +121,10 @@ export const useStorage = (key, initialValue) => {
         await FirestoreService.saveUserData(userId, key, storedValueRef.current);
         lastCloudValueRef.current = serializeValue(storedValueRef.current);
       } catch (error) {
+        if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
+          // Expected for modules the user doesn't have access to
+          return;
+        }
         console.error(`[useStorage] [Cloud Save Error] ${key}:`, error);
       }
     }, 1800);

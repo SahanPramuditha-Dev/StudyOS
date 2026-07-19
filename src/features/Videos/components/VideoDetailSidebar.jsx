@@ -7,6 +7,9 @@ import {
 import Select from '../../../components/ui/Select';
 import { fetchTranscript } from '../utils/transcriptFetcher';
 import ReactMarkdown from 'react-markdown';
+import toast from 'react-hot-toast';
+import { generateVideoSummary, generateVideoQuiz } from '../../../services/aiService';
+import { Sparkles } from 'lucide-react';
 
 const formatTime = (s) => {
   if (!s || s <= 0) return '0:00';
@@ -41,6 +44,7 @@ const VideoDetailSidebar = ({
   const [transcriptError, setTranscriptError] = useState(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [notesMode, setNotesMode] = useState('write'); // 'write' or 'preview'
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const transcriptRefs = React.useRef({});
 
   // Calculate Active Transcript Line
@@ -134,6 +138,36 @@ const VideoDetailSidebar = ({
     onSaveBookmark(b.id, noteForm);
     setEditingBookmarkId(null);
     setNoteForm('');
+  };
+
+  const handleAISummary = async () => {
+    setIsGeneratingAI(true);
+    try {
+      const result = await generateVideoSummary(activeVideo.title, activeVideo.url);
+      const newNotes = activeVideo.videoNotes ? activeVideo.videoNotes + '\n\n' + result : result;
+      updateVideoData(activeVideo.id, { videoNotes: newNotes });
+      setNotesMode('preview');
+      toast.success('AI Summary added to notes!');
+    } catch (e) {
+      toast.error('Failed to generate summary');
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handleAIQuiz = async () => {
+    setIsGeneratingAI(true);
+    try {
+      const result = await generateVideoQuiz(activeVideo.title, activeVideo.url);
+      const newNotes = activeVideo.videoNotes ? activeVideo.videoNotes + '\n\n' + result : result;
+      updateVideoData(activeVideo.id, { videoNotes: newNotes });
+      setNotesMode('preview');
+      toast.success('AI Quiz added to notes!');
+    } catch (e) {
+      toast.error('Failed to generate quiz');
+    } finally {
+      setIsGeneratingAI(false);
+    }
   };
 
   return createPortal(
@@ -343,7 +377,24 @@ const VideoDetailSidebar = ({
                     <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-1.5">
                       <Edit3 size={12} /> Markdown Supported
                     </span>
-                    <div className="bg-slate-200/50 dark:bg-slate-800/80 p-0.5 rounded-lg flex items-center">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleAISummary}
+                        disabled={isGeneratingAI}
+                        className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
+                      >
+                        {isGeneratingAI ? <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={12} />}
+                        Summary
+                      </button>
+                      <button
+                        onClick={handleAIQuiz}
+                        disabled={isGeneratingAI}
+                        className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1.5 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
+                      >
+                        {isGeneratingAI ? <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /> : <Sparkles size={12} />}
+                        Quiz
+                      </button>
+                      <div className="bg-slate-200/50 dark:bg-slate-800/80 p-0.5 rounded-lg flex items-center ml-2">
                       <button 
                         onClick={() => setNotesMode('write')}
                         className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all ${notesMode === 'write' ? 'bg-white dark:bg-slate-700 text-primary-500 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
@@ -357,6 +408,7 @@ const VideoDetailSidebar = ({
                         Preview
                       </button>
                     </div>
+                  </div>
                   </div>
                   
                   {notesMode === 'write' ? (

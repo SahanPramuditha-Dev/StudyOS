@@ -116,7 +116,7 @@ const ResourceItem = ({
           </div>
         </div>
 
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h4 className="font-black text-slate-800 dark:text-white mb-1 line-clamp-1 group-hover:text-primary-500 transition-colors" title={res.name}>
             {res.name}
           </h4>
@@ -127,7 +127,7 @@ const ResourceItem = ({
           )}
 
           <div className="flex flex-wrap gap-2 mb-4">
-            <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border border-transparent">
+            <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border border-transparent truncate max-w-full block" title={res.type}>
               {res.type}
             </span>
             {res.tags?.map((tag, i) => (

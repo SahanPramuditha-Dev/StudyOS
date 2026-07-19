@@ -11,7 +11,10 @@ import '@fontsource/poppins/latin-700.css';
 import '@fontsource/poppins/latin-800.css';
 import './index.css'
 import App from './App.jsx'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './context/AuthContext'
+
+const queryClient = new QueryClient()
 import { ThemeProvider } from './context/ThemeContext'
 import { ReminderProvider } from './context/ReminderContext'
 import { GoogleCalendarProvider } from './context/GoogleCalendarContext'
@@ -86,7 +89,9 @@ createRoot(document.getElementById('root')).render(
               <AuthProvider>
                 <GoogleCalendarProvider>
                   <ReminderProvider>
-                    <App />
+                    <QueryClientProvider client={queryClient}>
+                      <App />
+                    </QueryClientProvider>
                   </ReminderProvider>
                 </GoogleCalendarProvider>
               </AuthProvider>

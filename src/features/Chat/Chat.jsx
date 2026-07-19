@@ -147,6 +147,9 @@ const Chat = () => {
   const [rooms, setRooms] = useState([]);
   const [activeRoomId, setActiveRoomId] = useState('');
   const [messages, setMessages] = useState([]);
+  const [olderMessages, setOlderMessages] = useState([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [messageDraft, setMessageDraft] = useState('');
   const [roomSearch, setRoomSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -412,10 +415,17 @@ const Chat = () => {
       : 'Invite-only study room';
   }, [activeRoom, activeRoomOnlineCount, activeRoomTypingLabel, activeTypingProfiles.length]);
 
+  const allMessages = useMemo(() => {
+    const map = new Map();
+    olderMessages.forEach(m => map.set(m.id, m));
+    messages.forEach(m => map.set(m.id, m));
+    return Array.from(map.values()).sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+  }, [olderMessages, messages]);
+
   const messagesWithSeparators = useMemo(() => {
     const items = [];
     let previousDateKey = '';
-    messages.forEach((message) => {
+    allMessages.forEach((message) => {
       const dateKey = getDateKey(message.createdAt || message.updatedAt);
       if (dateKey && dateKey !== previousDateKey) {
         items.push({
@@ -428,7 +438,7 @@ const Chat = () => {
       items.push({ type: 'message', key: message.id, message });
     });
     return items;
-  }, [messages]);
+  }, [allMessages]);
 
   const messageTimelineEntries = useMemo(() => {
     return messagesWithSeparators.map((entry, index, array) => {
@@ -520,7 +530,6 @@ const Chat = () => {
 
     return () => {
       clearTimeout(timeout);
-      remove(typingRef).catch(() => void 0);
     };
   }, [messageDraft, activeRoomId, user?.id, user?.name, profile?.name, currentEmail]);
 
@@ -753,6 +762,7 @@ const Chat = () => {
   useEffect(() => {
     if (!activeRoomId) {
       setMessages([]);
+      setOlderMessages([]);
       return undefined;
     }
 
@@ -782,7 +792,27 @@ const Chat = () => {
     setInviteLinkState({ loading: false, value: '', copied: false });
     setMemberActionPending('');
     setJoiningInviteLink(false);
+    setOlderMessages([]);
+    setHasMoreMessages(true);
   }, [activeRoomId]);
+
+  const loadOlderMessages = async () => {
+    if (loadingOlder || !hasMoreMessages || allMessages.length === 0) return;
+    
+    setLoadingOlder(true);
+    try {
+      const oldestMessage = allMessages[0];
+      const more = await FirestoreService.getMoreChatMessages(activeRoomId, oldestMessage.createdAt);
+      if (more.length < 50) {
+        setHasMoreMessages(false);
+      }
+      if (more.length > 0) {
+        setOlderMessages((prev) => [...more, ...prev]);
+      }
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   useEffect(() => {
     setMobilePanel(activeRoomId ? 'chat' : 'rooms');
@@ -1088,7 +1118,7 @@ const Chat = () => {
     return FileText;
   };
 
-  const currentRoomMessages = messages;
+  const currentRoomMessages = allMessages;
 
   const showMobileRooms = mobilePanel === 'rooms';
   const showMobileChat = mobilePanel === 'chat';
@@ -1440,7 +1470,19 @@ const Chat = () => {
                     </div>
                   </div>
                 ) : (
-                  messageTimelineEntries.map((entry) => {
+                  <>
+                    {hasMoreMessages && allMessages.length >= 50 && (
+                      <div className="flex justify-center py-2">
+                        <button
+                          onClick={loadOlderMessages}
+                          disabled={loadingOlder}
+                          className="px-4 py-1.5 text-xs font-bold text-slate-500 bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 rounded-full hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          {loadingOlder ? 'Loading...' : 'Load older messages'}
+                        </button>
+                      </div>
+                    )}
+                    {messageTimelineEntries.map((entry) => {
                     if (entry.type === 'separator') {
                       return (
                         <div key={entry.key} className="flex items-center justify-center py-2">
@@ -1541,9 +1583,10 @@ const Chat = () => {
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                  </>
                 )}
-                <div ref={messageEndRef} />
+                <div ref={messageEndRef} className="h-4" />
               </div>
 
               <form onSubmit={handleSendMessage} className="shrink-0 p-3 sm:p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">

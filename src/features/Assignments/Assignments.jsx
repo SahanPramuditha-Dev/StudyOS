@@ -16,11 +16,18 @@ import { STORAGE_KEYS } from '../../services/storage';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 
-// Components
 import AssignmentItem from './components/AssignmentItem';
 import AssignmentForm from './components/AssignmentForm';
 import AssignmentDetail from './components/AssignmentDetail';
+import AssignmentFilter from './components/AssignmentFilter';
+import AssignmentKanban from './components/AssignmentKanban';
+import AssignmentTimeline from './components/AssignmentTimeline';
+import AssignmentTable from './components/AssignmentTable';
 import ConfirmModal from '../../components/ConfirmModal';
+import PageHeader from '../../components/PageHeader';
+import BulkActionBar from '../../components/BulkActionBar';
+import Select from '../../components/ui/Select';
+
 
 const Assignments = () => {
   // State Management
@@ -32,6 +39,12 @@ const Assignments = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
   const [filterCourse, setFilterCourse] = useState('All');
+  const [sortBy, setSortBy] = useState('updated');
+  const [viewMode, setViewMode] = useState('grid');
+  
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState([]);
+  const [bulkStatus, setBulkStatus] = useState('Not Started');
+  
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '' });
 
   const [formData, setFormData] = useState({
@@ -70,15 +83,34 @@ const Assignments = () => {
 
   // Filter and search
   const filteredAssignments = useMemo(() => {
-    return assignments.filter(a => {
+    let filtered = assignments.filter(a => {
       const matchesSearch = a.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            a.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            a.description?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = filterStatus === 'All' || a.status === filterStatus;
       const matchesCourse = filterCourse === 'All' || a.courseId === filterCourse;
       return matchesSearch && matchesStatus && matchesCourse;
-    }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  }, [assignments, searchTerm, filterStatus, filterCourse]);
+    });
+
+    return filtered.sort((a, b) => {
+      if (sortBy === 'title') return (a.title || '').localeCompare(b.title || '');
+      if (sortBy === 'deadline') {
+         if (!a.deadline) return 1;
+         if (!b.deadline) return -1;
+         return new Date(a.deadline) - new Date(b.deadline);
+      }
+      // default 'updated'
+      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+    });
+  }, [assignments, searchTerm, filterStatus, filterCourse, sortBy]);
+
+  const statusCounts = useMemo(() => {
+    const counts = { All: assignments.length };
+    ['Not Started', 'In Progress', 'Submitted', 'Late'].forEach(status => {
+      counts[status] = assignments.filter(a => a.status === status).length;
+    });
+    return counts;
+  }, [assignments]);
 
   // CRUD Handlers
   const handleEdit = (assignment) => {
@@ -162,6 +194,50 @@ const Assignments = () => {
     });
   };
 
+  const handleResetData = () => {
+    setSearchTerm('');
+    setFilterStatus('All');
+    setFilterCourse('All');
+    setSortBy('updated');
+  };
+
+  const toggleSelectionId = (id) => {
+    setSelectedAssignmentIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (selectedAssignmentIds.length === filteredAssignments.length && filteredAssignments.length > 0) {
+      setSelectedAssignmentIds([]);
+    } else {
+      setSelectedAssignmentIds(filteredAssignments.map(a => a.id));
+    }
+  };
+
+  const clearSelection = () => setSelectedAssignmentIds([]);
+
+  const applyBulkStatus = () => {
+    setAssignments(prev => prev.map(a => 
+      selectedAssignmentIds.includes(a.id) ? { ...a, status: bulkStatus, updatedAt: new Date().toISOString() } : a
+    ));
+    toast.success(`Updated status for ${selectedAssignmentIds.length} assignments`);
+    clearSelection();
+  };
+
+  const deleteSelected = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Assignments',
+      message: `Delete ${selectedAssignmentIds.length} selected assignments?`,
+      onConfirm: () => {
+        setAssignments(prev => prev.filter(a => !selectedAssignmentIds.includes(a.id)));
+        toast.success(`Deleted ${selectedAssignmentIds.length} assignments`);
+        clearSelection();
+      }
+    });
+  };
+
   // Show Assignment Detail if one is selected
   if (selectedAssignment) {
     return (
@@ -177,123 +253,127 @@ const Assignments = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-12">
+    <div className="w-full max-w-[1680px] mx-auto pb-12">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-        <div>
-          <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
-            <div className="p-3 rounded-[1.5rem] bg-blue-500 text-white shadow-xl shadow-blue-500/20">
-              <BookOpen size={32} />
-            </div>
-            Assignments
-          </h1>
-          <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs mt-2">Track and manage your coursework</p>
-        </div>
-
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-3 px-8 py-3.5 rounded-[2rem] bg-blue-500 hover:bg-blue-600 text-white font-black transition-all shadow-xl shadow-blue-500/30 active:scale-95 group"
-        >
-          <Plus size={24} className="group-hover:rotate-90 transition-transform" />
-          New Assignment
-        </button>
-      </div>
+      <PageHeader
+        title="Assignments"
+        description="Track and manage your coursework"
+        icon={<BookOpen size={32} />}
+        className="mb-8"
+      />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
         {[
-          { label: 'Total', value: stats.total, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
-          { label: 'Not Started', value: stats.notStarted, icon: AlertCircle, color: 'text-slate-500', bg: 'bg-slate-50' },
-          { label: 'In Progress', value: stats.inProgress, icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-50' },
-          { label: 'Submitted', value: stats.submitted, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50' },
-          { label: 'Late', value: stats.late, icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50' }
+          { label: 'Total', value: stats.total, icon: FileText, tint: 'text-sky-500', bg: 'bg-sky-500/10' },
+          { label: 'Not Started', value: stats.notStarted, icon: AlertCircle, tint: 'text-slate-500', bg: 'bg-slate-500/10' },
+          { label: 'In Progress', value: stats.inProgress, icon: Clock, tint: 'text-amber-500', bg: 'bg-amber-500/10' },
+          { label: 'Submitted', value: stats.submitted, icon: CheckCircle2, tint: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+          { label: 'Late', value: stats.late, icon: AlertCircle, tint: 'text-rose-500', bg: 'bg-rose-500/10' }
         ].map((stat, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white dark:bg-slate-900 p-5 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center gap-3 text-center"
+            className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm"
           >
-            <div className={`p-3 rounded-2xl ${stat.bg} dark:bg-opacity-10 ${stat.color}`}>
-              <stat.icon size={20} />
-            </div>
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
-              <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{stat.value}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
+                <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">{stat.value}</p>
+              </div>
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stat.bg} ${stat.tint}`}>
+                <stat.icon size={20} />
+              </div>
             </div>
           </motion.div>
         ))}
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col md:flex-row items-center gap-6 p-4 rounded-[2.5rem] bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-        <div className="relative flex-1 w-full group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={20} />
-          <input
-            type="text"
-            placeholder="Search assignments, subjects..."
-            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-transparent focus:border-blue-500/20 outline-none transition-all text-sm font-medium shadow-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      <AssignmentFilter
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        filterStatus={filterStatus}
+        setFilterStatus={setFilterStatus}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        onReset={handleResetData}
+        onAdd={() => setIsModalOpen(true)}
+        assignmentCount={filteredAssignments.length}
+        statusCounts={statusCounts}
+        filterCourse={filterCourse}
+        setFilterCourse={setFilterCourse}
+        courses={courses}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+      />
+
+      {selectedAssignmentIds.length > 0 && (
+        <BulkActionBar selectedCount={selectedAssignmentIds.length} onSelectVisible={toggleSelectAllVisible} onClear={clearSelection} className="mb-6">
+          <Select variant="ghost" value={bulkStatus} onChange={(val) => setBulkStatus(val)} options={[
+            { label: 'Not Started', value: 'Not Started' },
+            { label: 'In Progress', value: 'In Progress' },
+            { label: 'Submitted', value: 'Submitted' },
+            { label: 'Late', value: 'Late' }
+          ]} />
+          <button onClick={applyBulkStatus} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">Set status</button>
+          
+          <button onClick={deleteSelected} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-100 text-red-700 ml-auto">Delete</button>
+        </BulkActionBar>
+      )}
+
+      {/* Assignments Content */}
+      {viewMode === 'kanban' ? (
+        <AssignmentKanban
+          assignments={filteredAssignments}
+          onEdit={handleEdit}
+          onDelete={deleteAssignment}
+          onOpen={(id) => setSelectedAssignmentId(id)}
+          courses={courses}
+          selectedAssignmentIds={selectedAssignmentIds}
+          toggleSelectionId={toggleSelectionId}
+          setAssignments={setAssignments}
+        />
+      ) : viewMode === 'timeline' ? (
+        <AssignmentTimeline
+          assignments={filteredAssignments}
+          onEdit={handleEdit}
+          onDelete={deleteAssignment}
+          onOpen={(id) => setSelectedAssignmentId(id)}
+          courses={courses}
+          selectedAssignmentIds={selectedAssignmentIds}
+          toggleSelectionId={toggleSelectionId}
+        />
+      ) : viewMode === 'table' ? (
+        <AssignmentTable
+          assignments={filteredAssignments}
+          onEdit={handleEdit}
+          onDelete={deleteAssignment}
+          onOpen={(id) => setSelectedAssignmentId(id)}
+          courses={courses}
+          selectedAssignmentIds={selectedAssignmentIds}
+          toggleSelectionId={toggleSelectionId}
+        />
+      ) : (
+        <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" : "flex flex-col gap-4"}>
+          <AnimatePresence mode="popLayout">
+            {filteredAssignments.map(assignment => (
+              <AssignmentItem
+                key={assignment.id}
+                assignment={assignment}
+                onEdit={handleEdit}
+                onDelete={deleteAssignment}
+                onOpen={(id) => setSelectedAssignmentId(id)}
+                courses={courses}
+                isSelected={selectedAssignmentIds.includes(assignment.id)}
+                onSelect={() => toggleSelectionId(assignment.id)}
+                viewMode={viewMode}
+              />
+            ))}
+          </AnimatePresence>
         </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
-          <Filter size={18} className="text-slate-400 mr-2 shrink-0" />
-          {['All', 'Not Started', 'In Progress', 'Submitted', 'Late'].map(status => (
-            <button
-              key={status}
-              onClick={() => setFilterStatus(status)}
-              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
-                filterStatus === status
-                  ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-100 dark:border-slate-800 hover:border-blue-200'
-              }`}
-            >
-              {status}
-            </button>
-          ))}
-        </div>
-
-        {courses.length > 0 && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
-            <span className="text-slate-400 text-xs font-bold shrink-0">COURSE:</span>
-            {['All', ...courses].map((course, i) => {
-              const isAll = course === 'All';
-              return (
-                <button
-                  key={isAll ? 'all' : course.id}
-                  onClick={() => setFilterCourse(isAll ? 'All' : course.id)}
-                  className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
-                    filterCourse === (isAll ? 'All' : course.id)
-                      ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20'
-                      : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-100 dark:border-slate-800 hover:border-amber-200'
-                  }`}
-                >
-                  {isAll ? 'All Courses' : course.title}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Assignments Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-        <AnimatePresence mode="popLayout">
-          {filteredAssignments.map(assignment => (
-            <AssignmentItem
-              key={assignment.id}
-              assignment={assignment}
-              onEdit={handleEdit}
-              onDelete={deleteAssignment}
-              onOpen={(id) => setSelectedAssignmentId(id)}
-              courses={courses}
-            />
-          ))}
-        </AnimatePresence>
-      </div>
+      )}
 
       {/* Empty State */}
       {filteredAssignments.length === 0 && (

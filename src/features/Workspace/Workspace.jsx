@@ -188,7 +188,7 @@ const Workspace = ({ activeProjectIdOverride, setActiveTab }) => {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-10">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-10">
       {/* Header & Project Context */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pt-4">
         <div className="flex items-center gap-6">

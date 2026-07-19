@@ -28,7 +28,7 @@ import toast from 'react-hot-toast';
 
 // Sub-components
 import ResourceItem from './components/ResourceItem';
-import ResourceForm from './components/ResourceForm';
+import ResourceDetailSidebar from './components/ResourceDetailSidebar';
 import ResourceFilter from './components/ResourceFilter';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
@@ -49,6 +49,9 @@ const Resources = () => {
   const [folders, setFolders] = useStorage(STORAGE_KEYS.FOLDERS, []);
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
+  const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
+  const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
+  const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
 
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,9 +60,8 @@ const Resources = () => {
   const [sizeFilter, setSizeFilter] = useState('all');
   const [assocFilter, setAssocFilter] = useState('all');
   
-  const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
+  const [selectedResourceDetail, setSelectedResourceDetail] = useState(null);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
   const [editingFolder, setEditingFolder] = useState(null);
   
   const [displayMode, setDisplayMode] = useState('grid');
@@ -73,15 +75,6 @@ const Resources = () => {
   const [bulkTagInput, setBulkTagInput] = useState('');
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '' });
 
-  const [resourceForm, setResourceForm] = useState({
-    name: '',
-    url: '',
-    type: 'Link',
-    description: '',
-    tags: '',
-    associatedId: '',
-    associatedType: 'None'
-  });
   const [folderForm, setFolderForm] = useState({ name: '' });
 
   const fileInputRef = useRef(null);
@@ -258,44 +251,41 @@ const Resources = () => {
     return groups;
   }, [filteredData.resources, groupBy, searchTerm, courses, videos]);
 
-  // 4. CRUD Handlers
-  const handleResourceSubmit = (e) => {
-    e.preventDefault();
-    const tagsArray = typeof resourceForm.tags === 'string' 
-      ? resourceForm.tags.split(',').map(t => t.trim()).filter(t => t)
-      : resourceForm.tags;
-    
-    const resourceData = {
-      ...resourceForm,
-      tags: tagsArray,
+  const updateResource = (updates) => {
+    setSelectedResourceDetail(prev => ({ ...prev, ...updates }));
+    setResources(prev => prev.map(r => 
+      r.id === selectedResourceDetail?.id ? { ...r, ...updates, updatedAt: new Date().toISOString() } : r
+    ));
+  };
+
+  const handleCreateLink = () => {
+    const newResource = {
+      id: nanoid(),
+      name: 'New Link',
+      url: '',
+      type: 'Link',
+      description: '',
+      tags: [],
       folderId: currentFolderId,
+      createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-
-    if (editingItem?.type === 'resource') {
-      setResources(resources.map(r => r.id === editingItem.data.id ? { ...r, ...resourceData } : r));
-      toast.success('Asset refined');
-    } else {
-      setResources([{ ...resourceData, id: nanoid(), createdAt: new Date().toISOString() }, ...resources]);
-      toast.success('Asset launched');
-    }
-
-    closeResourceModal();
+    setResources(prev => [newResource, ...prev]);
+    setSelectedResourceDetail(newResource);
   };
 
   const closeResourceModal = () => {
-    setIsResourceModalOpen(false);
-    setEditingItem(null);
-    setResourceForm({
-      name: '', url: '', type: 'Link', description: '', tags: '', associatedId: '', associatedType: 'None'
-    });
+    setSelectedResourceDetail(null);
   };
 
   const startUpload = useCallback((queueItemId, file) => {
     if (!file || !user) return;
     const fileName = `${nanoid()}_${file.name}`;
     const storageRef = ref(firebaseStorage, `users/${user.id}/resources/${fileName}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const metadata = {
+      cacheControl: 'public, max-age=31536000',
+    };
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
     uploadTasksRef.current[queueItemId] = uploadTask;
 
     uploadTask.on(
@@ -539,7 +529,16 @@ const Resources = () => {
     const total = resources.length;
     const links = resources.filter(r => r.type === 'Link').length;
     const papers = resources.filter(r => r.category === 'paper' || Boolean(r.sourcePaperId) || r.type === 'PDF' || (Array.isArray(r.tags) && r.tags.includes('paper'))).length;
-    const totalSizeMB = resources.reduce((acc, r) => acc + (parseFloat(r.size) || 0), 0);
+    const totalSizeMB = resources.reduce((acc, r) => {
+      if (!r.size) return acc;
+      const sizeStr = String(r.size).toUpperCase();
+      const val = parseFloat(r.size) || 0;
+      if (sizeStr.includes('GB')) return acc + val * 1024;
+      if (sizeStr.includes('MB')) return acc + val;
+      if (sizeStr.includes('KB')) return acc + val / 1024;
+      // Default to assuming raw numbers or 'B'/'BYTES' are in bytes
+      return acc + val / (1024 * 1024);
+    }, 0);
     return {
       total,
       folders: folders.length,
@@ -580,7 +579,7 @@ const Resources = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12">
+    <div className="w-full max-w-[1680px] mx-auto pb-12">
       {/* Header Title Section */}
       <PageHeader
         title={isPapersView ? 'Reading Library (Merged)' : 'Knowledge Base'}
@@ -638,7 +637,7 @@ const Resources = () => {
         setAssocFilter={setAssocFilter}
         onNewFolder={() => openFolderModal()}
         onUpload={() => fileInputRef.current?.click()}
-        onAddLink={() => setIsResourceModalOpen(true)}
+        onAddLink={handleCreateLink}
         isUploading={isUploading}
         itemCount={resources.length}
         viewMode={viewMode}
@@ -793,9 +792,9 @@ const Resources = () => {
         {Object.entries(groupedResources).map(([groupName, items]) => (
           <div key={groupName} className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
             <div className="flex items-center gap-4">
-              <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-primary-500" />
-                {groupName}
+              <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] flex items-center gap-3 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-primary-500 shrink-0" />
+                <span className="truncate">{groupName}</span>
               </h3>
               <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
               <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{items.length} Units</span>
@@ -818,9 +817,7 @@ const Resources = () => {
                       videos={videos}
                       onDelete={deleteResource}
                       onEdit={(r) => {
-                        setEditingItem({ type: 'resource', data: r });
-                        setResourceForm({...r, tags: r.tags?.join(', ') || ''});
-                        setIsResourceModalOpen(true);
+                        setSelectedResourceDetail(r);
                       }}
                     />
                   ))}
@@ -873,9 +870,7 @@ const Resources = () => {
                               Open
                             </button>
                             <button onClick={() => {
-                              setEditingItem({ type: 'resource', data: res });
-                              setResourceForm({...res, tags: res.tags?.join(', ') || ''});
-                              setIsResourceModalOpen(true);
+                              setSelectedResourceDetail(res);
                             }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400">
                               <Pencil size={14} />
                             </button>
@@ -924,17 +919,18 @@ const Resources = () => {
       </div>
       </div>
 
-      {/* Resource Modal */}
       <AnimatePresence>
-        {isResourceModalOpen && (
-          <ResourceForm 
-            editingItem={editingItem}
-            resourceForm={resourceForm}
-            setResourceForm={setResourceForm}
-            onSubmit={handleResourceSubmit}
-            onClose={closeResourceModal}
+        {selectedResourceDetail && (
+          <ResourceDetailSidebar 
+            selectedResourceDetail={selectedResourceDetail}
+            setSelectedResourceDetail={setSelectedResourceDetail}
+            updateResource={updateResource}
             courses={courses}
             videos={videos}
+            projects={projects}
+            assignments={assignments}
+            notes={notes}
+            folders={folders}
           />
         )}
       </AnimatePresence>

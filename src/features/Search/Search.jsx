@@ -78,6 +78,22 @@ const GlobalSearch = ({ isOpen, onClose, onSelectTab }) => {
           });
         });
       }
+
+      // Search Documents within Projects
+      if (p.docs) {
+        p.docs.forEach(doc => {
+          if (doc.title.toLowerCase().includes(query.toLowerCase()) || doc.content.toLowerCase().includes(query.toLowerCase())) {
+            searchResults.push({
+              type: 'doc',
+              title: doc.title,
+              subtitle: `In project: ${p.name}`,
+              id: doc.id,
+              projectId: p.id,
+              tab: 'projects' // or 'workspace' depending on where we navigate
+            });
+          }
+        });
+      }
     });
 
     return searchResults.slice(0, 8);
@@ -90,6 +106,7 @@ const GlobalSearch = ({ isOpen, onClose, onSelectTab }) => {
       case 'note': return <FileText size={18} className="text-purple-500" />;
       case 'project': return <GithubIcon size={18} className="text-slate-700" />;
       case 'task': return <Kanban size={18} className="text-primary-500" />;
+      case 'doc': return <FileText size={18} className="text-indigo-500" />;
       default: return <SearchIcon size={18} className="text-slate-400" />;
     }
   };

@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Target, Timer, Plus, CheckCircle2 } from 'lucide-react';
+import { Target, Timer, Plus, CheckCircle2, Sparkles } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { refineSMARTGoal } from '../../services/aiService';
+import toast from 'react-hot-toast';
 
 const toDateKey = (date = new Date()) => {
   const d = new Date(date);
@@ -16,9 +18,12 @@ const Goals = () => {
     dailyStudyGoal: 120,
     weeklyMinutesGoal: 600,
     weeklySessionsGoal: 7,
-    sessionsByDate: {}
+    sessionsByDate: {},
+    smartGoalText: ''
   });
   const [sessionMinutesInput, setSessionMinutesInput] = useState(45);
+  const [vagueGoalInput, setVagueGoalInput] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
 
   const todayKey = toDateKey();
 
@@ -83,6 +88,27 @@ const Goals = () => {
     });
   };
 
+  const handleSMARTGoal = async () => {
+    if (!vagueGoalInput.trim()) return;
+    setIsRefining(true);
+    try {
+      const result = await refineSMARTGoal(vagueGoalInput);
+      setGoalsState(prev => ({
+        ...(prev || {}),
+        smartGoalText: result.smartGoal,
+        dailyStudyGoal: result.dailyStudyGoal,
+        weeklyMinutesGoal: result.weeklyMinutesGoal,
+        weeklySessionsGoal: result.weeklySessionsGoal
+      }));
+      setVagueGoalInput('');
+      toast.success('Goal refined using AI!');
+    } catch (error) {
+      toast.error('Failed to generate SMART goal');
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <section className="card">
@@ -96,6 +122,40 @@ const Goals = () => {
               Set measurable study targets and track completion clearly.
             </p>
           </div>
+        </div>
+
+        {/* AI SMART Goal Generator */}
+        <div className="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-5 mb-6">
+          <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-300 flex items-center gap-2 mb-3">
+            <Sparkles size={16} />
+            AI SMART Goal Refinement
+          </h3>
+          <div className="flex flex-col md:flex-row gap-3">
+            <input 
+              type="text" 
+              placeholder="E.g., I want to learn React" 
+              value={vagueGoalInput}
+              onChange={(e) => setVagueGoalInput(e.target.value)}
+              className="flex-1 bg-white dark:bg-slate-900 border-indigo-100 dark:border-indigo-500/30 text-sm"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSMARTGoal(); }}
+            />
+            <button 
+              onClick={handleSMARTGoal}
+              disabled={isRefining || !vagueGoalInput.trim()}
+              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isRefining ? <Sparkles size={16} className="animate-pulse" /> : <Sparkles size={16} />}
+              Make it SMART
+            </button>
+          </div>
+          {goalsState?.smartGoalText && (
+            <div className="mt-4 p-4 bg-white/60 dark:bg-slate-900/40 rounded-xl border border-indigo-100/50 dark:border-indigo-500/10">
+              <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                <span className="font-black uppercase tracking-wider text-[10px] block mb-1 opacity-70">Current SMART Goal</span>
+                {goalsState.smartGoalText}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

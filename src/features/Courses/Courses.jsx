@@ -195,6 +195,7 @@ const normalizeCourseModel = (course) => {
     timeTracking,
     moduleTracking,
     activityLog: Array.isArray(course?.activityLog) ? course.activityLog : [],
+    syllabus: safeString(course?.syllabus),
     archived: Boolean(course?.archived),
     createdAt: safeString(course?.createdAt),
     updatedAt: safeString(course?.updatedAt)
@@ -355,6 +356,7 @@ const Courses = () => {
     timeTracking: { current: '00:00:00', total: '00:00:00' },
     moduleTracking: { total: 1, completed: 0 },
     activityLog: [],
+    syllabus: '',
     archived: false
   });
 
@@ -613,6 +615,7 @@ const Courses = () => {
       courseUrl: sanitizeUrl(formData.courseUrl),
       playlistUrl: sanitizeUrl(formData.playlistUrl),
       certificateUrl: sanitizeUrl(formData.certificateUrl),
+      syllabus: safeString(formData.syllabus),
       modules: existingModules,
       archived: Boolean(formData.archived),
       updatedAt: now

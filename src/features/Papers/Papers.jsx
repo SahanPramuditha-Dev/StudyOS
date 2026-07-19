@@ -107,7 +107,7 @@ const Papers = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12">
+    <div className="w-full max-w-[1680px] mx-auto pb-12">
       {/* Header Title Section */}
       <div className="mb-12 space-y-2">
         <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">

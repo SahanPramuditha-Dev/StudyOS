@@ -9,10 +9,12 @@ import {
   Award,
   AlertCircle,
   CheckCircle2,
-  Clock
+  Clock,
+  CheckSquare,
+  Check
 } from 'lucide-react';
 
-const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) => {
+const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, onUpdateStatus, courses = [], isSelected, onSelect, viewMode }) => {
   // Calculate days until deadline
   const daysUntilDeadline = useMemo(() => {
     if (!assignment.deadline) return null;
@@ -21,6 +23,10 @@ const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) 
     const diff = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
     return diff;
   }, [assignment.deadline]);
+
+  const completedTasks = assignment.tasks?.filter(t => t.completed)?.length || 0;
+  const totalTasks = assignment.tasks?.length || 0;
+  const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
   // Get deadline status
   const getDeadlineStatus = () => {
@@ -35,10 +41,10 @@ const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) 
   // Get status icon and color
   const getStatusConfig = () => {
     const configs = {
-      'Not Started': { icon: AlertCircle, color: 'text-slate-500', bg: 'bg-slate-50' },
-      'In Progress': { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-50' },
-      'Submitted': { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50' },
-      'Late': { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50' }
+      'Not Started': { icon: AlertCircle, color: 'text-blue-500', bg: 'bg-blue-50', gradient: 'from-blue-400 to-blue-600' },
+      'In Progress': { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-50', gradient: 'from-yellow-400 to-yellow-600' },
+      'Submitted': { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50', gradient: 'from-green-400 to-green-600' },
+      'Late': { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50', gradient: 'from-red-400 to-red-600' }
     };
     return configs[assignment.status] || configs['Not Started'];
   };
@@ -59,14 +65,37 @@ const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) 
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ y: -4 }}
-      className="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300"
+      className={`group bg-white dark:bg-slate-900 border ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-slate-100 dark:border-slate-800'} rounded-[2rem] overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 relative`}
     >
+      {onSelect && (
+        <div className="absolute top-4 left-4 z-20">
+          <label className="cursor-pointer relative">
+            <input 
+              type="checkbox" 
+              checked={isSelected}
+              onChange={onSelect}
+              className="peer appearance-none w-6 h-6 rounded-lg border-2 border-white/50 bg-white/20 checked:bg-white checked:border-white transition-all cursor-pointer"
+            />
+            <Check size={16} strokeWidth={3} className="absolute inset-0 m-auto text-blue-600 opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
+          </label>
+        </div>
+      )}
+      
       {/* Header with gradient overlay */}
-      <div className="h-24 bg-gradient-to-br from-blue-400 to-blue-600 relative overflow-hidden">
+      <div className={`h-20 bg-gradient-to-br ${statusConfig.gradient} relative overflow-hidden`}>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute -top-1/2 -right-1/2 w-96 h-96 rounded-full bg-white blur-3xl"></div>
         </div>
-        <div className="absolute top-3 right-3 flex gap-2">
+        <div className="absolute top-3 right-3 flex gap-2 z-20">
+          {assignment.status !== 'Submitted' && (
+            <button
+              onClick={() => onUpdateStatus && onUpdateStatus(assignment.id, 'Submitted')}
+              className="p-2 rounded-lg bg-white/20 hover:bg-green-500 text-white transition-all opacity-0 group-hover:opacity-100 shadow-sm"
+              title="Mark as Done"
+            >
+              <Check size={16} strokeWidth={3} />
+            </button>
+          )}
           <button
             onClick={() => onEdit(assignment)}
             className="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all opacity-0 group-hover:opacity-100"
@@ -76,7 +105,7 @@ const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) 
           </button>
           <button
             onClick={() => onDelete(assignment.id)}
-            className="p-2 rounded-lg bg-white/20 hover:bg-red-500/30 text-white transition-all opacity-0 group-hover:opacity-100"
+            className="p-2 rounded-lg bg-white/20 hover:bg-red-500/80 text-white transition-all opacity-0 group-hover:opacity-100"
             title="Delete"
           >
             <Trash2 size={16} />
@@ -102,12 +131,12 @@ const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) 
         {/* Subject and Lecturer */}
         <div className="space-y-2">
           {courseName && (
-            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">
-              📚 {courseName}
+            <p className={`text-[10px] font-black uppercase tracking-widest ${statusConfig.color} dark:${statusConfig.color} opacity-90`}>
+              {courseName}
             </p>
           )}
           {assignment.subject && (
-            <p className="text-[12px] font-bold uppercase tracking-widest text-slate-500">
+            <p className="text-[12px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
               {assignment.subject}
             </p>
           )}
@@ -155,21 +184,25 @@ const AssignmentItem = ({ assignment, onEdit, onDelete, onOpen, courses = [] }) 
           </p>
         )}
 
-        {/* Progress Bar - based on submissions */}
-        {assignment.submissions && assignment.submissions.length > 0 && (
+        {/* Progress Bar - based on submissions or tasks */}
+        {(assignment.submissions?.length > 0 || totalTasks > 0) && (
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-bold text-slate-500">Submissions</span>
-              <span className="font-black text-slate-700 dark:text-slate-300">{assignment.submissions.length}</span>
+              <span className="font-bold text-slate-500 flex items-center gap-1">
+                {totalTasks > 0 ? <><CheckSquare size={12}/> Tasks</> : 'Submissions'}
+              </span>
+              <span className="font-black text-slate-700 dark:text-slate-300">
+                {totalTasks > 0 ? `${completedTasks}/${totalTasks}` : assignment.submissions.length}
+              </span>
             </div>
             <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all duration-500 ${
-                  assignment.status === 'Submitted' ? 'bg-green-500' :
-                  assignment.status === 'In Progress' ? 'bg-yellow-500' :
+                  assignment.status === 'Submitted' || (totalTasks > 0 && completedTasks === totalTasks) ? 'bg-green-500' :
+                  assignment.status === 'In Progress' || completedTasks > 0 ? 'bg-yellow-500' :
                   'bg-blue-500'
                 }`}
-                style={{ width: `${Math.min((assignment.submissions.length / 3) * 100, 100)}%` }}
+                style={{ width: `${totalTasks > 0 ? taskProgress : Math.min((assignment.submissions.length / 3) * 100, 100)}%` }}
               ></div>
             </div>
           </div>

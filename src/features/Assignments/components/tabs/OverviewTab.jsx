@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText, Edit2, Check, X } from 'lucide-react';
 import { motion } from 'framer-motion';
+import AIRecommendations from '../../../../components/AIRecommendations';
 
 const OverviewTab = ({ assignment, onUpdate }) => {
   const [isEditingBrief, setIsEditingBrief] = useState(false);
@@ -17,8 +18,8 @@ const OverviewTab = ({ assignment, onUpdate }) => {
   return (
     <motion.div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       {/* Main Brief Section */}
-      <div className="lg:col-span-2">
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-8 shadow-sm">
+      <div className="lg:col-span-2 flex flex-col h-full">
+        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-8 shadow-sm flex-1 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
               <FileText size={28} className="text-blue-500" />
@@ -63,15 +64,17 @@ const OverviewTab = ({ assignment, onUpdate }) => {
               </div>
             </div>
           ) : (
-            <div className="prose prose-sm dark:prose-invert max-w-none">
+            <div className="prose prose-sm dark:prose-invert max-w-none flex-1 flex flex-col">
               {briefText ? (
                 <div className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap text-base">
                   {briefText}
                 </div>
               ) : (
-                <p className="text-slate-400 italic py-12 text-center">
-                  No brief added yet. Click edit to add assignment details.
-                </p>
+                <div className="flex-1 flex items-center justify-center min-h-[200px]">
+                  <p className="text-slate-400 italic text-center">
+                    No brief added yet. Click edit to add assignment details.
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -150,6 +153,8 @@ const OverviewTab = ({ assignment, onUpdate }) => {
             </p>
           </div>
         </div>
+
+        <AIRecommendations title={assignment.title} description={assignment.subject + ' - ' + (assignment.brief || '')} />
       </div>
     </motion.div>
   );

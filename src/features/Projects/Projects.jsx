@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  FolderOpen
+  FolderOpen,
+  Archive,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
@@ -17,11 +19,15 @@ import { STORAGE_KEYS } from '../../services/storage';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 
-// Sub-components
 import ProjectItem from './components/ProjectItem';
 import ProjectForm from './components/ProjectForm';
 import ProjectDetail from './components/ProjectDetail';
 import ConfirmModal from '../../components/ConfirmModal';
+import PageHeader from '../../components/PageHeader';
+import EmptyState from '../../components/EmptyState';
+import BulkActionBar from '../../components/BulkActionBar';
+import { toggleSelectionId, toggleSelectAll, hardDeleteByIds } from '../../utils/entityOps';
+import Select from '../../components/ui/Select';
 
 const Projects = ({ onSelectProject }) => {
   // 1. State Management
@@ -30,8 +36,10 @@ const Projects = ({ onSelectProject }) => {
   const [editingProject, setEditingProject] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('All'); // All, Active, Completed, Paused
+  const [filterType, setFilterType] = useState('All'); // All, Active, Completed, Paused, Archived
+  const [sortType, setSortType] = useState('Newest');
   const [confirmConfig, setConfirmConfig] = useState({ isOpen: false, onConfirm: () => {}, message: '' });
+  const [selectedProjectIds, setSelectedProjectIds] = useState([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -74,15 +82,23 @@ const Projects = ({ onSelectProject }) => {
 
   // 3. Logic & Filtering
   const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
+    let result = projects.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                            p.stack?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            p.description?.toLowerCase().includes(searchTerm.toLowerCase());
       
       if (filterType === 'All') return matchesSearch;
+      if (filterType === 'Active') return matchesSearch && p.status === 'Ongoing';
       return matchesSearch && p.status === filterType;
-    }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  }, [projects, searchTerm, filterType]);
+    });
+
+    return result.sort((a, b) => {
+      if (sortType === 'Newest') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      if (sortType === 'Oldest') return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      if (sortType === 'Name') return a.name.localeCompare(b.name);
+      return 0;
+    });
+  }, [projects, searchTerm, filterType, sortType]);
 
   // 4. CRUD Handlers
   const handleEdit = (project) => {
@@ -171,77 +187,91 @@ const Projects = ({ onSelectProject }) => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-12">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-        <div>
-          <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
-            <div className="p-3 rounded-[1.5rem] bg-primary-500 text-white shadow-xl shadow-primary-500/20">
-              <Code size={32} />
-            </div>
-            Architectural Projects
-          </h1>
-          <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs mt-2">Design and execute your digital visions</p>
-        </div>
-
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-3 px-8 py-3.5 rounded-[2rem] bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-xl shadow-primary-500/30 active:scale-95 group"
-        >
-          <Plus size={24} className="group-hover:rotate-90 transition-transform" />
-          New Project
-        </button>
-      </div>
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-12 relative">
+      <PageHeader 
+        title="Architectural Projects"
+        description="Design and execute your digital visions"
+        icon={<Code size={32} />}
+        action={
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-3 px-8 py-3.5 rounded-[2rem] bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-xl shadow-primary-500/30 active:scale-95 group"
+          >
+            <Plus size={24} className="group-hover:rotate-90 transition-transform" />
+            New Project
+          </button>
+        }
+      />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total Projects', value: stats.total, icon: FolderOpen, color: 'text-primary-500', bg: 'bg-primary-50' },
-          { label: 'Active Builds', value: stats.active, icon: TrendingUp, color: 'text-green-500', bg: 'bg-green-50' },
-          { label: 'Completed Visions', value: stats.completed, icon: CheckCircle2, color: 'text-blue-500', bg: 'bg-blue-50' },
-          { label: 'Deployed Tasks', value: stats.totalTasks, icon: LayoutGrid, color: 'text-purple-500', bg: 'bg-purple-50' }
+          { label: 'Total Projects', value: stats.total, icon: FolderOpen, tint: 'text-primary-500', bg: 'bg-primary-500/10' },
+          { label: 'Active Builds', value: stats.active, icon: TrendingUp, tint: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+          { label: 'Completed Visions', value: stats.completed, icon: CheckCircle2, tint: 'text-blue-500', bg: 'bg-blue-500/10' },
+          { label: 'Deployed Tasks', value: stats.totalTasks, icon: LayoutGrid, tint: 'text-purple-500', bg: 'bg-purple-500/10' }
         ].map((stat, i) => (
           <motion.div 
             key={i}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-6"
+            className="glass rounded-2xl p-5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group"
           >
-            <div className={`p-4 rounded-2xl ${stat.bg} dark:bg-opacity-10 ${stat.color}`}>
-              <stat.icon size={24} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</p>
-              <p className="text-2xl font-black text-slate-800 dark:text-white">{stat.value}</p>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent dark:from-white/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{stat.label}</p>
+                <p className="text-3xl font-black text-slate-800 dark:text-white mt-1">{stat.value}</p>
+              </div>
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.bg} ${stat.tint} shadow-inner transition-transform group-hover:scale-110`}>
+                <stat.icon size={22} />
+              </div>
             </div>
           </motion.div>
         ))}
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="flex flex-col md:flex-row items-center gap-6 p-4 rounded-[2.5rem] bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-        <div className="relative flex-1 w-full group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary-500 transition-colors" size={20} />
-          <input 
-            type="text" 
-            placeholder="Search projects, stacks, or visions..."
-            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-transparent focus:border-primary-500/20 outline-none transition-all text-sm font-medium shadow-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* Search and Filters */}
+      <div className="relative z-[90] flex flex-col gap-6 mb-10 animate-in fade-in slide-in-from-bottom-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-xl group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary-500 transition-colors" size={20} />
+            <input 
+              type="text" 
+              placeholder="Search projects, stacks, or visions..."
+              className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] focus:shadow-[0_8px_30px_rgb(0,0,0,0.08)] focus:border-primary-500 outline-none transition-all font-bold placeholder:font-medium placeholder:text-slate-400"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Select
+              value={sortType}
+              onChange={setSortType}
+              options={[
+                { label: 'Newest First', value: 'Newest' },
+                { label: 'Oldest First', value: 'Oldest' },
+                { label: 'Sort by Name', value: 'Name' }
+              ]}
+            />
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
-          <Filter size={18} className="text-slate-400 mr-2 shrink-0" />
+        {/* Filter Bar */}
+        <div className="flex items-center gap-2 p-1.5 rounded-2xl glass w-fit">
+          <div className="flex items-center gap-2 px-3 border-r border-slate-200 dark:border-slate-700/50">
+            <Filter size={14} className="text-primary-500" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Status</span>
+          </div>
           {['All', 'Active', 'Completed', 'Paused', 'Archived'].map(type => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
+              className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 shrink-0 ${
                 filterType === type 
-                  ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20' 
-                  : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-100 dark:border-slate-800 hover:border-primary-200'
+                  ? 'bg-primary-500 text-white shadow-md shadow-primary-500/20' 
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100/50 dark:hover:bg-slate-800/50'
               }`}
             >
               {type}
@@ -260,6 +290,8 @@ const Projects = ({ onSelectProject }) => {
               onEdit={handleEdit}
               onDelete={deleteProject}
               onOpenWorkspace={(id) => setSelectedProjectId(id)}
+              isSelected={selectedProjectIds.includes(project.id)}
+              onSelect={(id) => setSelectedProjectIds(prev => toggleSelectionId(prev, id))}
             />
           ))}
         </AnimatePresence>
@@ -267,25 +299,62 @@ const Projects = ({ onSelectProject }) => {
 
       {/* Empty State */}
       {filteredProjects.length === 0 && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="py-24 flex flex-col items-center justify-center space-y-6 bg-slate-50/50 dark:bg-slate-900/50 rounded-[3rem] border border-dashed border-slate-200 dark:border-slate-800"
-        >
-          <div className="p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/50 dark:shadow-none">
-            <LayoutGrid size={64} className="text-slate-200" />
-          </div>
-          <div className="text-center">
-            <h3 className="text-xl font-black text-slate-800 dark:text-white">No projects found</h3>
-            <p className="text-slate-400 font-medium mt-2">Ready to architect your next vision?</p>
-          </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="px-8 py-3 rounded-2xl bg-primary-500 text-white font-black uppercase tracking-widest text-[10px] hover:bg-primary-600 transition-all active:scale-95 shadow-lg shadow-primary-500/20"
+        <EmptyState
+          icon={LayoutGrid}
+          title="No projects found"
+          message="Ready to architect your next vision?"
+          action={{
+            label: "Deploy First Project",
+            onClick: () => setIsModalOpen(true)
+          }}
+        />
+      )}
+
+      {/* Bulk Action Bar */}
+      {selectedProjectIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-2xl px-4">
+          <BulkActionBar 
+            selectedCount={selectedProjectIds.length}
+            onClear={() => setSelectedProjectIds([])}
+            onSelectVisible={() => setSelectedProjectIds(prev => toggleSelectAll(prev, filteredProjects.map(p => p.id)))}
           >
-            Deploy First Project
-          </button>
-        </motion.div>
+            <div className="flex-1" />
+            <button
+              onClick={() => {
+                setConfirmConfig({
+                  isOpen: true,
+                  message: `Archive ${selectedProjectIds.length} projects?`,
+                  onConfirm: () => {
+                    setProjects(prev => prev.map(p => 
+                      selectedProjectIds.includes(p.id) ? { ...p, status: 'Archived' } : p
+                    ));
+                    setSelectedProjectIds([]);
+                    toast.success('Projects archived');
+                  }
+                });
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/70 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5 text-slate-600 dark:text-slate-300 transition-all"
+            >
+              <Archive size={14} /> Archive
+            </button>
+            <button
+              onClick={() => {
+                setConfirmConfig({
+                  isOpen: true,
+                  message: `Permanently delete ${selectedProjectIds.length} projects?`,
+                  onConfirm: () => {
+                    setProjects(prev => hardDeleteByIds(prev, selectedProjectIds));
+                    setSelectedProjectIds([]);
+                    toast.success('Projects deleted');
+                  }
+                });
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/70 dark:bg-slate-900/40 border border-red-200 dark:border-red-500/30 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center gap-1.5 transition-all"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </BulkActionBar>
+        </div>
       )}
 
       {/* Modals */}

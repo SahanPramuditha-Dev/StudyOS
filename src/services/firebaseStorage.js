@@ -12,7 +12,10 @@ const storage = getStorage(app);
 export const uploadFile = async (file, path) => {
   try {
     const storageRef = ref(storage, path);
-    const snapshot = await uploadBytes(storageRef, file);
+    const metadata = {
+      cacheControl: 'public, max-age=31536000',
+    };
+    const snapshot = await uploadBytes(storageRef, file, metadata);
     const downloadURL = await getDownloadURL(snapshot.ref);
     return downloadURL;
   } catch (error) {

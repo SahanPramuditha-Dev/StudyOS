@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { usePlatformSettings } from './hooks/usePlatformSettings';
 import posthog from 'posthog-js';
 import { Bell, Menu, Moon, Search, Shield, Sun, XCircle, Circle } from 'lucide-react';
 import Sidebar from './components/Sidebar';
@@ -17,12 +18,13 @@ import Workspace from './features/Workspace/Workspace';
 import Tasks from './Tasks';
 import Analytics from './features/Analytics/Analytics';
 import Goals from './features/Goals/Goals';
-import Budget from './features/Budget/Budget';
+import Budget from './features/Budget/index';
 import WeeklyPlanner from './features/Planner/WeeklyPlanner';
 import ReviewHub from './features/Review/ReviewHub';
 import Chat from './features/Chat/Chat';
 import Reminders from './features/Reminders/Reminders';
 import Timer from './features/Timer/Timer';
+import Grades from './features/Grades/Grades';
 import GlobalSearch from './features/Search/Search';
 import Auth from './features/Auth/Auth';
 import CredentialSetup from './features/Auth/CredentialSetup';
@@ -32,11 +34,13 @@ import Legal from './features/Legal/Legal';
 import Privacy from './features/Legal/Privacy';
 import Terms from './features/Legal/Terms';
 import Support from './features/Legal/Support';
+import AIChatbot from './components/AIChatbot';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { useReminders } from './context/ReminderContext';
 import { useStorage } from './hooks/useStorage';
 import { STORAGE_KEYS } from './services/storage';
+import { FirestoreService } from './services/firestore';
 import { playAlarmSound, stopAlarmSound, getIsPlaying, setIsPlaying } from './utils/alarmAudio';
 import toast from 'react-hot-toast';
 
@@ -96,6 +100,7 @@ const App = () => {
   });
   const browserDeliveredRef = useRef(new Set());
   const lastAlarmPlayedAtRef = useRef(0);
+  const { data: platformSettings = { maintenanceMode: false, globalAnnouncement: '' } } = usePlatformSettings();
 
   const currentTabFromPath = (() => {
     const firstSegment = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
@@ -289,7 +294,7 @@ const App = () => {
     if (diffDays === 1) {
       const nextStreak = streak.current + 1;
       setStreak({ current: nextStreak, lastUpdate: todayStr });
-      toast.success(`Study streak continued. Day ${nextStreak}.`);
+      toast.success(`Study streak continued. Day ${nextStreak}.`, { id: 'streak-toast' });
       addNotification({
         title: 'Streak Continued',
         message: `You are on a ${nextStreak}-day streak.`,
@@ -298,7 +303,7 @@ const App = () => {
       });
     } else if (diffDays > 1) {
       setStreak({ current: 1, lastUpdate: todayStr });
-      toast.error('Streak reset. Starting fresh today.');
+      toast.error('Streak reset. Starting fresh today.', { id: 'streak-reset-toast' });
       addNotification({
         title: 'Streak Reset',
         message: 'Your streak restarted today. Keep going.',
@@ -333,6 +338,21 @@ const App = () => {
       return renderPublicLegalRoutes();
     }
     return <Auth />;
+  }
+
+  if (platformSettings.maintenanceMode && !isAdmin) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-6 text-center">
+        <Shield size={64} className="text-primary-500 mb-6" />
+        <h1 className="text-4xl font-black text-slate-800 dark:text-white mb-4">Under Maintenance</h1>
+        <p className="text-lg text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+          StudyOS is currently undergoing scheduled maintenance. Please check back later!
+        </p>
+        <button onClick={logout} className="mt-8 px-6 py-3 bg-slate-200 dark:bg-slate-800 font-bold rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-300 transition-colors">
+          Sign Out
+        </button>
+      </div>
+    );
   }
 
   const unreadCount = notifications?.filter((notification) => !notification.read).length || 0;
@@ -450,6 +470,7 @@ const App = () => {
         <Route path="/papers" element={hasPermission('resources') ? <Navigate to="/resources?view=papers" replace /> : <RestrictedModule name="Papers" />} />
         <Route path="/projects" element={hasPermission('projects') ? <Projects onSelectProject={handleSelectProject} /> : <RestrictedModule name="Projects" />} />
         <Route path="/assignments" element={hasPermission('assignments') ? <Assignments /> : <RestrictedModule name="Assignments" />} />
+        <Route path="/grades" element={hasPermission('grades') ? <Grades /> : <RestrictedModule name="Grades" />} />
         <Route path="/workspace" element={hasPermission('workspace') ? <Workspace activeProjectIdOverride={activeProjectId} setActiveTab={setActiveTab} /> : <RestrictedModule name="Workspace" />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/timer" element={<Timer />} />
@@ -722,6 +743,12 @@ const App = () => {
             </div>
           </header>
 
+          {platformSettings.globalAnnouncement && (
+            <div className="w-full bg-primary-500 text-white text-center py-2 px-4 text-sm font-bold z-10 shadow-sm shrink-0">
+              {platformSettings.globalAnnouncement}
+            </div>
+          )}
+
           {/* Main Content Area */}
           <main className={`flex-1 min-h-0 relative flex flex-col scroll-smooth ${isChatRoute ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
             {user && <RealtimePresence user={user} profile={profile} />}
@@ -743,6 +770,7 @@ const App = () => {
           />
         )}
       </AnimatePresence>
+      <AIChatbot />
     </>
   );
 };

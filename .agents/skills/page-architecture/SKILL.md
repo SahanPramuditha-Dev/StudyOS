@@ -237,6 +237,7 @@ Whenever generating a page:
 
 - Follow the Learning Streams page structure.
 - Preserve the exact section order.
+- Use `w-full max-w-[1680px] mx-auto pb-12` as the top-level container for all pages to ensure consistent page width.
 - Match spacing and alignment.
 - Match component styling.
 - Match button styling.

@@ -195,11 +195,20 @@ const ActivityTab = ({ assignment }) => {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="py-16 text-center bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-dashed border-slate-200 dark:border-slate-700"
+          className="relative py-24 text-center bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden"
         >
-          <Clock size={48} className="mx-auto mb-4 text-slate-300" />
-          <p className="text-slate-500 font-bold">No activity yet</p>
-          <p className="text-sm text-slate-400 mt-1">Activity will appear as you work on this assignment</p>
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/10 dark:to-purple-900/10 opacity-50"></div>
+          <div className="relative z-10 flex flex-col items-center justify-center">
+            <div className="w-24 h-24 mb-6 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                <Clock size={32} className="text-white" />
+              </div>
+            </div>
+            <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">No activity yet</h3>
+            <p className="text-slate-500 max-w-sm mx-auto">
+              Your actions like submitting work, adding notes, and completing tasks will automatically build an activity timeline here.
+            </p>
+          </div>
         </motion.div>
       )}
 

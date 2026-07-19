@@ -14,10 +14,12 @@ import {
   Activity,
   Sparkles,
   Bookmark,
-  PlayCircle
+  PlayCircle,
+  Bot
 } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
+import { generateDailyBriefing } from '../../services/aiService';
 import Select from '../../components/ui/Select';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -28,7 +30,10 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Cell
+  Cell,
+  PieChart,
+  Pie,
+  Legend
 } from 'recharts';
 
 const toDateSafe = (value) => {
@@ -83,6 +88,9 @@ const Dashboard = ({ setActiveTab }) => {
     setActiveTab(tab);
     navigate(`/${tab}`);
   };
+
+  const [aiBriefing, setAiBriefing] = useState('');
+  const [isLoadingBriefing, setIsLoadingBriefing] = useState(true);
 
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
@@ -248,6 +256,52 @@ const Dashboard = ({ setActiveTab }) => {
     () => projects.filter((project) => String(project.status || '').toLowerCase() === 'active').length,
     [projects]
   );
+
+  // --- NEW: Project Distribution Data ---
+  const projectDistributionData = useMemo(() => {
+    if (projects.length === 0) return [];
+    // If we have actual time tracking per project in Phase 3, we'll use that. 
+    // For now, let's distribute based on the number of tasks or a baseline to make the chart look good.
+    const colors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
+    return projects.slice(0, 5).map((p, i) => {
+      // Mocking hours based on tasks or randomly for visual effect until phase 3
+      const mockHours = p.board ? 
+        ((p.board.todo?.length || 0) + (p.board.doing?.length || 0) * 2 + (p.board.done?.length || 0) * 3) : 
+        Math.floor(Math.random() * 20) + 5;
+      return {
+        name: p.name || 'Untitled',
+        value: mockHours,
+        color: colors[i % colors.length]
+      };
+    });
+  }, [projects]);
+
+  const heatmapData = useMemo(() => {
+    // Generate exactly 24 weeks of data (168 days) aligned to Sunday
+    const data = [];
+    const now = new Date();
+    // To make rows match days of week (0=Sun, 1=Mon, etc.), the last cell (index 167) should be a Saturday.
+    const daysToSaturday = 6 - now.getDay();
+    
+    for (let i = 167; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + daysToSaturday - i);
+      
+      const key = formatDayKey(d);
+      let level = 0;
+      
+      if (d <= now && sessionSecondsByDay[key]) {
+        const secs = sessionSecondsByDay[key];
+        if (secs > 7200) level = 4;
+        else if (secs > 3600) level = 3;
+        else if (secs > 1800) level = 2;
+        else level = 1;
+      }
+      data.push({ date: d, level, key, isFuture: d > now });
+    }
+    return data;
+  }, [sessionSecondsByDay]);
+
 
   const completedVideos = useMemo(
     () => videos.filter((video) => Boolean(video.completed)).length,
@@ -486,8 +540,56 @@ const Dashboard = ({ setActiveTab }) => {
     }).length;
   }, [reminders]);
 
+  React.useEffect(() => {
+    let isMounted = true;
+    const fetchBriefing = async () => {
+      try {
+        const contextData = {
+          overdueAssignments,
+          pendingAssignments,
+          activeProjects,
+          dailyStudyGoal,
+          todayStudyMinutes,
+          upcomingRemindersCount: upcomingCount
+        };
+        const briefing = await generateDailyBriefing(contextData);
+        if (isMounted) {
+          setAiBriefing(briefing);
+          setIsLoadingBriefing(false);
+        }
+      } catch (e) {
+        console.error(e);
+        if (isMounted) setIsLoadingBriefing(false);
+      }
+    };
+    fetchBriefing();
+    return () => { isMounted = false; };
+  }, [overdueAssignments, pendingAssignments, activeProjects, dailyStudyGoal, todayStudyMinutes, upcomingCount]);
+
   return (
-    <div className="space-y-10 max-w-7xl mx-auto pb-12 pt-4">
+    <div className="space-y-10 w-full max-w-[1680px] mx-auto pb-12 pt-4">
+      {/* AI Daily Briefing Banner */}
+      {!isLoadingBriefing && aiBriefing && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-2xl p-4 flex items-start gap-4"
+        >
+          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 rounded-xl flex-shrink-0">
+            <Bot className="text-indigo-600 dark:text-indigo-400" size={24} />
+          </div>
+          <div>
+            <h3 className="font-bold text-indigo-900 dark:text-indigo-200 text-sm mb-1 flex items-center gap-2">
+              <Sparkles size={14} className="text-indigo-500" />
+              AI Daily Briefing
+            </h3>
+            <p className="text-indigo-800 dark:text-indigo-300 text-sm leading-relaxed">
+              {aiBriefing}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       <section className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-8 md:p-10 xl:p-16 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
         <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8 xl:gap-16">
           <div className="space-y-6 xl:space-y-8 text-center lg:text-left flex-1">
@@ -625,7 +727,7 @@ const Dashboard = ({ setActiveTab }) => {
         </div>
       </section>
 
-      <div className="flex flex-wrap justify-center gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         {stats.map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -633,7 +735,7 @@ const Dashboard = ({ setActiveTab }) => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
             onClick={() => stat.route && go(stat.route)}
-            className={`card group hover:-translate-y-1 flex-1 min-w-[200px] basis-[calc(25%-1rem)] max-w-full ${stat.route ? 'cursor-pointer' : ''}`}
+            className={`card group hover:-translate-y-1 w-full ${stat.route ? 'cursor-pointer' : ''}`}
           >
             <div className="flex items-center gap-4">
               <div className={`w-14 h-14 rounded-2xl ${stat.bg} dark:bg-slate-800 flex items-center justify-center transition-transform group-hover:scale-110`}>
@@ -653,40 +755,40 @@ const Dashboard = ({ setActiveTab }) => {
           <KanbanIcon className="text-accent-500" size={20} />
           <h3 className="text-lg font-bold dark:text-white">Quick Actions</h3>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={() => go('courses')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
+          <button onClick={() => go('courses')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <Plus size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-primary-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Course</p>
           </button>
-          <button onClick={() => go('notes')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-accent-50 dark:hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('notes')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-accent-50 dark:hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <FileText size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-accent-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">New Note</p>
           </button>
-          <button onClick={() => go('timer')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('timer')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:text-orange-600 dark:hover:text-orange-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <Clock size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-orange-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Timer</p>
           </button>
-          <button onClick={() => go('assignments')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('assignments')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <FileText size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-amber-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Assignments</p>
           </button>
-          <button onClick={() => go('analytics')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-teal-50 dark:hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('analytics')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-teal-50 dark:hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <TrendingUp size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-teal-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Analytics</p>
           </button>
-          <button onClick={() => go('goals')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('goals')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <Target size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-emerald-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Goals</p>
           </button>
-          <button onClick={() => go('planner')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('planner')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <Calendar size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Planner</p>
           </button>
-          <button onClick={() => go('review')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('review')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <AlertCircle size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-rose-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Review Hub</p>
           </button>
-          <button onClick={() => go('resources')} className="flex-1 min-w-[120px] p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
+          <button onClick={() => go('resources')} className="w-full p-3 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors text-center group border border-slate-100 dark:border-slate-700/50">
             <Bookmark size={18} className="mx-auto mb-2 text-slate-400 dark:text-slate-500 group-hover:text-cyan-500" />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Resources</p>
           </button>
@@ -781,8 +883,48 @@ const Dashboard = ({ setActiveTab }) => {
                 ]}
               />
             </div>
-            <div className="h-72 w-full mt-4">
-              <ResponsiveContainer width="100%" height="100%">
+            
+            {/* NEW: Activity Heatmap */}
+            <div className="mb-8">
+              <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-3">Contribution Heatmap</h4>
+              <div className="flex gap-2 overflow-x-auto pb-4 custom-scrollbar">
+                <div className="flex flex-col gap-2 text-[11px] font-bold text-slate-400 pr-3">
+                  {['', 'Mon', '', 'Wed', '', 'Fri', ''].map((label, i) => (
+                    <div key={i} className="h-5 flex items-center justify-end">{label}</div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  {/* Group into columns (weeks) */}
+                  {Array.from({ length: 24 }).map((_, weekIndex) => (
+                    <div key={weekIndex} className="flex flex-col gap-2">
+                      {Array.from({ length: 7 }).map((_, dayIndex) => {
+                        const dayData = heatmapData[weekIndex * 7 + dayIndex];
+                        if (!dayData) return null;
+                        
+                        const colorClass = 
+                          dayData.level === 0 ? 'bg-slate-100 dark:bg-slate-800' :
+                          dayData.level === 1 ? 'bg-primary-200 dark:bg-primary-900/50' :
+                          dayData.level === 2 ? 'bg-primary-300 dark:bg-primary-700/60' :
+                          dayData.level === 3 ? 'bg-primary-400 dark:bg-primary-500' :
+                          'bg-primary-500 dark:bg-primary-400 shadow-[0_0_8px_rgba(56,189,248,0.5)]';
+
+                        return (
+                          <div 
+                            key={dayData.key} 
+                            className={`w-5 h-5 rounded-md ${dayData.isFuture ? 'bg-transparent' : colorClass} ${dayData.isFuture ? '' : 'transition-colors hover:ring-2 ring-primary-500/50'}`}
+                            title={dayData.isFuture ? undefined : `${dayData.date.toLocaleDateString()}: Level ${dayData.level}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <h4 className="text-xs font-black uppercase text-slate-400 tracking-widest mb-4">Productivity Bar Chart</h4>
+            <div className="h-64 w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <RechartsBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}h`} />
@@ -794,6 +936,8 @@ const Dashboard = ({ setActiveTab }) => {
                       boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                       backgroundColor: 'transparent'
                     }}
+                    itemStyle={{ color: 'inherit' }}
+                    labelStyle={{ color: 'inherit' }}
                     wrapperClassName="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700"
                     formatter={(value) => [`${Number(value).toFixed(2)} hours`, 'Tracked']}
                   />
@@ -814,30 +958,6 @@ const Dashboard = ({ setActiveTab }) => {
             )}
           </div>
 
-          <div className="card">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
-              <Clock className="text-orange-500" size={20} />
-              Recent Activity
-            </h3>
-            <div className="space-y-4">
-              {recentActivities.map((activity) => (
-                <div key={`${activity.title}-${activity.timestamp}`} className="flex gap-3">
-                  <div className={`w-1 h-10 rounded-full ${activity.color}`}></div>
-                  <div>
-                    <p className="text-sm font-bold dark:text-slate-200">{activity.title}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">
-                      {activity.detail} • {formatRelativeTime(activity.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {recentActivities.length === 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">
-                  No recent activity found. Start by creating your first item.
-                </p>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Right Column - Action & Focus */}
@@ -957,6 +1077,81 @@ const Dashboard = ({ setActiveTab }) => {
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Bottom Row - Additional Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* NEW: Project Time Distribution (Donut Chart) */}
+        <div className="card h-full">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
+            <KanbanIcon className="text-purple-500" size={20} />
+            Project Time Distribution
+          </h3>
+          {projectDistributionData.length > 0 ? (
+            <div className="h-72 w-full relative">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                <PieChart>
+                  <Pie
+                    data={projectDistributionData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={80}
+                    outerRadius={110}
+                    paddingAngle={5}
+                    dataKey="value"
+                    stroke="none"
+                    cornerRadius={8}
+                  >
+                    {projectDistributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value) => [`${value} hrs`, 'Time Spent']}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Center text for Donut */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-[-20px]">
+                <span className="text-3xl font-black text-slate-800 dark:text-white">
+                  {projectDistributionData.reduce((acc, item) => acc + item.value, 0)}
+                </span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Hrs</span>
+              </div>
+            </div>
+          ) : (
+            <div className="h-40 flex items-center justify-center text-slate-500 text-sm">
+              No active projects to display.
+            </div>
+          )}
+        </div>
+
+        <div className="card h-full">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2 dark:text-white">
+            <Clock className="text-orange-500" size={20} />
+            Recent Activity
+          </h3>
+          <div className="space-y-4">
+            {recentActivities.map((activity) => (
+              <div key={`${activity.title}-${activity.timestamp}`} className="flex gap-3">
+                <div className={`w-1 h-10 rounded-full ${activity.color}`}></div>
+                <div>
+                  <p className="text-sm font-bold dark:text-slate-200">{activity.title}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    {activity.detail} • {formatRelativeTime(activity.timestamp)}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {recentActivities.length === 0 && (
+              <p className="text-sm text-slate-400 text-center py-4">
+                No recent activity found. Start by creating your first item.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

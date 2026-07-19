@@ -337,7 +337,7 @@ const Reminders = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-10">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">

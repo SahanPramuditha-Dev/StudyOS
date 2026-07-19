@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FirestoreService } from '../../services/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../services/firebase';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../../components/ConfirmModal';
 import { EmailService } from '../../services/email';
@@ -31,8 +33,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { computeUsageMetrics } from '../../services/usageMetrics';
+import { useQueryClient } from '@tanstack/react-query';
+import { usePlatformSettings } from '../../hooks/usePlatformSettings';
 
 const Admin = () => {
+  const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const ROLE_META = {
     superadmin: { label: 'Platform Owner', short: 'Owner' },
@@ -93,6 +98,7 @@ const Admin = () => {
     return { modules, actions };
   };
   const [users, setUsers] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState({ totalUsers: 0, activeUsers: 0, blockedUsers: 0 });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,6 +116,19 @@ const Admin = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [auditFeed, setAuditFeed] = useState([]);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [createUserData, setCreateUserData] = useState({ email: '', name: '', password: '' });
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const { data: platformSettings = { maintenanceMode: false, allowNewSignups: true, globalAnnouncement: '' } } = usePlatformSettings();
+  const [bannerDraft, setBannerDraft] = useState('');
+  
+  useEffect(() => {
+    if (platformSettings.globalAnnouncement !== undefined) {
+      setBannerDraft(platformSettings.globalAnnouncement);
+    }
+  }, [platformSettings.globalAnnouncement]);
+
+  const [savingPlatformSettings, setSavingPlatformSettings] = useState(false);
   const importRef = useRef(null);
   const [roleTemplates, setRoleTemplates] = useStorage('studyos_admin_role_templates', defaultRoleTemplates);
   const [adminFeatureFlags, setAdminFeatureFlags] = useStorage('studyos_admin_feature_flags', {
@@ -133,9 +152,9 @@ const Admin = () => {
     sentry: Boolean(import.meta.env.VITE_SENTRY_DSN)
   }), []);
 
-  const totalUsers = users.length;
-  const activeUsers = users.filter((u) => u.status?.isActive).length;
-  const blockedUsers = users.filter((u) => u.status?.isBlocked).length;
+  const totalUsers = dashboardStats.totalUsers;
+  const activeUsers = dashboardStats.activeUsers;
+  const blockedUsers = dashboardStats.blockedUsers;
   const adminUsers = users.filter((u) => u.role === 'admin' || u.role === 'superadmin').length;
   const totalStorageLimit = users.reduce((acc, u) => acc + Number(u.limits?.storageMB || 0), 0);
   const totalStorageUsed = users.reduce((acc, u) => acc + Number(getCloudUsage(u.usage).displayStorageUsedMB || 0), 0);
@@ -217,7 +236,22 @@ const Admin = () => {
 
   useEffect(() => {
     fetchInitialUsers();
+    FirestoreService.getAdminDashboardStats().then(setDashboardStats);
   }, []);
+
+
+  const handleUpdatePlatformSettings = async (updates) => {
+    try {
+      setSavingPlatformSettings(true);
+      await FirestoreService.updatePlatformSettings(updates);
+      queryClient.invalidateQueries({ queryKey: ['platformSettings'] });
+      toast.success('Platform settings updated');
+    } catch (e) {
+      toast.error('Failed to update platform settings');
+    } finally {
+      setSavingPlatformSettings(false);
+    }
+  };
 
   useEffect(() => {
     if (!Array.isArray(roleTemplates) || roleTemplates.length < 3) {
@@ -438,6 +472,30 @@ const Admin = () => {
     }
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    const { email, name, password } = createUserData;
+    if (!email || !name || !password) {
+      toast.error('All fields are required');
+      return;
+    }
+    
+    try {
+      setIsCreatingUser(true);
+      const createUserFn = httpsCallable(functions, 'adminCreateUser');
+      await createUserFn({ email, name, password });
+      toast.success('User created successfully');
+      setShowCreateUserModal(false);
+      setCreateUserData({ email: '', name: '', password: '' });
+      fetchInitialUsers();
+    } catch (error) {
+      console.error('[Admin] Error creating user:', error);
+      toast.error(error.message || 'Failed to create user');
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
   const exportUsersJSON = () => {
     const payload = users.map((u) => ({
       email: u.email,
@@ -536,6 +594,7 @@ const Admin = () => {
         { id: 'features', label: 'Features', icon: Settings },
         { id: 'audit', label: 'Audit Logs', icon: Activity },
         { id: 'health', label: 'System Health', icon: Server },
+        { id: 'platform', label: 'Platform Settings', icon: Settings },
         { id: 'support', label: 'Support', icon: UserPlus }
       ].map((tab) => (
         <button
@@ -677,7 +736,7 @@ const Admin = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-10 animate-pulse">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-10 animate-pulse">
         {/* Header Skeleton */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
@@ -716,7 +775,7 @@ const Admin = () => {
 
   if (activeAdminPage === 'overview') {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -807,7 +866,7 @@ const Admin = () => {
 
   if (activeAdminPage === 'features') {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="card space-y-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -865,7 +924,7 @@ const Admin = () => {
 
   if (activeAdminPage === 'support') {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card space-y-4">
@@ -882,6 +941,10 @@ const Admin = () => {
               <button onClick={sendInvitation} className="px-4 py-2.5 rounded-xl bg-primary-500 text-white font-bold inline-flex items-center gap-2">
                 <UserPlus size={16} />
                 Send Invite
+              </button>
+              <button onClick={() => setShowCreateUserModal(true)} className="px-4 py-2.5 rounded-xl bg-slate-800 text-white font-bold inline-flex items-center gap-2">
+                <UserPlus size={16} />
+                Create User
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
@@ -929,7 +992,7 @@ const Admin = () => {
 
   if (activeAdminPage === 'roles') {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="card space-y-5">
           <h2 className="text-xl font-black">Role Template Manager</h2>
@@ -953,7 +1016,7 @@ const Admin = () => {
 
   if (activeAdminPage === 'audit') {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="card space-y-4">
           <h2 className="text-xl font-black">Audit Logs</h2>
@@ -974,10 +1037,77 @@ const Admin = () => {
       </div>
     );
   }
+  
+  if (activeAdminPage === 'platform') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <div className="card space-y-6 max-w-2xl mx-auto">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-500/20 text-primary-500 flex items-center justify-center">
+              <Settings size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-black">Global Platform Settings</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Control application-wide states.</p>
+            </div>
+          </div>
+          <div className="space-y-5">
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+              <div>
+                <p className="font-bold">Maintenance Mode</p>
+                <p className="text-xs text-slate-500 mt-1">Block non-admins from accessing the application.</p>
+              </div>
+              <button
+                onClick={() => handleUpdatePlatformSettings({ maintenanceMode: !platformSettings.maintenanceMode })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${platformSettings.maintenanceMode ? 'bg-red-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${platformSettings.maintenanceMode ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+              <div>
+                <p className="font-bold">Allow New Signups</p>
+                <p className="text-xs text-slate-500 mt-1">Allow new users to create accounts.</p>
+              </div>
+              <button
+                onClick={() => handleUpdatePlatformSettings({ allowNewSignups: !platformSettings.allowNewSignups })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${platformSettings.allowNewSignups ? 'bg-green-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${platformSettings.allowNewSignups ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            <div className="space-y-2 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+              <div>
+                <p className="font-bold">Global Announcement Banner</p>
+                <p className="text-xs text-slate-500 mt-1">Show a banner to all users across the top of the app.</p>
+              </div>
+              <textarea
+                value={bannerDraft}
+                onChange={(e) => setBannerDraft(e.target.value)}
+                placeholder="We will be undergoing maintenance on Sunday..."
+                className="w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                rows={2}
+              />
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => handleUpdatePlatformSettings({ globalAnnouncement: bannerDraft })}
+                  disabled={savingPlatformSettings}
+                  className="px-4 py-2 bg-primary-500 text-white font-bold rounded-lg text-sm"
+                >
+                  {savingPlatformSettings ? 'Saving...' : 'Save Banner'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (activeAdminPage === 'health') {
     return (
-      <div className="max-w-7xl mx-auto pb-12 space-y-8">
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {[
@@ -1029,7 +1159,7 @@ const Admin = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-10">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-10">
       {renderAdminPageTabs()}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -1748,6 +1878,69 @@ const Admin = () => {
         type="danger"
       >
       </ConfirmModal>
+      <AnimatePresence>
+        {showCreateUserModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-700"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
+                <h3 className="text-xl font-black">Create User</h3>
+                <button onClick={() => setShowCreateUserModal(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <XCircle size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleCreateUser} className="p-6 space-y-4 text-left">
+                <div className="space-y-1">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Name / Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={createUserData.name}
+                    onChange={(e) => setCreateUserData({ ...createUserData, name: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                    placeholder="John Doe"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={createUserData.email}
+                    onChange={(e) => setCreateUserData({ ...createUserData, email: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                    placeholder="john@example.com"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Initial Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={createUserData.password}
+                    onChange={(e) => setCreateUserData({ ...createUserData, password: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setShowCreateUserModal(false)} className="flex-1 py-3 px-4 rounded-xl font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={isCreatingUser} className="flex-1 py-3 px-4 rounded-xl font-bold bg-primary-500 text-white hover:bg-primary-600 transition-colors disabled:opacity-50">
+                    {isCreatingUser ? 'Creating...' : 'Create User'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

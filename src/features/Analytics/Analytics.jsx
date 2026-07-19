@@ -12,6 +12,7 @@ import { format, subDays, isSameDay } from 'date-fns';
 import StatsCards from './components/StatsCards';
 import { WatchChart, CourseChart, ProjectChart, StreakChart, CohortChart, ConsistencyPanel } from './components/LearningCharts';
 import Heatmap from './components/Heatmap';
+import AIFeedbackCard from './components/AIFeedbackCard';
 
 const Analytics = () => {
   // 1. Pull data from all modules
@@ -163,7 +164,7 @@ const Analytics = () => {
   }, [courses, videos, notes, projects, streakCurrent]);
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
@@ -183,6 +184,14 @@ const Analytics = () => {
             <ChevronDown size={14} className="text-slate-400" />
           </div>
         </div>
+      </div>
+
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-50">
+        <AIFeedbackCard stats={{ 
+          totalNotes: notes.length, 
+          completedTasks: projects.filter(p => p.status === 'Completed').length, 
+          timeSpent: analytics.kpis.totalWatchTime + ' mins' 
+        }} />
       </div>
 
       {/* KPI Layer */}

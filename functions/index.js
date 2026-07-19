@@ -1056,3 +1056,42 @@ exports.githubCallback = onRequest({ secrets: [githubClientSecret] }, async (req
     return res.redirect(buildFrontendUrl(`?github_error=server_error`));
   }
 });
+
+exports.adminCreateUser = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Must be logged in.");
+  }
+
+  const callerId = request.auth.uid;
+  const callerDoc = await admin.firestore().collection("users").doc(callerId).get();
+  
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller profile not found.");
+  }
+  
+  const callerData = callerDoc.data();
+  if (callerData.role !== "admin" && callerData.role !== "superadmin") {
+    throw new HttpsError("permission-denied", "Requires admin privileges.");
+  }
+
+  const { email, name, password } = request.data;
+  
+  if (!email || !password || !name) {
+    throw new HttpsError("invalid-argument", "Email, name, and password are required.");
+  }
+
+  try {
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName: name,
+    });
+
+    return { success: true, uid: userRecord.uid };
+  } catch (error) {
+    console.error("[adminCreateUser] Error creating user:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+exports.aiGateway = require("./aiRouter").aiGateway;

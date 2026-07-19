@@ -219,10 +219,10 @@ const newResource = {
             <button
               key={cat}
               onClick={() => setSelectedCategory(selectedCategory === cat ? 'All' : cat)}
-              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
                 selectedCategory === cat
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                  ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-blue-300 hover:text-blue-500'
               }`}
             >
               {cat}
@@ -288,12 +288,17 @@ const newResource = {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="py-16 text-center bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] border border-dashed border-slate-200 dark:border-slate-700"
+          className="relative py-24 text-center bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col items-center justify-center"
         >
-          <Award size={48} className="mx-auto mb-4 text-slate-300" />
-          <p className="text-slate-500 font-bold">No resources added</p>
-          <p className="text-sm text-slate-400 mt-1">
-            {entityResources.length === 0 ? `Add resources for this ${label}` : 'No resources match your search'}
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-900/10 dark:to-blue-900/10 opacity-50"></div>
+          <div className="relative z-10 w-24 h-24 mb-6 rounded-full bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <FolderOpen size={32} className="text-white" />
+            </div>
+          </div>
+          <h3 className="relative z-10 text-xl font-black text-slate-800 dark:text-white mb-2">No resources added</h3>
+          <p className="relative z-10 text-slate-500 max-w-sm mx-auto">
+            Gather your links, articles, and references here to keep everything organized.
           </p>
         </motion.div>
       )}

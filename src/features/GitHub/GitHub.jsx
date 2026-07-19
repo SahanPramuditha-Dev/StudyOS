@@ -17,7 +17,7 @@ const GitHub = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 space-y-8">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
           <GithubIcon size={32} />

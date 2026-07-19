@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { TrendingUp, CheckCircle2, Clock, AlertCircle, Award } from 'lucide-react';
 
 const ProgressTrackerTab = ({ assignment }) => {
   // Calculate progress metrics
@@ -32,17 +32,33 @@ const ProgressTrackerTab = ({ assignment }) => {
   const deadlineProgress = useMemo(() => {
     if (!assignment.deadline) return null;
     
-    const createdAt = new Date(assignment.createdAt);
+    const createdAt = new Date(assignment.createdAt || new Date());
     const deadline = new Date(assignment.deadline);
     const now = new Date();
     
-    const totalTime = deadline - createdAt;
+    const totalTime = Math.max(deadline - createdAt, 1);
     const elapsedTime = now - createdAt;
-    const percentage = Math.min((elapsedTime / totalTime) * 100, 100);
+    let percentage = (elapsedTime / totalTime) * 100;
+    
+    if (percentage < 0) percentage = 0;
+    if (percentage > 100 || deadline < now) percentage = 100;
     
     return {
-      percentage: Math.max(0, percentage),
+      percentage: Math.round(percentage),
       daysLeft: Math.ceil((deadline - now) / (1000 * 60 * 60 * 24))
+    };
+  }, [assignment]);
+
+  // Grading Progress (mocking target vs actual, assuming assignment might have targetMarks in future)
+  const gradingProgress = useMemo(() => {
+    const marks = assignment.marks || 0;
+    const target = assignment.targetMarks || 100; // default target
+    const current = assignment.achievedMarks || 0; // default achieved
+    return {
+       total: marks,
+       target: target,
+       current: current,
+       percentage: (current / target) * 100 || 0
     };
   }, [assignment]);
 
@@ -162,13 +178,11 @@ const ProgressTrackerTab = ({ assignment }) => {
                     </linearGradient>
                   </defs>
                 </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-sm font-bold text-slate-500">Time Elapsed</p>
-                    <p className="text-2xl font-black text-slate-800 dark:text-white">
-                      {Math.round(deadlineProgress.percentage)}%
-                    </p>
-                  </div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-black text-slate-800 dark:text-white">
+                    {Math.round(deadlineProgress.percentage)}%
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Time Elapsed</span>
                 </div>
               </div>
 
