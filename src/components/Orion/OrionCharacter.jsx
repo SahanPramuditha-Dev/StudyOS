@@ -71,59 +71,76 @@ const OwlEyes = ({ pupilOffset, isBlinking, emotion }) => {
   const sparkle = emotion === ORION_EMOTIONS.CELEBRATING || emotion === ORION_EMOTIONS.HAPPY;
   const isSleepy = emotion === ORION_EMOTIONS.SLEEPY;
   const isWorried = emotion === ORION_EMOTIONS.WORRIED;
+  const isProud = emotion === ORION_EMOTIONS.PROUD;
+  const isThinking = emotion === ORION_EMOTIONS.THINKING;
 
   // Eye shape based on emotion
   const getEyelidRY = () => {
-    if (isSleepy) return 7; // almost closed
-    if (isBlinking) return 1;
+    if (isSleepy) return 10; // almost closed
+    if (isBlinking) return 2;
+    if (isProud) return 12; // squinting happily
     return 0;
   };
   const eyelidRY = getEyelidRY();
 
   const EyeUnit = ({ cx, isLeft }) => {
-    const px = cx + pupilOffset.x * 3.5;
-    const py = 48 + pupilOffset.y * 3.5;
-    const eyeColor = emotion === ORION_EMOTIONS.FOCUSED ? '#7dd3fc' :
-                     emotion === ORION_EMOTIONS.WORRIED ? '#fca5a5' : '#1e293b';
+    // Determine pupil position based on emotion and cursor tracking
+    let px = cx + pupilOffset.x * 4;
+    let py = 52 + pupilOffset.y * 4;
+
+    if (isThinking) {
+      py = 46; // look up
+      px = cx + (isLeft ? 4 : -4); // look inward slightly
+    }
+
+    const eyeColor = emotion === ORION_EMOTIONS.FOCUSED ? '#0ea5e9' :
+                     emotion === ORION_EMOTIONS.WORRIED ? '#ef4444' : '#1e293b';
 
     return (
       <g>
-        {/* Eye socket glow */}
-        <ellipse cx={cx} cy={48} rx={14} ry={14} fill="white" opacity="0.95" />
-        <ellipse cx={cx} cy={48} rx={14} ry={14} fill="none" stroke="#e2e8f0" strokeWidth="1.5" />
+        {/* Outer eye white */}
+        <ellipse cx={cx} cy={52} rx={16} ry={16} fill="white" />
+        
         {/* Pupil */}
         {!isSleepy && !isBlinking && (
-          <>
-            <circle cx={px} cy={py} r={6.5} fill={eyeColor} />
-            <circle cx={px + 2} cy={py - 2} r={2.5} fill="white" opacity="0.6" />
-            <circle cx={px - 2} cy={py + 1.5} r={1} fill="white" opacity="0.3" />
-          </>
+          <motion.g
+            animate={{ x: px - cx, y: py - 52 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          >
+            <circle cx={cx} cy={52} r={8} fill={eyeColor} />
+            <circle cx={cx + 2} cy={52 - 3} r={3} fill="white" opacity="0.8" />
+            <circle cx={cx - 3} cy={52 + 2} r={1.5} fill="white" opacity="0.4" />
+          </motion.g>
         )}
+        
         {/* Sparkle stars for happy/celebrating */}
         {sparkle && (
-          <>
-            <motion.text x={cx - 3} y={44} textAnchor="middle" fontSize="7" fill="#fbbf24"
-              animate={{ opacity: [1, 0.3, 1], scale: [1, 1.2, 1] }}
-              transition={{ duration: 1, repeat: Infinity }}>✦</motion.text>
-          </>
+          <motion.text x={cx - 4} y={48} textAnchor="middle" fontSize="9" fill="#fbbf24"
+            animate={{ opacity: [1, 0.4, 1], scale: [1, 1.3, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity }}>✦</motion.text>
         )}
+        
         {/* Worried eyebrow */}
         {isWorried && (
           <path
-            d={isLeft ? `M${cx-10},36 Q${cx},32 ${cx+10},36` : `M${cx-10},36 Q${cx},32 ${cx+10},36`}
-            stroke="#ef4444" strokeWidth="2" fill="none" strokeLinecap="round"
-            transform={isLeft ? `rotate(15,${cx},36)` : `rotate(-15,${cx},36)`}
+            d={isLeft ? `M${cx-12},38 Q${cx},34 ${cx+12},38` : `M${cx-12},38 Q${cx},34 ${cx+12},38`}
+            stroke="#1e293b" strokeWidth="2.5" fill="none" strokeLinecap="round"
+            transform={isLeft ? `rotate(20,${cx},38)` : `rotate(-20,${cx},38)`}
           />
         )}
-        {/* Eyelid overlay for blinking/sleeping */}
-        {(isSleepy || isBlinking) && (
-          <ellipse cx={cx} cy={48} rx={14} ry={eyelidRY + (isBlinking ? 13 : 0)} fill="#c2956c" />
+        
+        {/* Eyelid overlay for blinking/sleeping/squinting */}
+        {(isSleepy || isBlinking || isProud) && (
+          <path 
+            d={`M${cx-16},52 A16,16 0 0,1 ${cx+16},52 A16,${eyelidRY + (isBlinking ? 15 : 0)} 0 0,1 ${cx-16},52 Z`} 
+            fill="#d4a373" 
+          />
         )}
+        
         {/* Sleep lines */}
         {isSleepy && (
           <>
-            <line x1={cx - 8} y1={48} x2={cx + 8} y2={48} stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
-            <line x1={cx - 5} y1={52} x2={cx + 5} y2={52} stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1={cx - 10} y1={52} x2={cx + 10} y2={52} stroke="#78350f" strokeWidth="2.5" strokeLinecap="round" />
           </>
         )}
       </g>
@@ -140,87 +157,132 @@ const OwlEyes = ({ pupilOffset, isBlinking, emotion }) => {
 
 const OwlGlasses = ({ emotion }) => {
   const isGlowing = emotion === ORION_EMOTIONS.FOCUSED || emotion === ORION_EMOTIONS.THINKING;
-  const glassColor = isGlowing ? '#7dd3fc' : '#475569';
-  const glowOpacity = isGlowing ? 0.4 : 0;
+  const glassColor = isGlowing ? '#38bdf8' : '#334155';
+  const glowOpacity = isGlowing ? 0.6 : 0;
+  
+  // Animate glasses slightly up when thinking
+  const yOffset = emotion === ORION_EMOTIONS.THINKING ? -2 : 0;
 
   return (
-    <g>
+    <motion.g animate={{ y: yOffset }} transition={{ type: 'spring' }}>
       {/* Glow filter layer */}
       {isGlowing && (
         <>
-          <ellipse cx={42} cy={48} rx={17} ry={17} fill="none" stroke="#38bdf8" strokeWidth="4" opacity={glowOpacity} />
-          <ellipse cx={78} cy={48} rx={17} ry={17} fill="none" stroke="#38bdf8" strokeWidth="4" opacity={glowOpacity} />
+          <ellipse cx={42} cy={52} rx={21} ry={21} fill="none" stroke="#7dd3fc" strokeWidth="6" opacity={glowOpacity} filter="url(#glow)" />
+          <ellipse cx={78} cy={52} rx={21} ry={21} fill="none" stroke="#7dd3fc" strokeWidth="6" opacity={glowOpacity} filter="url(#glow)" />
         </>
       )}
       {/* Left lens frame */}
-      <ellipse cx={42} cy={48} rx={15} ry={15} fill="none" stroke={glassColor} strokeWidth="2.5" />
+      <ellipse cx={42} cy={52} rx={19} ry={19} fill="none" stroke={glassColor} strokeWidth="3" />
       {/* Right lens frame */}
-      <ellipse cx={78} cy={48} rx={15} ry={15} fill="none" stroke={glassColor} strokeWidth="2.5" />
+      <ellipse cx={78} cy={52} rx={19} ry={19} fill="none" stroke={glassColor} strokeWidth="3" />
       {/* Bridge */}
-      <path d="M57,47 Q60,44 63,47" stroke={glassColor} strokeWidth="2" fill="none" strokeLinecap="round" />
+      <path d="M61,48 Q60,45 59,48" stroke={glassColor} strokeWidth="3" fill="none" strokeLinecap="round" />
       {/* Left arm */}
-      <path d="M27,44 Q22,42 18,40" stroke={glassColor} strokeWidth="2" fill="none" strokeLinecap="round" />
+      <path d="M23,48 Q15,45 10,42" stroke={glassColor} strokeWidth="3" fill="none" strokeLinecap="round" />
       {/* Right arm */}
-      <path d="M93,44 Q98,42 102,40" stroke={glassColor} strokeWidth="2" fill="none" strokeLinecap="round" />
-    </g>
+      <path d="M97,48 Q105,45 110,42" stroke={glassColor} strokeWidth="3" fill="none" strokeLinecap="round" />
+      
+      {/* Glass reflections */}
+      <path d="M28,40 Q35,36 42,36" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.4" />
+      <path d="M64,40 Q71,36 78,36" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.4" />
+    </motion.g>
   );
 };
 
 const GraduationCap = () => (
-  <g>
+  <g transform="translate(0, -6)">
     {/* Cap base */}
-    <ellipse cx={60} cy={20} rx={22} ry={6} fill="#1e293b" />
+    <path d="M42,22 L78,22 L74,32 L46,32 Z" fill="#1e293b" />
     {/* Cap top board */}
-    <rect x={38} y={8} width={44} height={10} rx={3} fill="#0f172a" />
-    {/* Tassel */}
-    <circle cx={82} cy={8} r={3} fill="#fbbf24" />
-    <line x1={82} y1={11} x2={82} y2={22} stroke="#fbbf24" strokeWidth="1.5" />
-    <line x1={79} y1={22} x2={85} y2={22} stroke="#fbbf24" strokeWidth="1.5" />
-    {/* Shine on cap */}
-    <ellipse cx={52} cy={11} rx={8} ry={3} fill="white" opacity="0.08" transform="rotate(-15 52 11)" />
+    <path d="M60,10 L30,18 L60,26 L90,18 Z" fill="#0f172a" stroke="#334155" strokeWidth="1" strokeLinejoin="round" />
+    {/* Tassel Button */}
+    <circle cx={60} cy={18} r={3} fill="#fbbf24" />
+    {/* Tassel String */}
+    <path d="M60,18 Q75,18 82,24" stroke="#fbbf24" strokeWidth="1.5" fill="none" />
+    {/* Tassel Fringe */}
+    <line x1={82} y1={24} x2={80} y2={32} stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1={82} y1={24} x2={82} y2={33} stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1={82} y1={24} x2={84} y2={32} stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" />
   </g>
 );
 
 const OwlBody = ({ emotion }) => {
   const isCelebrating = emotion === ORION_EMOTIONS.CELEBRATING;
+  const isHappy = emotion === ORION_EMOTIONS.HAPPY;
+  const isWaving = emotion === ORION_EMOTIONS.WAVING;
+  
   return (
     <g>
-      {/* Main body */}
-      <ellipse cx={60} cy={80} rx={38} ry={45} fill="url(#bodyGrad)" />
-      {/* Chest feather pattern */}
-      <ellipse cx={60} cy={88} rx={22} ry={28} fill="url(#chestGrad)" />
-      {/* Wing left */}
-      <motion.path
-        d="M22,70 Q8,80 12,100 Q22,95 30,80 Z"
-        fill="url(#wingGrad)"
-        animate={isCelebrating
-          ? { rotate: [0, -20, 10, -15, 5, 0], originX: '30px', originY: '80px' }
-          : { rotate: [0, -3, 0, -3, 0], originX: '30px', originY: '80px' }}
-        transition={isCelebrating
-          ? { duration: 1.5, repeat: 2 }
-          : { duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      {/* Wing right */}
-      <motion.path
-        d="M98,70 Q112,80 108,100 Q98,95 90,80 Z"
-        fill="url(#wingGrad)"
-        animate={isCelebrating
-          ? { rotate: [0, 20, -10, 15, -5, 0], originX: '90px', originY: '80px' }
-          : { rotate: [0, 3, 0, 3, 0], originX: '90px', originY: '80px' }}
-        transition={isCelebrating
-          ? { duration: 1.5, repeat: 2 }
-          : { duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
-      />
-      {/* Feather detail lines */}
-      <path d="M38,95 Q60,88 82,95" stroke="#b45309" strokeWidth="1" fill="none" opacity="0.3" />
-      <path d="M40,105 Q60,98 80,105" stroke="#b45309" strokeWidth="1" fill="none" opacity="0.3" />
+      {/* Ear Tufts (Horns) */}
+      <path d="M28,30 Q20,10 32,20 Z" fill="#9a3412" />
+      <path d="M92,30 Q100,10 88,20 Z" fill="#9a3412" />
+
+      {/* Main Body (Egg Shape) */}
+      <path d="M30,50 C30,10 90,10 90,50 C90,110 95,120 60,120 C25,120 30,110 30,50 Z" fill="url(#bodyGrad)" />
+      
+      {/* Face Mask (Heart Shape) */}
+      <path d="M60,65 C40,40 20,40 25,65 C30,95 60,115 60,115 C60,115 90,95 95,65 C100,40 80,40 60,65 Z" fill="#fef08a" opacity="0.9" />
+      <path d="M60,65 C40,40 20,40 25,65 C30,95 60,115 60,115 C60,115 90,95 95,65 C100,40 80,40 60,65 Z" fill="url(#faceGrad)" opacity="0.7" />
+
+      {/* Chest Feathers (V-shapes) */}
+      <g stroke="#d97706" strokeWidth="2" strokeLinecap="round" opacity="0.3" fill="none">
+        <path d="M50,85 Q60,95 70,85" />
+        <path d="M55,95 Q60,102 65,95" />
+        <path d="M45,90 Q50,97 55,90" />
+        <path d="M65,90 Q70,97 75,90" />
+      </g>
+
+      {/* Wing Left */}
+      <motion.g
+        transformOrigin="35px 65px"
+        animate={
+          isCelebrating ? { rotate: [0, -30, 0, -30, 0] } :
+          isHappy ? { rotate: [0, -10, 0] } :
+          { rotate: [0, -2, 0] }
+        }
+        transition={
+          isCelebrating ? { duration: 1.5, repeat: Infinity } :
+          isHappy ? { duration: 2, repeat: Infinity, ease: "easeInOut" } :
+          { duration: 4, repeat: Infinity, ease: "easeInOut" }
+        }
+      >
+        <path d="M32,65 C15,70 10,95 18,110 C25,95 28,80 35,75 Z" fill="url(#wingGrad)" />
+      </motion.g>
+
+      {/* Wing Right */}
+      <motion.g
+        transformOrigin="85px 65px"
+        animate={
+          isCelebrating ? { rotate: [0, 30, 0, 30, 0] } :
+          isWaving ? { rotate: [0, -40, 20, -40, 0] } :
+          isHappy ? { rotate: [0, 10, 0] } :
+          { rotate: [0, 2, 0] }
+        }
+        transition={
+          isCelebrating ? { duration: 1.5, repeat: Infinity, delay: 0.2 } :
+          isWaving ? { duration: 1.5, repeat: 2 } :
+          isHappy ? { duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.2 } :
+          { duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.2 }
+        }
+      >
+        <path d="M88,65 C105,70 110,95 102,110 C95,95 92,80 85,75 Z" fill="url(#wingGrad)" />
+      </motion.g>
+
       {/* Beak */}
-      <path d="M55,62 L60,70 L65,62 Q60,58 55,62 Z" fill="#fbbf24" />
-      <path d="M55,62 L60,66 L65,62" stroke="#d97706" strokeWidth="0.5" fill="none" />
+      <g transform="translate(0, 4)">
+        <path d="M55,62 L60,72 L65,62 Z" fill="#f59e0b" />
+        <path d="M55,62 L60,72 L65,62 Z" fill="url(#beakGrad)" opacity="0.8" />
+        {/* Beak highlight */}
+        <path d="M57,63 L60,69 L63,63" stroke="#fcd34d" strokeWidth="1" fill="none" />
+      </g>
+
       {/* Feet */}
-      <g opacity="0.9">
-        <path d="M45,120 Q42,128 38,130 M45,120 Q45,128 45,130 M45,120 Q48,128 52,130" stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-        <path d="M75,120 Q72,128 68,130 M75,120 Q75,128 75,130 M75,120 Q78,128 82,130" stroke="#d97706" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <g stroke="#ea580c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none">
+        {/* Left Foot */}
+        <path d="M42,120 L40,128 M42,120 L44,129 M42,120 L48,127" />
+        {/* Right Foot */}
+        <path d="M78,120 L80,128 M78,120 L76,129 M78,120 L72,127" />
       </g>
     </g>
   );
@@ -232,37 +294,58 @@ const OwlAccessories = ({ emotion }) => {
 
   return (
     <>
-      {/* Feather pen (always visible) */}
-      <g transform="rotate(-25 95 95) translate(88, 85)">
-        <path d="M0,0 Q5,-20 2,-35 Q-2,-35 0,-20 Q-4,-10 0,0 Z" fill="#a855f7" opacity="0.8" />
+      {/* Feather pen (always visible in background wing) */}
+      <g transform="rotate(-20 95 90) translate(85, 75)">
+        <path d="M0,0 Q5,-20 2,-35 Q-2,-35 0,-20 Q-4,-10 0,0 Z" fill="#a855f7" opacity="0.9" />
         <path d="M0,0 L2,-10" stroke="#7c3aed" strokeWidth="1" fill="none" />
         <path d="M2,-35 Q6,-42 4,-50" stroke="#c4b5fd" strokeWidth="1.5" fill="none" strokeLinecap="round" />
       </g>
+      
       {/* Book when focused */}
-      {hasBook && (
-        <motion.g initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
-          <rect x={35} y={108} width={50} height={28} rx={3} fill="#3b82f6" />
-          <rect x={35} y={108} width={25} height={28} rx={3} fill="#2563eb" />
-          <line x1={60} y1={108} x2={60} y2={136} stroke="#1d4ed8" strokeWidth="1" />
-          <rect x={38} y={112} width={18} height={2} rx={1} fill="white" opacity="0.5" />
-          <rect x={38} y={117} width={14} height={2} rx={1} fill="white" opacity="0.4" />
-          <rect x={38} y={122} width={16} height={2} rx={1} fill="white" opacity="0.3" />
-        </motion.g>
-      )}
+      <AnimatePresence>
+        {hasBook && (
+          <motion.g 
+            initial={{ opacity: 0, y: 10, rotate: -10 }} 
+            animate={{ opacity: 1, y: 0, rotate: 0 }}
+            exit={{ opacity: 0, y: 10, rotate: 10 }}
+          >
+            <rect x={35} y={98} width={50} height={30} rx={4} fill="#1e3a8a" />
+            <rect x={37} y={100} width={46} height={26} rx={2} fill="#f8fafc" />
+            <line x1={60} y1={100} x2={60} y2={126} stroke="#cbd5e1" strokeWidth="2" />
+            
+            {/* Text lines */}
+            <line x1={40} y1={105} x2={55} y2={105} stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1={40} y1={110} x2={52} y2={110} stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1={40} y1={115} x2={55} y2={115} stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1={65} y1={105} x2={80} y2={105} stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1={65} y1={110} x2={78} y2={110} stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
+          </motion.g>
+        )}
+      </AnimatePresence>
+      
       {/* Coffee when idle */}
-      {hasCoffee && (
-        <motion.g
-          transform="translate(82, 100)"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <rect x={0} y={8} width={18} height={14} rx={3} fill="#f59e0b" />
-          <path d="M18,12 Q24,12 24,16 Q24,20 18,20" stroke="#d97706" strokeWidth="2" fill="none" />
-          <rect x={2} y={4} width={14} height={6} rx={2} fill="#78350f" />
-          <path d="M6,4 Q5,0 7,-2" stroke="#d97706" strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.7" />
-          <path d="M10,4 Q9,0 11,-3" stroke="#d97706" strokeWidth="1" fill="none" strokeLinecap="round" opacity="0.5" />
-        </motion.g>
-      )}
+      <AnimatePresence>
+        {hasCoffee && (
+          <motion.g
+            transform="translate(80, 95)"
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+          >
+            {/* Cup */}
+            <rect x={0} y={10} width={20} height={18} rx={3} fill="#0ea5e9" />
+            {/* Handle */}
+            <path d="M20,14 Q26,14 26,19 Q26,24 20,24" stroke="#0284c7" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+            {/* Sleeve */}
+            <rect x={0} y={16} width={20} height={6} fill="#78350f" />
+            {/* Steam */}
+            <motion.g animate={{ y: [0, -5, 0], opacity: [0.5, 0, 0.5] }} transition={{ duration: 3, repeat: Infinity }}>
+              <path d="M6,6 Q4,2 8,-2" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+              <path d="M12,8 Q10,4 14,0" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+            </motion.g>
+          </motion.g>
+        )}
+      </AnimatePresence>
     </>
   );
 };
@@ -271,29 +354,27 @@ const OwlAccessories = ({ emotion }) => {
 
 const SVGDefs = () => (
   <defs>
-    <radialGradient id="bodyGrad" cx="45%" cy="35%" r="65%">
-      <stop offset="0%" stopColor="#d97706" />
-      <stop offset="40%" stopColor="#b45309" />
-      <stop offset="100%" stopColor="#78350f" />
+    <radialGradient id="bodyGrad" cx="50%" cy="40%" r="65%">
+      <stop offset="0%" stopColor="#c2410c" />   {/* Orange/Brown bright */}
+      <stop offset="60%" stopColor="#9a3412" />  {/* Mid brown */}
+      <stop offset="100%" stopColor="#7c2d12" /> {/* Dark brown edges */}
     </radialGradient>
-    <radialGradient id="chestGrad" cx="50%" cy="40%" r="60%">
-      <stop offset="0%" stopColor="#fef3c7" />
-      <stop offset="60%" stopColor="#fde68a" />
-      <stop offset="100%" stopColor="#fbbf24" />
+    <radialGradient id="faceGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stopColor="#ffffff" />
+      <stop offset="70%" stopColor="#fef3c7" />
+      <stop offset="100%" stopColor="#fde68a" />
     </radialGradient>
-    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stopColor="#92400e" />
+    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#9a3412" />
       <stop offset="100%" stopColor="#78350f" />
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-      <feMerge>
-        <feMergeNode in="coloredBlur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
-    <filter id="softShadow">
-      <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#000" floodOpacity="0.15" />
+    <linearGradient id="beakGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#fcd34d" />
+      <stop offset="100%" stopColor="#d97706" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
     </filter>
   </defs>
 );
@@ -305,7 +386,7 @@ const OrionCharacter = ({
   animationTrigger,
   isThinking = false,
   xpGainDisplay,
-  size = 130,
+  size = 140,
 }) => {
   const [isBlinking, setIsBlinking] = useState(false);
   const [pupilOffset, setPupilOffset] = useState({ x: 0, y: 0 });
@@ -321,7 +402,18 @@ const OrionCharacter = ({
         setIsBlinking(true);
         setTimeout(() => {
           setIsBlinking(false);
-          scheduleBlink();
+          // Double blink chance
+          if (Math.random() > 0.7) {
+            setTimeout(() => {
+              setIsBlinking(true);
+              setTimeout(() => {
+                setIsBlinking(false);
+                scheduleBlink();
+              }, 100);
+            }, 100);
+          } else {
+            scheduleBlink();
+          }
         }, 120);
       }, delay);
     };
@@ -331,17 +423,24 @@ const OrionCharacter = ({
 
   // ─── Mouse Eye Tracking ──────────────────────────────────────────────────────
   const handleMouseMove = useCallback((e) => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || emotion === ORION_EMOTIONS.SLEEPY || isThinking) return;
     const rect = svgRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height * 0.38;
-    const dx = (e.clientX - cx) / window.innerWidth;
-    const dy = (e.clientY - cy) / window.innerHeight;
+    const cy = rect.top + rect.height * 0.4;
+    
+    // Calculate distance and angle
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    
+    // Normalize and constrain
+    const distance = Math.min(1, Math.sqrt(dx*dx + dy*dy) / 500); // 500px is max influence range
+    const angle = Math.atan2(dy, dx);
+    
     setPupilOffset({
-      x: Math.max(-1, Math.min(1, dx * 4)),
-      y: Math.max(-1, Math.min(1, dy * 4)),
+      x: Math.cos(angle) * distance,
+      y: Math.sin(angle) * distance,
     });
-  }, []);
+  }, [emotion, isThinking]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
@@ -359,56 +458,64 @@ const OrionCharacter = ({
   // ─── Body Motion Variants ─────────────────────────────────────────────────
   const bodyVariants = {
     idle: {
-      y: [0, -5, 0],
+      y: [0, -6, 0],
       rotate: 0,
-      transition: { y: { duration: 3, repeat: Infinity, ease: 'easeInOut' } },
+      scale: 1,
+      transition: { y: { duration: 3.5, repeat: Infinity, ease: 'easeInOut' } },
     },
     happy: {
-      y: [0, -8, 0, -5, 0],
-      rotate: [0, -2, 2, -2, 0],
-      transition: { duration: 1.5, repeat: 2 },
-    },
-    celebrating: {
-      y: [0, -20, -10, -18, 0],
-      rotate: [0, -5, 5, -3, 0],
-      scale: [1, 1.05, 1, 1.05, 1],
-      transition: { duration: 1.2, repeat: 2 },
-    },
-    thinking: {
-      y: [0, -3, 0],
-      rotate: [0, -3, 0],
+      y: [0, -10, 0, -6, 0],
+      rotate: [0, -3, 3, -2, 0],
+      scale: [1, 1.02, 1],
       transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
     },
+    celebrating: {
+      y: [0, -25, -10, -20, 0],
+      rotate: [0, -5, 5, -3, 0],
+      scale: [1, 1.05, 1, 1.05, 1],
+      transition: { duration: 1.5, repeat: Infinity },
+    },
+    thinking: {
+      y: [0, -4, 0],
+      rotate: [0, -4, 0],
+      scale: 1,
+      transition: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
+    },
     focused: {
-      y: [0, -2, 0],
+      y: [0, -3, 0],
       rotate: 0,
+      scale: 1,
       transition: { duration: 4, repeat: Infinity, ease: 'easeInOut' },
     },
     sleepy: {
-      y: [0, 2, 0],
-      rotate: [0, 3, 0],
-      transition: { duration: 4, repeat: Infinity, ease: 'easeInOut' },
+      y: [0, 4, 0],
+      rotate: [0, 2, 0],
+      scale: [1, 0.98, 1],
+      transition: { duration: 5, repeat: Infinity, ease: 'easeInOut' },
     },
     worried: {
       y: 0,
-      rotate: [-2, 2, -2],
+      rotate: [-3, 3, -3],
+      scale: 1,
       transition: { duration: 0.8, repeat: Infinity },
     },
     proud: {
-      y: [0, -6, 0],
+      y: [0, -8, 0],
       rotate: 0,
       scale: [1, 1.05, 1],
-      transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
+      transition: { duration: 2.5, repeat: Infinity, ease: 'easeInOut' },
     },
     confused: {
       y: 0,
-      rotate: [0, -8, 0],
+      rotate: [0, -10, 0],
+      scale: 1,
       transition: { duration: 1.5, repeat: Infinity, repeatDelay: 1 },
     },
     waving: {
-      y: [0, -5, 0],
-      rotate: [0, -3, 0],
-      transition: { duration: 1, repeat: 3 },
+      y: [0, -8, 0],
+      rotate: [0, -5, 0],
+      scale: 1,
+      transition: { duration: 1.2, repeat: 3 },
     },
   };
 
@@ -426,7 +533,7 @@ const OrionCharacter = ({
       {/* Confetti */}
       {showConfetti && (
         <div className="absolute inset-0 pointer-events-none overflow-visible">
-          {[...Array(18)].map((_, i) => <ConfettiParticle key={i} index={i} />)}
+          {[...Array(24)].map((_, i) => <ConfettiParticle key={i} index={i} />)}
         </div>
       )}
 
@@ -451,7 +558,7 @@ const OrionCharacter = ({
             <ZZZParticle index={2} />
           </div>
         )}
-        {(emotion === ORION_EMOTIONS.HAPPY || emotion === ORION_EMOTIONS.CELEBRATING) && (
+        {(emotion === ORION_EMOTIONS.HAPPY || emotion === ORION_EMOTIONS.CELEBRATING || emotion === ORION_EMOTIONS.PROUD) && (
           <>
             <FloatingParticle key="s1" char="⭐" index={0} color="#fbbf24" />
             <FloatingParticle key="s2" char="✨" index={2} color="#f59e0b" />
@@ -462,15 +569,19 @@ const OrionCharacter = ({
       {/* Thinking spinner overlay */}
       {isThinking && (
         <motion.div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
           <motion.div
-            className="w-6 h-6 border-3 border-primary-500 border-t-transparent rounded-full"
-            style={{ borderWidth: 3, borderColor: '#7dd3fc', borderTopColor: 'transparent' }}
+            className="w-8 h-8 rounded-full"
+            style={{ 
+              border: '4px solid rgba(14, 165, 233, 0.2)', 
+              borderTopColor: '#0ea5e9',
+              boxShadow: '0 0 15px rgba(14, 165, 233, 0.4)'
+            }}
             animate={{ rotate: 360 }}
-            transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
           />
         </motion.div>
       )}
@@ -479,28 +590,21 @@ const OrionCharacter = ({
       <motion.div
         ref={svgRef}
         animate={currentVariant}
-        style={{ filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.18))' }}
+        style={{ filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.25)) drop-shadow(0 4px 8px rgba(0,0,0,0.1))' }}
       >
         <svg
           width={size}
-          height={size + 10}
+          height={size + 15}
           viewBox="0 0 120 145"
           xmlns="http://www.w3.org/2000/svg"
         >
           <SVGDefs />
 
-          {/* Head base */}
-          <ellipse cx={60} cy={52} rx={40} ry={40} fill="url(#bodyGrad)" />
-
-          {/* Ear tufts */}
-          <path d="M28,22 Q22,5 32,12 Q36,18 38,24 Z" fill="#92400e" />
-          <path d="M92,22 Q98,5 88,12 Q84,18 82,24 Z" fill="#92400e" />
+          {/* Body */}
+          <OwlBody emotion={emotion} />
 
           {/* Graduation cap */}
           <GraduationCap />
-
-          {/* Face circle (lighter area) */}
-          <ellipse cx={60} cy={52} rx={30} ry={28} fill="#fef3c7" opacity="0.6" />
 
           {/* Eyes */}
           <OwlEyes pupilOffset={pupilOffset} isBlinking={isBlinking} emotion={emotion} />
@@ -508,16 +612,13 @@ const OrionCharacter = ({
           {/* Glasses */}
           <OwlGlasses emotion={emotion} />
 
-          {/* Body */}
-          <OwlBody emotion={emotion} />
-
           {/* Accessories */}
           <OwlAccessories emotion={emotion} />
 
-          {/* AI symbol (tiny badge on chest) */}
-          <g transform="translate(50, 78)">
-            <circle cx={10} cy={10} r={8} fill="#1e293b" opacity="0.85" />
-            <text x={10} y={14} textAnchor="middle" fontSize="8" fill="#38bdf8" fontWeight="bold">AI</text>
+          {/* AI Badge */}
+          <g transform="translate(50, 105)">
+            <rect x="0" y="0" width="20" height="12" rx="4" fill="#0f172a" opacity="0.8" />
+            <text x="10" y="9" textAnchor="middle" fontSize="7" fill="#38bdf8" fontWeight="bold" letterSpacing="0.5">AI</text>
           </g>
         </svg>
       </motion.div>
