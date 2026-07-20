@@ -2,7 +2,11 @@ import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EyeOff, GripVertical, Settings2 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
 import { useOrion, ORION_EMOTIONS } from '../../context/OrionContext';
+
+// Configure PDF.js worker for Vite
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 import OrionCharacter from './OrionCharacter';
 import OrionSpeechBubble from './OrionSpeechBubble';
 import OrionChatPanel from './OrionChatPanel';
@@ -127,21 +131,46 @@ const OrionCompanion = () => {
     const file = e.dataTransfer.files[0];
     if (!file) return;
 
-    if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.json')) {
-      const text = await file.text();
+    try {
+      let extractedText = '';
+
+      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        speak('Reading PDF... 🦉');
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        
+        let fullText = '';
+        // Extract text from up to first 20 pages to prevent memory issues
+        const maxPages = Math.min(pdf.numPages, 20);
+        for (let i = 1; i <= maxPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map(item => item.str).join(' ');
+          fullText += pageText + '\\n';
+        }
+        extractedText = fullText;
+
+      } else if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.json')) {
+        extractedText = await file.text();
+      } else {
+        speak('I can only read text documents and PDFs right now! 🦉');
+        return;
+      }
+
       // Open chat and trigger analysis
       setIsChatOpen(true);
       setIsOpen(true);
-      speak('Ooh, a document! Let me read this... 🦉');
+      speak('Ooh, a document! Let me analyze this... 🦉');
       
-      // We dispatch a custom event that OrionChatPanel will listen for
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('orion-analyze-document', { 
-          detail: { filename: file.name, content: text.slice(0, 15000) } // truncate if huge
+          detail: { filename: file.name, content: extractedText.slice(0, 15000) }
         }));
       }, 500);
-    } else {
-      speak('I can only read text documents right now! 🦉');
+
+    } catch (err) {
+      console.error('Error reading file:', err);
+      speak('Oops, I had trouble reading that file. 🦉');
     }
   };
 
