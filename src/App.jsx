@@ -35,6 +35,7 @@ import Privacy from './features/Legal/Privacy';
 import Terms from './features/Legal/Terms';
 import Support from './features/Legal/Support';
 import AIChatbot from './components/AIChatbot';
+import { OrionCompanion } from './components/Orion';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { useReminders } from './context/ReminderContext';
@@ -770,7 +771,8 @@ const App = () => {
           />
         )}
       </AnimatePresence>
-      <AIChatbot />
+      {/* Orion replaces AIChatbot as the primary AI interface */}
+      {user && <OrionCompanion />}
     </>
   );
 };

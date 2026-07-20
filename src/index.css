@@ -285,3 +285,103 @@ body {
 .slide-in-from-bottom-4 {
   animation-name: slide-in-from-bottom;
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   ORION COMPANION ANIMATIONS
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@keyframes orion-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+
+@keyframes orion-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95%            { transform: scaleY(0.05); }
+}
+
+@keyframes orion-breathe {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.025); }
+}
+
+@keyframes orion-wing-flap {
+  0%, 100% { transform: rotate(0deg); }
+  25%       { transform: rotate(-15deg); }
+  75%       { transform: rotate(10deg); }
+}
+
+@keyframes orion-glasses-glow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(56,189,248,0.6)); }
+  50%       { filter: drop-shadow(0 0 12px rgba(56,189,248,0.95)); }
+}
+
+@keyframes orion-sparkle {
+  0%   { opacity: 0; transform: scale(0) rotate(0deg); }
+  50%  { opacity: 1; transform: scale(1.2) rotate(180deg); }
+  100% { opacity: 0; transform: scale(0) rotate(360deg); }
+}
+
+@keyframes orion-confetti-fall {
+  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(120px) rotate(720deg); opacity: 0; }
+}
+
+@keyframes orion-zzz {
+  0%   { opacity: 0; transform: translateY(0) translateX(0) scale(0.5); }
+  30%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-30px) translateX(12px) scale(1.1); }
+}
+
+@keyframes orion-pulse-ring {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes orion-question-float {
+  0%   { opacity: 0; transform: translateY(0) scale(0.6); }
+  30%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-40px) scale(1); }
+}
+
+@keyframes orion-xp-pop {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.8); }
+  20%  { opacity: 1; transform: translateY(0) scale(1.05); }
+  80%  { opacity: 1; transform: translateY(-4px) scale(1); }
+  100% { opacity: 0; transform: translateY(-16px) scale(0.9); }
+}
+
+@keyframes orion-levelup-shine {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Utility classes */
+.orion-float {
+  animation: orion-float 3s ease-in-out infinite;
+}
+
+.orion-breathe {
+  animation: orion-breathe 4s ease-in-out infinite;
+}
+
+.orion-glasses-glow {
+  animation: orion-glasses-glow 2s ease-in-out infinite;
+}
+
+.orion-companion-shadow {
+  filter: drop-shadow(0 8px 24px rgba(0,0,0,0.15)) drop-shadow(0 2px 8px rgba(251,191,36,0.12));
+}
+
+/* Scrollbar for Orion chat — hidden by default */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Reduced motion overrides */
+@media (prefers-reduced-motion: reduce) {
+  .orion-float,
+  .orion-breathe,
+  .orion-glasses-glow {
+    animation: none;
+  }
+}

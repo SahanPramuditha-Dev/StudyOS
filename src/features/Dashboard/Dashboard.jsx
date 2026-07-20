@@ -23,6 +23,7 @@ import { generateDailyBriefing } from '../../services/aiService';
 import Select from '../../components/ui/Select';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import WiseOwl from './WiseOwl';
 import {
   BarChart as RechartsBarChart,
   Bar,
@@ -522,6 +523,19 @@ const Dashboard = ({ setActiveTab }) => {
     [courses]
   );
 
+  const owlMood = useMemo(() => {
+    if (overdueAssignments > 0) return 'worried';
+    if (streak?.current >= 100) return 'proud';
+    if (streak?.current >= 30) return 'celebrating';
+    if (streak?.current >= 7) return 'happy';
+    if (pendingAssignments > 0) return 'thinking';
+    return 'focused';
+  }, [overdueAssignments, pendingAssignments, streak?.current]);
+
+  const openNovaWithPrompt = (prompt) => {
+    window.dispatchEvent(new CustomEvent('open-ai-chat', { detail: { message: prompt } }));
+  };
+
   const hasAnyDashboardData =
     courses.length > 0 ||
     notes.length > 0 ||
@@ -589,6 +603,18 @@ const Dashboard = ({ setActiveTab }) => {
           </div>
         </motion.div>
       )}
+
+      <WiseOwl
+        mood={owlMood}
+        streakDays={Number(streak?.current || 0)}
+        overdueCount={overdueAssignments}
+        upcomingCount={upcomingCount}
+        onAskNova={openNovaWithPrompt}
+        onOpenTimer={() => go('timer')}
+        onOpenPlanner={() => go('planner')}
+        onOpenReview={() => go('review')}
+        onOpenAnalytics={() => go('analytics')}
+      />
 
       <section className="relative overflow-hidden rounded-[3rem] bg-gradient-to-br from-primary-600 to-accent-600 dark:from-slate-900 dark:to-primary-900 p-8 md:p-10 xl:p-16 text-white shadow-2xl shadow-primary-500/20 transition-all duration-500">
         <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8 xl:gap-16">

@@ -21,6 +21,7 @@ import { GoogleCalendarProvider } from './context/GoogleCalendarContext'
 import { Toaster } from 'react-hot-toast'
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary'
 import MuiDesignSystemProvider from './theme/MuiDesignSystemProvider'
+import { OrionProvider } from './context/OrionContext'
 
 // 1. Initialize Sentry (Error Monitoring)
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -90,7 +91,9 @@ createRoot(document.getElementById('root')).render(
                 <GoogleCalendarProvider>
                   <ReminderProvider>
                     <QueryClientProvider client={queryClient}>
-                      <App />
+                      <OrionProvider>
+                        <App />
+                      </OrionProvider>
                     </QueryClientProvider>
                   </ReminderProvider>
                 </GoogleCalendarProvider>
