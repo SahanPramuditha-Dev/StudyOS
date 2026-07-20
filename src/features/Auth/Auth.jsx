@@ -20,11 +20,14 @@ import {
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { FirestoreService } from '../../services/firestore';
+import { authErrorMessage } from '../../context/AuthContext';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState('');
   const { login, signup, loginWithGoogle, loginWithGitHub, resetPassword } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
@@ -32,9 +35,45 @@ const Auth = () => {
     password: ''
   });
 
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const validateForm = () => {
+    const identifier = formData.email.trim();
+    const password = formData.password;
+
+    if (isLogin) {
+      if (!identifier) return 'Please enter your email address or username.';
+      if (identifier.includes('@') && !emailPattern.test(identifier)) return 'Please enter a valid email address.';
+
+      const username = identifier.replace(/^@/, '').toLowerCase();
+      const usernameError = identifier.includes('@') ? '' : FirestoreService.validateUsernameFormat(username);
+      if (usernameError) return usernameError;
+
+      if (!password) return 'Please enter your password.';
+      if (password.length < 6) return 'Password must be at least 6 characters.';
+      return '';
+    }
+
+    if (!formData.name.trim()) return 'Please enter your name.';
+    if (!identifier) return 'Please enter your email address.';
+    if (!emailPattern.test(identifier)) return 'Please enter a valid email address.';
+    if (!password) return 'Please enter a password.';
+    if (password.length < 6) return 'Password must be at least 6 characters.';
+
+    return '';
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    const validationError = validateForm();
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
     setLoading(true);
+    setFormError('');
 
     try {
       if (isLogin) {
@@ -43,7 +82,9 @@ const Auth = () => {
         await signup(formData.name, formData.email, formData.password);
       }
     } catch (error) {
-      // Errors are already shown via toast in AuthContext (login / signup).
+      const message = authErrorMessage(error);
+      setFormError(message);
+      toast.error(message);
       console.error(error);
     } finally {
       setLoading(false);
@@ -55,6 +96,7 @@ const Auth = () => {
 
     try {
       await loginWithGoogle();
+      setFormError('');
     } catch (error) {
       // loginWithGoogle already shows authErrorMessage toast before throwing
       console.error(error);
@@ -68,6 +110,7 @@ const Auth = () => {
 
     try {
       await loginWithGitHub();
+      setFormError('');
     } catch (error) {
       console.error(error);
     } finally {
@@ -76,13 +119,25 @@ const Auth = () => {
   };
 
   const handlePasswordReset = async () => {
-    if (!formData.email) {
-      toast.error('Enter your email address first.');
+    const identifier = formData.email.trim();
+    if (!identifier) {
+      toast.error('Enter the email address tied to your account first.');
+      return;
+    }
+
+    if (!identifier.includes('@')) {
+      toast.error('Password resets use your account email address. Please enter that email first.');
+      return;
+    }
+
+    if (!emailPattern.test(identifier)) {
+      toast.error('Please enter a valid email address.');
       return;
     }
 
     try {
       await resetPassword(formData.email);
+      setFormError('');
     } catch (error) {
       console.error(error);
     }
@@ -194,6 +249,18 @@ const Auth = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {formError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  {formError}
+                </motion.div>
+              )}
+
               <AnimatePresence mode="wait">
                 {!isLogin && (
                   <motion.div 
@@ -212,7 +279,10 @@ const Auth = () => {
                           placeholder="Commander John Doe"
                           className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                           value={formData.name}
-                          onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                          onChange={(event) => {
+                            setFormError('');
+                            setFormData({ ...formData, name: event.target.value });
+                          }}
                         />
                       </div>
                     </div>
@@ -232,7 +302,10 @@ const Auth = () => {
                     placeholder={isLogin ? '@username or email@domain.com' : 'you@domain.com'}
                     className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                     value={formData.email}
-                    onChange={(event) => setFormData({ ...formData, email: event.target.value })}
+                    onChange={(event) => {
+                      setFormError('');
+                      setFormData({ ...formData, email: event.target.value });
+                    }}
                   />
                 </div>
               </div>
@@ -246,7 +319,7 @@ const Auth = () => {
                       onClick={handlePasswordReset}
                       className="text-[9px] font-black text-primary-600 dark:text-primary-400 uppercase tracking-widest hover:text-primary-700 transition-colors"
                     >
-                      Forgotten?
+                      Forgot Password?
                     </button>
                   )}
                 </div>
@@ -258,7 +331,10 @@ const Auth = () => {
                     placeholder="••••••••••••"
                     className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                     value={formData.password}
-                    onChange={(event) => setFormData({ ...formData, password: event.target.value })}
+                    onChange={(event) => {
+                      setFormError('');
+                      setFormData({ ...formData, password: event.target.value });
+                    }}
                   />
                   <button
                     type="button"
@@ -278,6 +354,11 @@ const Auth = () => {
                     <div className={`h-1 flex-1 rounded-full ${formData.password.length >= 6 ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
                     <div className={`h-1 flex-1 rounded-full ${formData.password.length >= 8 && /[A-Z]/.test(formData.password) && /[0-9]/.test(formData.password) ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'}`}></div>
                   </motion.div>
+                )}
+                {isLogin && (
+                  <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 ml-1">
+                    Password resets use the email address tied to your account.
+                  </p>
                 )}
               </div>
 
@@ -340,7 +421,10 @@ const Auth = () => {
                 <p className="text-xs font-bold text-slate-400">
                   {isLogin ? "New to the system?" : "Identity already exists?"}{' '}
                   <button
-                    onClick={() => setIsLogin((prev) => !prev)}
+                    onClick={() => {
+                      setFormError('');
+                      setIsLogin((prev) => !prev);
+                    }}
                     className="text-primary-600 dark:text-primary-400 font-black hover:text-primary-700 transition-colors relative inline-block group text-xs"
                   >
                     {isLogin ? 'Create Account' : 'Sign In'}

@@ -34,12 +34,14 @@ const AUTH_ERROR_MESSAGES = {
   'auth/network-request-failed': 'Network error. Check your connection and try again.',
   'auth/too-many-requests': 'Too many attempts. Please wait a few minutes and try again.',
   'auth/user-disabled': 'This account has been disabled.',
-  'auth/user-not-found': 'No account found with this email.',
-  'auth/wrong-password': 'Incorrect password.',
+  'auth/user-not-found':
+    'Unable to sign in. Please check your email and password. If you originally signed up with Google or GitHub, continue with that sign-in method.',
+  'auth/wrong-password':
+    'Unable to sign in. Please check your email and password. If you originally signed up with Google or GitHub, continue with that sign-in method.',
   'auth/invalid-credential':
-    'Email/password is invalid, or this account was created with another method (Google/GitHub).',
+    'Unable to sign in. Please check your email and password. If you originally signed up with Google or GitHub, continue with that sign-in method.',
   'auth/account-exists-with-different-credential':
-    'An account already exists with this email using a different sign-in method.',
+    'Unable to sign in. Please check your email and password. If you originally signed up with Google or GitHub, continue with that sign-in method.',
   'auth/popup-closed-by-user': 'Sign-in was cancelled.',
   'auth/popup-blocked': 'Sign-in popup was blocked by the browser. We will retry with redirect.',
   'auth/cancelled-popup-request': 'Only one sign-in window at a time. Try again.',
