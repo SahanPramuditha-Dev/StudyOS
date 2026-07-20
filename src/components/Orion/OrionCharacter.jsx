@@ -473,50 +473,6 @@ function drawTelescope(ctx, cx, cy) {
   ctx.fillStyle = '#1e293b'; ctx.fill();
   
   ctx.restore();
-}    // Secondary catch-light (small, bottom-left)
-    ctx.beginPath();
-    ctx.ellipse(px - 3.5, py + 3.5, 1.8, 1.8, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fill();
-    // Happy sparkle (tiny star-flare on iris rim)
-    if (emotion === ORION_EMOTIONS.HAPPY || emotion === ORION_EMOTIONS.CELEBRATING) {
-      ctx.fillStyle = 'rgba(255,240,100,0.6)';
-      ctx.beginPath();
-      ctx.ellipse(px + irisR * 0.6, py - irisR * 0.5, 2, 2, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Eyelid (closes TOP-DOWN — natural)
-  const lidProgress = blink ? 1.0 : (1.0 - eOpen);
-  if (lidProgress > 0.02) {
-    const lidH = lidProgress * (eyeR * 2.25);
-    ctx.beginPath();
-    ctx.rect(ex - eyeR - 2, ey - eyeR - 2, (eyeR + 2) * 2, lidH + 2);
-    ctx.fillStyle = '#8b3b0a';
-    ctx.fill();
-    // Sleepy crease line
-    if (emotion === ORION_EMOTIONS.SLEEPY) {
-      ctx.strokeStyle = '#5c1d07';
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(ex - eyeR + 3, ey - eyeR + lidH - 1);
-      ctx.lineTo(ex + eyeR - 3, ey - eyeR + lidH - 1);
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
-
-  // Outer rim stroke (outside clip)
-  ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(ex, ey, eyeR, eyeR, 0, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
 }
 
 function drawEyebrows(ctx, cx, cy, ebY, emotion) {
