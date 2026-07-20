@@ -44,6 +44,19 @@ const ZZZParticle = ({ index }) => (
   >Z</motion.span>
 );
 
+const HeartParticle = ({ index }) => {
+  const x = (Math.random() - 0.5) * 80;
+  return (
+    <motion.span
+      className="absolute text-pink-500 font-bold pointer-events-none select-none drop-shadow-md"
+      style={{ fontSize: `${12 + Math.random() * 8}px`, top: '20%', left: '45%' }}
+      initial={{ opacity: 0, y: 0, x: 0, scale: 0.5 }}
+      animate={{ opacity: [0, 1, 1, 0], y: -60, x, scale: 1 }}
+      transition={{ duration: 2, delay: index * 0.4, repeat: Infinity }}
+    >❤️</motion.span>
+  );
+};
+
 const XPPopup = ({ amount, label }) => (
   <motion.div
     className="absolute -top-16 left-1/2 -translate-x-1/2 pointer-events-none z-20"
@@ -687,6 +700,29 @@ function drawBook(ctx, cx, cy) {
   });
 }
 
+function drawClipboard(ctx, cx, cy) {
+  const bx = cx - 22, by = cy + 34, bw = 44, bh = 40;
+  // Board
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 3);
+  ctx.fillStyle = '#8b5a2b'; ctx.fill();
+  
+  // Paper
+  ctx.beginPath(); ctx.roundRect(bx + 3, by + 4, bw - 6, bh - 8, 1);
+  ctx.fillStyle = '#f8fafc'; ctx.fill();
+  
+  // Lines on paper
+  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(bx + 8, by + 12); ctx.lineTo(bx + 36, by + 12); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 8, by + 18); ctx.lineTo(bx + 32, by + 18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 8, by + 24); ctx.lineTo(bx + 36, by + 24); ctx.stroke();
+
+  // Clip
+  ctx.beginPath(); ctx.roundRect(cx - 8, by - 2, 16, 8, 2);
+  ctx.fillStyle = '#94a3b8'; ctx.fill();
+  ctx.beginPath(); ctx.roundRect(cx - 10, by, 20, 3, 1);
+  ctx.fillStyle = '#cbd5e1'; ctx.fill();
+}
+
 function drawCoffeeCup(ctx, cx, cy, t) {
   const cpx = cx + 18, cpy = cy + 44;
 
@@ -753,6 +789,9 @@ const OrionCharacter = ({
   animationTrigger,
   isThinking = false,
   xpGainDisplay,
+  isPetting = false,
+  isDragging = false,
+  contextPath = '',
   size = 140,
 }) => {
   const canvasRef    = useRef(null);
@@ -846,26 +885,35 @@ const OrionCharacter = ({
       const cx = 60;
       const baseCY = 72;
 
-      // Bounce / shake
-      const bounceY = cfg.shake
+      // Bounce / shake (disabled if dragged to let him hang)
+      const bounceY = (cfg.shake || isDragging)
         ? 0
         : Math.sin(t * cfg.bF * Math.PI * 2) * cfg.bY;
       const shakeX = cfg.shake
         ? Math.sin(t * cfg.bF * Math.PI * 2) * 3
         : 0;
 
-      const cy = baseCY + bounceY;
+      // When dragging, he's lifted up slightly
+      const dragYOffset = isDragging ? -10 : 0;
+      const cy = baseCY + bounceY + dragYOffset;
       const bodyBottom = cy + 56;
 
       // Breathing (±1.8% — primary life signal for idle)
-      const breathX = 1 + Math.sin(t * 0.9) * 0.018;
-      const breathY = 1 - Math.sin(t * 0.9) * 0.018;
+      const breathX = isDragging ? 0.95 : 1 + Math.sin(t * 0.9) * 0.018; // thinner when dragged (stretch)
+      const breathY = isDragging ? 1.1 : 1 - Math.sin(t * 0.9) * 0.018;  // taller when dragged
 
-      // Wing angles
-      const leftAngle  = Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp;
-      const rightAngle = em === ORION_EMOTIONS.WAVING
-        ? Math.sin(t * 5 * Math.PI * 2) * 44
-        : -Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp;
+      // Wing angles (flap wildly if dragged, calm otherwise)
+      const leftAngle  = isDragging 
+        ? Math.sin(t * 12) * 35 
+        : Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp;
+      const rightAngle = isDragging
+        ? -Math.sin(t * 12) * 35 
+        : (em === ORION_EMOTIONS.WAVING
+            ? Math.sin(t * 5 * Math.PI * 2) * 44
+            : -Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp);
+
+      // Eyelids close when petting
+      const eOpen = isPetting ? 0.05 : cfg.eOpen;
 
       // Head tilt (confused oscillates)
       const headTilt = em === ORION_EMOTIONS.CONFUSED
@@ -899,26 +947,40 @@ const OrionCharacter = ({
 
       drawEarTufts(ctx, cx, cy);
       drawCap(ctx, cx, cy - 50);
-      drawEyebrows(ctx, cx, cy, ebY, em);
-      drawSingleEye(ctx, cx - 18, cy - 17, 15, puffX, puffY, cfg.eOpen, em, blink);
-      drawSingleEye(ctx, cx + 18, cy - 17, 15, puffX, puffY, cfg.eOpen, em, blink);
+      drawEyebrows(ctx, cx, cy, isPetting ? -2 : ebY, em);
+      drawSingleEye(ctx, cx - 18, cy - 17, 15, puffX, puffY, eOpen, em, blink);
+      drawSingleEye(ctx, cx + 18, cy - 17, 15, puffX, puffY, eOpen, em, blink);
       drawBeak(ctx, cx, cy);
       drawGlasses(ctx, cx, cy, cfg.gGlow, t);
 
       ctx.restore(); // head tilt
 
-      // 6. Feet
-      drawFeet(ctx, cx, bodyBottom);
+      // 6. Feet (dangle if dragged)
+      if (isDragging) {
+        ctx.save();
+        ctx.translate(cx, bodyBottom);
+        ctx.rotate(Math.sin(t * 4) * 0.1);
+        drawFeet(ctx, 0, 0); // Need to adjust drawFeet to handle origin or translate
+        ctx.restore();
+      } else {
+        drawFeet(ctx, cx, bodyBottom);
+      }
 
       // 7. AI Badge
       drawAIBadge(ctx, cx, cy + 40);
 
       // 8. Context accessories
-      if (em === ORION_EMOTIONS.FOCUSED || em === ORION_EMOTIONS.IDLE_READING) {
-        drawBook(ctx, cx, cy);
+      if (contextPath === '/timer') {
+        drawBook(ctx, cx, cy); // Always reading during Pomodoro
+      } else if (contextPath === '/dashboard' && em === ORION_EMOTIONS.IDLE) {
+        drawClipboard(ctx, cx, cy);
+      } else {
+        if (em === ORION_EMOTIONS.FOCUSED || em === ORION_EMOTIONS.IDLE_READING) {
+          drawBook(ctx, cx, cy);
+        }
+        if (em === ORION_EMOTIONS.IDLE_COFFEE) drawCoffeeCup(ctx, cx, cy, t);
+        if (em === ORION_EMOTIONS.IDLE_CLEANING) drawCleaningCloth(ctx, cx, cy, t);
       }
-      if (em === ORION_EMOTIONS.IDLE_COFFEE) drawCoffeeCup(ctx, cx, cy, t);
-      if (em === ORION_EMOTIONS.IDLE_CLEANING) drawCleaningCloth(ctx, cx, cy, t);
 
       ctx.restore(); // shakeX
       ctx.restore(); // scale
@@ -965,9 +1027,14 @@ const OrionCharacter = ({
             <ZZZParticle index={0} /><ZZZParticle index={1} /><ZZZParticle index={2} />
           </div>
         )}
-        {(emotion === ORION_EMOTIONS.HAPPY || emotion === ORION_EMOTIONS.CELEBRATING || emotion === ORION_EMOTIONS.PROUD) && (<>
+        {(emotion === ORION_EMOTIONS.HAPPY || emotion === ORION_EMOTIONS.CELEBRATING || emotion === ORION_EMOTIONS.PROUD) && !isPetting && (<>
           <FloatingParticle key="s1" char="⭐" index={0} color="#fbbf24" />
           <FloatingParticle key="s2" char="✨" index={2} color="#f59e0b" />
+        </>)}
+        {isPetting && (<>
+          <HeartParticle key="h1" index={0} />
+          <HeartParticle key="h2" index={1} />
+          <HeartParticle key="h3" index={2} />
         </>)}
       </AnimatePresence>
 

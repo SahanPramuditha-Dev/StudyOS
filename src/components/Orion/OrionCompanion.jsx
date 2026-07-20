@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 import { EyeOff, GripVertical, Settings2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { useOrion, ORION_EMOTIONS } from '../../context/OrionContext';
@@ -83,8 +84,11 @@ const OrionCompanion = () => {
   const [showStats, setShowStats] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isPetting, setIsPetting] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const dragRef = useRef(null);
+  const longPressTimer = useRef(null);
+  const location = useLocation();
 
   // Visibility
   const { isVisible = true } = orionData;
@@ -99,22 +103,45 @@ const OrionCompanion = () => {
   }, [isChatOpen, setIsChatOpen, setIsOpen, setEmotion]);
 
   const handleOrionClick = useCallback(() => {
-    if (isDragging) return;
+    if (isDragging || isPetting) return;
     toggleChat();
     if (!isChatOpen) {
       // Random single click behavior
       const actions = [ORION_EMOTIONS.WAVING, ORION_EMOTIONS.HAPPY, ORION_EMOTIONS.CONFUSED];
       setEmotion(actions[Math.floor(Math.random() * actions.length)]);
-      setTimeout(() => setEmotion(ORION_EMOTIONS.HAPPY), 1500);
+      setTimeout(() => setEmotion(ORION_EMOTIONS.IDLE), 2000);
     }
-  }, [isDragging, toggleChat, isChatOpen, setEmotion]);
+  }, [isDragging, isPetting, toggleChat, isChatOpen, setEmotion]);
 
   const handleDoubleClick = useCallback(() => {
-    if (isDragging) return;
+    if (isDragging || isPetting) return;
     setEmotion(ORION_EMOTIONS.CELEBRATING);
     speak('Wheee! 🦉');
-    setTimeout(() => setEmotion(ORION_EMOTIONS.HAPPY), 2500);
-  }, [isDragging, setEmotion, speak]);
+    setTimeout(() => setEmotion(ORION_EMOTIONS.IDLE), 3000);
+  }, [isDragging, isPetting, setEmotion, speak]);
+
+  const handlePointerDown = (e) => {
+    if (e.button !== 0) return; // Only left click
+    longPressTimer.current = setTimeout(() => {
+      if (!isDragging) {
+        setIsPetting(true);
+        setEmotion(ORION_EMOTIONS.HAPPY); // Will close eyes and show hearts via particles later
+        speak('Purrr... I love being pet! 💖', 3000);
+        // Dispatch XP event for friendship secretly
+        window.dispatchEvent(new CustomEvent('orion-xp', { detail: { event: 'AI_CONVERSATION' } }));
+      }
+    }, 600); // 600ms hold = pet
+  };
+
+  const handlePointerUp = () => {
+    clearTimeout(longPressTimer.current);
+    if (isPetting) {
+      setTimeout(() => {
+        setIsPetting(false);
+        setEmotion(ORION_EMOTIONS.IDLE);
+      }, 1500);
+    }
+  };
 
   const handleHide = () => {
     setIsHidden(true);
@@ -232,12 +259,13 @@ const OrionCompanion = () => {
               dragMomentum={false}
               dragElastic={0.1}
               onDragStart={() => {
+                clearTimeout(longPressTimer.current);
                 setIsDragging(true);
-                setEmotion(ORION_EMOTIONS.WAVING); // wings open
+                setEmotion(ORION_EMOTIONS.CONFUSED); // Wide eyes, surprised look while dragged
               }}
               onDragEnd={() => {
                 setTimeout(() => setIsDragging(false), 100);
-                setEmotion(ORION_EMOTIONS.HAPPY);
+                setEmotion(ORION_EMOTIONS.IDLE);
               }}
               className="pointer-events-auto cursor-pointer relative"
               whileDrag={{ scale: 1.06 }}
@@ -246,6 +274,9 @@ const OrionCompanion = () => {
               tabIndex={0}
               aria-label="Orion AI companion — click to chat"
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOrionClick(); }}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
               onClick={handleOrionClick}
               onDoubleClick={handleDoubleClick}
               onHoverStart={() => {
@@ -309,6 +340,9 @@ const OrionCompanion = () => {
                 animationTrigger={animationTrigger}
                 isThinking={isThinking}
                 xpGainDisplay={xpGainDisplay}
+                isPetting={isPetting}
+                isDragging={isDragging}
+                contextPath={location.pathname}
                 size={130}
               />
 

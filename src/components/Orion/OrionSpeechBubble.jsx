@@ -4,7 +4,7 @@ import { X, Sparkles } from 'lucide-react';
 import { useOrion } from '../../context/OrionContext';
 
 const OrionSpeechBubble = () => {
-  const { speechMessage, showSpeech, dismissSpeech, isChatOpen } = useOrion();
+  const { speechMessage, showSpeech, dismissSpeech, isChatOpen, emotion } = useOrion();
   const timerRef = useRef(null);
 
   // Auto-dismiss guard on hover
@@ -12,26 +12,44 @@ const OrionSpeechBubble = () => {
 
   if (isChatOpen) return null;
 
+  // Map emotion to visual style
+  let bubbleTheme = 'border-slate-200/80 dark:border-slate-700/80 text-amber-500';
+  let glowStyle = 'rgba(0,0,0,0)';
+  
+  if (emotion === 'celebrating' || emotion === 'proud') {
+    bubbleTheme = 'border-amber-400 dark:border-amber-500 text-amber-500';
+    glowStyle = 'rgba(251, 191, 36, 0.2)';
+  } else if (emotion === 'focused' || emotion === 'thinking') {
+    bubbleTheme = 'border-blue-400 dark:border-blue-500 text-blue-500';
+    glowStyle = 'rgba(59, 130, 246, 0.2)';
+  } else if (emotion === 'worried') {
+    bubbleTheme = 'border-red-400 dark:border-red-500 text-red-500';
+    glowStyle = 'rgba(239, 68, 68, 0.2)';
+  }
+
   return (
     <AnimatePresence>
       {showSpeech && speechMessage && (
         <motion.div
           key="speech"
-          className="absolute bottom-full mb-3 right-0 z-20 max-w-[240px] min-w-[180px]"
-          initial={{ opacity: 0, scale: 0.8, y: 10, originX: 1, originY: 1 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.85, y: 8 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+          className="absolute bottom-full mb-4 right-2 z-20 max-w-[280px] min-w-[200px]"
+          initial={{ opacity: 0, scale: 0.6, y: 30, x: 20, rotate: 10, originX: 1, originY: 1 }}
+          animate={{ opacity: 1, scale: 1, y: 0, x: 0, rotate: 0 }}
+          exit={{ opacity: 0, scale: 0.5, y: 20, x: 10, rotate: -10 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 24 }}
           onMouseEnter={handleMouseEnter}
         >
-          {/* Bubble */}
-          <div className="relative bg-white dark:bg-slate-800 rounded-2xl rounded-br-sm shadow-xl border border-slate-200/80 dark:border-slate-700/80 p-3.5 pr-8">
-            {/* Sparkle icon */}
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0">
-                <Sparkles size={13} className="text-amber-400" />
+          {/* Bubble Container */}
+          <div 
+            className={`relative bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-3xl rounded-br-sm shadow-2xl border-2 p-4 pr-10 ${bubbleTheme.split(' ')[0]} ${bubbleTheme.split(' ')[1]}`}
+            style={{ boxShadow: `0 10px 30px -5px ${glowStyle}, 0 4px 10px -2px rgba(0,0,0,0.1)` }}
+          >
+            {/* Content */}
+            <div className="flex items-start gap-3">
+              <span className={`mt-0.5 shrink-0 ${bubbleTheme.split(' ')[2]}`}>
+                <Sparkles size={16} />
               </span>
-              <p className="text-[12.5px] font-medium leading-snug text-slate-700 dark:text-slate-200">
+              <p className="text-[14px] font-medium leading-relaxed text-slate-800 dark:text-slate-100 font-sans tracking-wide">
                 {speechMessage}
               </p>
             </div>
@@ -50,16 +68,16 @@ const OrionSpeechBubble = () => {
               className="absolute -bottom-2 right-4 w-4 h-2 overflow-hidden"
               aria-hidden="true"
             >
-              <div className="w-3 h-3 bg-white dark:bg-slate-800 border-b border-r border-slate-200/80 dark:border-slate-700/80 rotate-45 origin-top-left ml-1 shadow-sm" />
+              <div className={`w-4 h-4 bg-white/95 dark:bg-slate-900/95 border-b-2 border-r-2 ${bubbleTheme.split(' ')[0]} ${bubbleTheme.split(' ')[1]} rotate-45 origin-top-left ml-2 shadow-sm`} />
             </div>
           </div>
 
           {/* Quick-action pill */}
           <motion.div
-            className="mt-2 flex justify-end"
-            initial={{ opacity: 0, y: 4 }}
+            className="mt-3 flex justify-end"
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.4 }}
           >
             <button
               onClick={dismissSpeech}
