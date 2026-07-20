@@ -156,42 +156,7 @@ const OrionCompanion = () => {
             transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.5 }}
           >
 
-            {/* Stats panel (hover) */}
-            <AnimatePresence>
-              {showStats && !isChatOpen && (
-                <OrionStats key="stats" isVisible={showStats} />
-              )}
-            </AnimatePresence>
 
-            {/* Context menu */}
-            <AnimatePresence>
-              {showMenu && (
-                <motion.div
-                  className="absolute bottom-full mb-2 right-0 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-1.5 pointer-events-auto flex flex-col gap-0.5 min-w-[160px]"
-                  initial={{ opacity: 0, scale: 0.9, y: 5 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9, y: 5 }}
-                >
-                  <button
-                    onClick={() => { setShowStats(v => !v); setShowMenu(false); }}
-                    className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
-                  >
-                    <span className="text-base">📊</span> View Stats
-                  </button>
-                  <button
-                    onClick={handleHide}
-                    className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
-                  >
-                    <EyeOff size={14} className="text-slate-400" /> Hide Orion
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Speech bubble */}
-            <div className="pointer-events-auto">
-              <OrionSpeechBubble />
-            </div>
 
             {/* Orion character — draggable */}
             <motion.div
@@ -215,6 +180,42 @@ const OrionCompanion = () => {
               onHoverEnd={() => setShowStats(false)}
               onContextMenu={(e) => { e.preventDefault(); setShowMenu(v => !v); }}
             >
+              {/* Stats panel (hover) */}
+              <AnimatePresence>
+                {showStats && !isChatOpen && (
+                  <OrionStats key="stats" isVisible={showStats} />
+                )}
+              </AnimatePresence>
+
+              {/* Context menu */}
+              <AnimatePresence>
+                {showMenu && (
+                  <motion.div
+                    className="absolute bottom-full mb-2 right-0 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 p-1.5 pointer-events-auto flex flex-col gap-0.5 min-w-[160px]"
+                    initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 5 }}
+                  >
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowStats(v => !v); setShowMenu(false); }}
+                      className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                    >
+                      <span className="text-base">📊</span> View Stats
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleHide(); }}
+                      className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                    >
+                      <EyeOff size={14} className="text-slate-400" /> Hide Orion
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Speech bubble */}
+              <div className="pointer-events-auto">
+                <OrionSpeechBubble />
+              </div>
               {/* Chat open indicator ring */}
               {isChatOpen && (
                 <motion.div
