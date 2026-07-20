@@ -11,6 +11,7 @@ import { askOrion } from '../../services/orionBrain';
 import { useLocation } from 'react-router-dom';
 import { useStorage } from '../../hooks/useStorage';
 import toast from 'react-hot-toast';
+import { orionSounds } from '../../utils/orionSounds';
 
 // ─── Slash Commands ────────────────────────────────────────────────────────────
 
@@ -181,6 +182,7 @@ const OrionChatPanel = () => {
     setMessages(prev => [...prev, userMsg]);
     setIsThinking(true);
     setEmotion(ORION_EMOTIONS.THINKING);
+    orionSounds.messageSent();
 
     try {
       const conversationHistory = messages.slice(-10).map(m => ({
@@ -202,6 +204,7 @@ const OrionChatPanel = () => {
       }]);
 
       setEmotion(response.emotion || ORION_EMOTIONS.HAPPY);
+      orionSounds.messageReceived();
 
       // Award XP
       if (response.reward?.xp > 0) {
@@ -245,6 +248,20 @@ const OrionChatPanel = () => {
     setEmotion(ORION_EMOTIONS.HAPPY);
     speak('Chat cleared! Fresh start — ask me anything! 🦉');
   };
+
+  // Listen for document drops from OrionCompanion
+  useEffect(() => {
+    const handleDocumentAnalysis = (e) => {
+      const { filename, content } = e.detail;
+      const prompt = `Please analyze this document named "${filename}":\n\n${content}\n\nPlease summarize the key points and ask me if I want to turn it into flashcards or a quiz.`;
+      
+      // Simulate user sending the message
+      setTimeout(() => sendMessage(prompt), 500);
+    };
+
+    window.addEventListener('orion-analyze-document', handleDocumentAnalysis);
+    return () => window.removeEventListener('orion-analyze-document', handleDocumentAnalysis);
+  }, [sendMessage]);
 
   return (
     <AnimatePresence>

@@ -115,6 +115,36 @@ const OrionCompanion = () => {
     speak('I\'m back! Ready to help you study! 🦉');
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (emotion !== ORION_EMOTIONS.THINKING) setEmotion(ORION_EMOTIONS.THINKING);
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    setEmotion(ORION_EMOTIONS.HAPPY);
+    
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+
+    if (file.type.includes('text') || file.name.endsWith('.md') || file.name.endsWith('.json')) {
+      const text = await file.text();
+      // Open chat and trigger analysis
+      setIsChatOpen(true);
+      setIsOpen(true);
+      speak('Ooh, a document! Let me read this... 🦉');
+      
+      // We dispatch a custom event that OrionChatPanel will listen for
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('orion-analyze-document', { 
+          detail: { filename: file.name, content: text.slice(0, 15000) } // truncate if huge
+        }));
+      }, 500);
+    } else {
+      speak('I can only read text documents right now! 🦉');
+    }
+  };
+
   if (!isVisible && !isHidden) return null;
 
   const companion = (
@@ -179,6 +209,8 @@ const OrionCompanion = () => {
               }}
               onHoverEnd={() => setShowStats(false)}
               onContextMenu={(e) => { e.preventDefault(); setShowMenu(v => !v); }}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
             >
               {/* Stats panel (hover) */}
               <AnimatePresence>

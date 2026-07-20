@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
+import { orionSounds } from '../utils/orionSounds';
+import { getOrionContextMessage } from '../services/orionBrain';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -141,6 +143,7 @@ export const OrionProvider = ({ children }) => {
         setLevelUpData({ level: newLevel.level, title: newLevel.title, color: newLevel.color });
         setEmotion(ORION_EMOTIONS.CELEBRATING);
         triggerAnimation('levelUp');
+        orionSounds.levelUp();
         setTimeout(() => setLevelUpData(null), 5000);
       }
 
@@ -169,6 +172,7 @@ export const OrionProvider = ({ children }) => {
   const speak = useCallback((message, duration = 6000) => {
     setSpeechMessage(message);
     setShowSpeech(true);
+    orionSounds.pop();
     clearTimeout(speechTimer.current);
     speechTimer.current = setTimeout(() => setShowSpeech(false), duration);
   }, []);
@@ -188,18 +192,36 @@ export const OrionProvider = ({ children }) => {
     clearTimeout(inactivityTimer.current);
     inactivityTimer.current = setTimeout(() => {
       setEmotion(ORION_EMOTIONS.SLEEPY);
-    }, 3 * 60 * 1000); // 3 minutes
+    }, 3 * 60 * 1000); // 3 minutes idle = sleep
   }, [emotion, speak]);
+
+  // Proactive Break Tracker (Active use without a break)
+  const activeUseTimer = useRef(null);
+  
+  const resetActiveUseTimer = useCallback(() => {
+    clearTimeout(activeUseTimer.current);
+    // 60 minutes of active use triggers a break reminder
+    activeUseTimer.current = setTimeout(() => {
+      setEmotion(ORION_EMOTIONS.WORRIED);
+      orionSounds.alert();
+      speak("You've been studying hard for an hour! How about a quick 5-minute break? 🦉", 10000);
+    }, 60 * 60 * 1000);
+  }, [speak]);
 
   useEffect(() => {
     const events = ['mousemove', 'keydown', 'click', 'scroll'];
-    events.forEach(e => window.addEventListener(e, resetInactivityTimer, { passive: true }));
-    resetInactivityTimer();
-    return () => {
-      events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
-      clearTimeout(inactivityTimer.current);
+    const handleActivity = () => {
+      resetInactivityTimer();
     };
-  }, [resetInactivityTimer]);
+    events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
+    resetInactivityTimer();
+    resetActiveUseTimer(); // Start tracking active use on mount
+    return () => {
+      events.forEach(e => window.removeEventListener(e, handleActivity));
+      clearTimeout(inactivityTimer.current);
+      clearTimeout(activeUseTimer.current);
+    };
+  }, [resetInactivityTimer, resetActiveUseTimer]);
 
   // ─── Daily Login Bonus ───────────────────────────────────────────────────────
 
@@ -208,9 +230,19 @@ export const OrionProvider = ({ children }) => {
     if (orionData.lastLoginDate !== today) {
       setOrionData(prev => ({ ...prev, lastLoginDate: today }));
       addXP('DAILY_LOGIN');
-      setTimeout(() => {
-        setEmotion(ORION_EMOTIONS.HAPPY);
-        speak('Good to see you! Here\'s your daily XP bonus! ⭐');
+      
+      // Daily Briefing
+      setTimeout(async () => {
+        setEmotion(ORION_EMOTIONS.THINKING);
+        try {
+          // Pass empty study data for now, would normally pass actual StudyOS goals/assignments
+          const response = await getOrionContextMessage({ pathname: 'daily_briefing', studyData: {} });
+          setEmotion(response.emotion);
+          speak(`Good morning! ${response.message} Here's your daily XP! ⭐`, 10000);
+        } catch {
+          setEmotion(ORION_EMOTIONS.HAPPY);
+          speak('Good morning! Ready to tackle your goals today? Here\'s your daily XP bonus! ⭐', 8000);
+        }
       }, 2000);
     }
   }, []); // eslint-disable-line

@@ -16,7 +16,7 @@ import {
   Waves,
   Zap,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import PageHeader from '../../components/PageHeader';
 import { useStorage } from '../../hooks/useStorage';
@@ -299,7 +299,44 @@ const Timer = () => {
   }, []);
 
   return (
-    <div className="relative mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 pb-6 pt-4 sm:px-6 lg:h-[calc(100vh-4.5rem)] lg:overflow-hidden">
+    <>
+      <AnimatePresence>
+        {isRunning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8 }}
+            className="fixed inset-0 z-[9990] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center pointer-events-auto"
+          >
+            <div className="absolute top-8 text-slate-400 text-sm font-bold tracking-widest uppercase flex items-center gap-2">
+              <Brain size={16} /> Focus Mode Active
+            </div>
+            
+            <div className="relative flex h-72 w-72 items-center justify-center lg:h-[24rem] lg:w-[24rem] mb-12">
+              <div className="absolute inset-8 rounded-full bg-gradient-to-b from-sky-400/20 via-cyan-400/10 to-transparent blur-3xl" />
+              <Ring progress={progress} color={currentMode.glow} />
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <p className="text-7xl font-black tabular-nums leading-none tracking-[-0.06em] text-white drop-shadow-md sm:text-8xl lg:text-[6rem]">
+                  {formatTime(timeLeft)}
+                </p>
+                <p className="mt-4 text-base font-medium text-slate-400">
+                  {currentMode.label}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { stopTimer(); setIsRunning(false); }}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-8 py-4 font-bold text-white transition hover:bg-white/20 backdrop-blur"
+            >
+              <Pause size={20} /> Pause & Exit Zen Mode
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="relative mx-auto flex w-full max-w-[1680px] flex-col gap-5 px-4 pb-6 pt-4 sm:px-6 lg:h-[calc(100vh-4.5rem)] lg:overflow-hidden">
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-56 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_58%),radial-gradient(circle_at_right,rgba(56,189,248,0.08),transparent_30%)] dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),transparent_52%),radial-gradient(circle_at_right,rgba(59,130,246,0.08),transparent_28%)]" />
       <PageHeader
         title="Timer"
@@ -579,7 +616,7 @@ const Timer = () => {
           </section>
         </aside>
       </div>
-    </div>
+    </>
   );
 };
 
