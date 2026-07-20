@@ -57,6 +57,20 @@ const HeartParticle = ({ index }) => {
   );
 };
 
+const MusicParticle = ({ index }) => {
+  const char = index % 2 === 0 ? '♪' : '♫';
+  const x = (Math.random() - 0.5) * 100;
+  return (
+    <motion.span
+      className="absolute text-blue-400 font-bold pointer-events-none select-none drop-shadow-md"
+      style={{ fontSize: `${14 + Math.random() * 6}px`, top: '30%', left: '45%' }}
+      initial={{ opacity: 0, y: 0, x: 0, scale: 0.5, rotate: -20 }}
+      animate={{ opacity: [0, 1, 1, 0], y: -80, x, scale: 1, rotate: 20 }}
+      transition={{ duration: 3, delay: index * 0.8, repeat: Infinity }}
+    >{char}</motion.span>
+  );
+};
+
 const XPPopup = ({ amount, label }) => (
   <motion.div
     className="absolute -top-16 left-1/2 -translate-x-1/2 pointer-events-none z-20"
@@ -87,6 +101,8 @@ const EC = {
   [ORION_EMOTIONS.IDLE_CLEANING]:  { bY: 1,  bF: 0.22, wAmp: 22, wF: 2.6,  eOpen: 0.9,  ebY: 0,  tilt: -4, gGlow: false, shake: false },
   [ORION_EMOTIONS.IDLE_COFFEE]:    { bY: 1,  bF: 0.2,  wAmp: 1,  wF: 0.2,  eOpen: 1.0,  ebY: 2,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.IDLE_LOOKING]:   { bY: 1.5,bF: 0.28, wAmp: 1,  wF: 0.28, eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.IDLE_MUSIC]:     { bY: 2,  bF: 1.5,  wAmp: 1,  wF: 1.5,  eOpen: 0.9,  ebY: 1,  tilt: 4,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.IDLE_STARGAZING]:{ bY: 0.5,bF: 0.15, wAmp: 1,  wF: 0.15, eOpen: 1.0,  ebY: -1, tilt: -12,gGlow: false, shake: false },
   // ── Active states: keep full energy ──
   [ORION_EMOTIONS.HAPPY]:          { bY: 0,  bF: 0.0,  wAmp: 2,  wF: 0.5,  eOpen: 1.1,  ebY: 4,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.CELEBRATING]:    { bY: 22, bF: 1.8,  wAmp: 42, wF: 3.2,  eOpen: 1.2,  ebY: 6,  tilt: 0,  gGlow: false, shake: false },
@@ -361,6 +377,103 @@ function drawSingleEye(ctx, ex, ey, eyeR, pOffX, pOffY, eOpen, emotion, blink) {
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.fill();
     // Secondary catch-light (small, bottom-left)
+    ctx.beginPath();
+    ctx.ellipse(px - 3.5, py + 3.5, 1.8, 1.8, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fill();
+
+    // Happy sparkle
+    if (emotion === ORION_EMOTIONS.HAPPY || emotion === ORION_EMOTIONS.CELEBRATING) {
+      ctx.beginPath();
+      ctx.ellipse(px + 6, py + 5, 2, 2, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(251,191,36,0.9)'; // amber/gold sparkle
+      ctx.fill();
+    }
+  } else {
+    // Eyelid completely closed or squinting
+    const lidProgress = 1 - eOpen;
+    const lidH = lidProgress * (eyeR * 2.25);
+    ctx.beginPath();
+    ctx.rect(ex - eyeR - 2, ey - eyeR - 2, (eyeR + 2) * 2, lidH + 2);
+    ctx.fillStyle = '#8b3b0a';
+    ctx.fill();
+    // Sleepy crease line
+    if (emotion === ORION_EMOTIONS.SLEEPY) {
+      ctx.strokeStyle = '#5c1d07';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(ex - eyeR + 3, ey - eyeR + lidH - 1);
+      ctx.lineTo(ex + eyeR - 3, ey - eyeR + lidH - 1);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+
+  // Outer rim stroke (outside clip)
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(ex, ey, eyeR, eyeR, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHeadphones(ctx, cx, cy, t) {
+  const hx = cx, hy = cy - 25;
+  // Band
+  ctx.beginPath();
+  ctx.arc(hx, hy, 28, Math.PI, 0);
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  
+  // Ear cups
+  [-30, 30].forEach((dx) => {
+    ctx.beginPath();
+    ctx.roundRect(hx + dx - 5, hy - 4, 10, 24, 4);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    
+    // Cup highlight
+    ctx.beginPath();
+    ctx.roundRect(hx + dx - 2, hy - 2, 4, 20, 2);
+    ctx.fillStyle = '#334155';
+    ctx.fill();
+  });
+}
+
+function drawTelescope(ctx, cx, cy) {
+  const tx = cx - 18, ty = cy + 28;
+  
+  ctx.save();
+  ctx.translate(tx, ty);
+  ctx.rotate(-35 * Math.PI / 180); // Pointing up left
+  
+  // Stand / Tripod
+  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(-10, 35); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(10, 35); ctx.stroke();
+  
+  // Main tube
+  ctx.beginPath(); ctx.roundRect(-25, 0, 50, 14, 2);
+  const tG = ctx.createLinearGradient(-25, 0, 25, 0);
+  tG.addColorStop(0, '#f1f5f9'); tG.addColorStop(1, '#94a3b8');
+  ctx.fillStyle = tG; ctx.fill();
+  
+  // Lens hood
+  ctx.beginPath(); ctx.roundRect(-30, -2, 10, 18, 2);
+  ctx.fillStyle = '#334155'; ctx.fill();
+  
+  // Eyepiece
+  ctx.beginPath(); ctx.roundRect(25, 4, 8, 6, 1);
+  ctx.fillStyle = '#1e293b'; ctx.fill();
+  
+  ctx.restore();
+}    // Secondary catch-light (small, bottom-left)
     ctx.beginPath();
     ctx.ellipse(px - 3.5, py + 3.5, 1.8, 1.8, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
@@ -970,6 +1083,10 @@ const OrionCharacter = ({
       drawAIBadge(ctx, cx, cy + 40);
 
       // 8. Context accessories
+      if (em === ORION_EMOTIONS.IDLE_MUSIC) {
+        drawHeadphones(ctx, cx, cy, t);
+      }
+      
       if (contextPath === '/timer') {
         drawBook(ctx, cx, cy); // Always reading during Pomodoro
       } else if (contextPath === '/dashboard' && em === ORION_EMOTIONS.IDLE) {
@@ -980,6 +1097,7 @@ const OrionCharacter = ({
         }
         if (em === ORION_EMOTIONS.IDLE_COFFEE) drawCoffeeCup(ctx, cx, cy, t);
         if (em === ORION_EMOTIONS.IDLE_CLEANING) drawCleaningCloth(ctx, cx, cy, t);
+        if (em === ORION_EMOTIONS.IDLE_STARGAZING) drawTelescope(ctx, cx, cy);
       }
 
       ctx.restore(); // shakeX
@@ -1035,6 +1153,15 @@ const OrionCharacter = ({
           <HeartParticle key="h1" index={0} />
           <HeartParticle key="h2" index={1} />
           <HeartParticle key="h3" index={2} />
+        </>)}
+        {emotion === ORION_EMOTIONS.IDLE_MUSIC && (<>
+          <MusicParticle key="m1" index={0} />
+          <MusicParticle key="m2" index={1} />
+          <MusicParticle key="m3" index={2} />
+        </>)}
+        {emotion === ORION_EMOTIONS.IDLE_STARGAZING && (<>
+          <FloatingParticle key="st1" char="✨" index={0} color="#fbbf24" />
+          <FloatingParticle key="st2" char="⭐" index={2} color="#fcd34d" />
         </>)}
       </AnimatePresence>
 

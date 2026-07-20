@@ -20,6 +20,8 @@ export const ORION_EMOTIONS = {
   IDLE_CLEANING: 'idle_cleaning',
   IDLE_COFFEE: 'idle_coffee',
   IDLE_LOOKING: 'idle_looking',
+  IDLE_MUSIC: 'idle_music',
+  IDLE_STARGAZING: 'idle_stargazing',
   WAVING: 'waving',
 };
 
@@ -191,19 +193,48 @@ export const OrionProvider = ({ children }) => {
   const idleBehaviorTimer = useRef(null);
 
   const triggerRandomIdleBehavior = useCallback(() => {
-    // Only trigger idle if we are currently happy, idle, or looking around (don't interrupt thinking/sleeping)
+    // Only trigger idle if we are currently happy, idle, or looking around
     setEmotion(prev => {
       if (prev === ORION_EMOTIONS.THINKING || prev === ORION_EMOTIONS.SLEEPY || prev === ORION_EMOTIONS.WORRIED || prev === ORION_EMOTIONS.FOCUSED) {
         return prev;
       }
       
-      const behaviors = [
-        ORION_EMOTIONS.IDLE_READING,
-        ORION_EMOTIONS.IDLE_CLEANING,
-        ORION_EMOTIONS.IDLE_COFFEE,
-        ORION_EMOTIONS.IDLE_LOOKING,
-        ORION_EMOTIONS.IDLE
-      ];
+      const hour = new Date().getHours();
+      let behaviors = [ORION_EMOTIONS.IDLE];
+
+      if (hour >= 5 && hour < 12) {
+        // Morning: Coffee, Reading, Looking, Music
+        behaviors = [
+          ORION_EMOTIONS.IDLE_COFFEE, ORION_EMOTIONS.IDLE_COFFEE,
+          ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE_LOOKING,
+          ORION_EMOTIONS.IDLE_MUSIC, ORION_EMOTIONS.IDLE
+        ];
+      } else if (hour >= 12 && hour < 18) {
+        // Afternoon: Focused, Music, Reading, Cleaning
+        behaviors = [
+          ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE_MUSIC,
+          ORION_EMOTIONS.IDLE_CLEANING, ORION_EMOTIONS.IDLE, ORION_EMOTIONS.IDLE_LOOKING
+        ];
+      } else if (hour >= 18 && hour < 22) {
+        // Evening: Stargazing, Reading, Music
+        behaviors = [
+          ORION_EMOTIONS.IDLE_STARGAZING, ORION_EMOTIONS.IDLE_STARGAZING,
+          ORION_EMOTIONS.IDLE_MUSIC, ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE
+        ];
+      } else {
+        // Night: Sleepy, Stargazing, Idle
+        behaviors = [
+          ORION_EMOTIONS.SLEEPY, ORION_EMOTIONS.IDLE_STARGAZING,
+          ORION_EMOTIONS.IDLE, ORION_EMOTIONS.IDLE_READING
+        ];
+      }
+
+      // 5% chance for a funny 'clumsy' event (briefly surprised/worried)
+      if (Math.random() < 0.05) {
+        setTimeout(() => setEmotion(ORION_EMOTIONS.IDLE), 2500);
+        return ORION_EMOTIONS.CONFUSED;
+      }
+
       return behaviors[Math.floor(Math.random() * behaviors.length)];
     });
   }, []);
