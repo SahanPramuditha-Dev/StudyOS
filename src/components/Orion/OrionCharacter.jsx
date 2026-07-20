@@ -65,20 +65,22 @@ const XPPopup = ({ amount, label }) => (
 // tilt: head tilt degrees, gGlow: glasses glow, shake: worried horizontal shake
 
 const EC = {
-  [ORION_EMOTIONS.IDLE]:           { bY: 5,  bF: 0.55, wAmp: 3,  wF: 0.7,  eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
+  // ── Calm states: breathing only or micro-float ──
+  [ORION_EMOTIONS.IDLE]:           { bY: 0,  bF: 0.0,  wAmp: 2,  wF: 0.5,  eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.THINKING]:       { bY: 1.5,bF: 0.3,  wAmp: 1,  wF: 0.3,  eOpen: 0.9,  ebY: -2, tilt: -5, gGlow: true,  shake: false },
+  [ORION_EMOTIONS.FOCUSED]:        { bY: 1,  bF: 0.2,  wAmp: 1,  wF: 0.2,  eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: true,  shake: false },
+  [ORION_EMOTIONS.SLEEPY]:         { bY: 2,  bF: 0.15, wAmp: 1,  wF: 0.15, eOpen: 0.05, ebY: -4, tilt: 10, gGlow: false, shake: false },
+  [ORION_EMOTIONS.IDLE_READING]:   { bY: 1,  bF: 0.22, wAmp: 1,  wF: 0.22, eOpen: 0.88, ebY: 0,  tilt: 6,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.IDLE_COFFEE]:    { bY: 1,  bF: 0.2,  wAmp: 1,  wF: 0.2,  eOpen: 1.0,  ebY: 2,  tilt: 0,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.IDLE_LOOKING]:   { bY: 1.5,bF: 0.28, wAmp: 1,  wF: 0.28, eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
+  // ── Active states: keep full energy ──
   [ORION_EMOTIONS.HAPPY]:          { bY: 9,  bF: 1.1,  wAmp: 14, wF: 1.8,  eOpen: 1.1,  ebY: 4,  tilt: 0,  gGlow: false, shake: false },
-  [ORION_EMOTIONS.THINKING]:       { bY: 3,  bF: 0.4,  wAmp: 2,  wF: 0.4,  eOpen: 0.9,  ebY: -2, tilt: -5, gGlow: true,  shake: false },
-  [ORION_EMOTIONS.FOCUSED]:        { bY: 2,  bF: 0.25, wAmp: 1,  wF: 0.25, eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: true,  shake: false },
   [ORION_EMOTIONS.CELEBRATING]:    { bY: 22, bF: 1.8,  wAmp: 42, wF: 3.2,  eOpen: 1.2,  ebY: 6,  tilt: 0,  gGlow: false, shake: false },
-  [ORION_EMOTIONS.SLEEPY]:         { bY: 2,  bF: 0.18, wAmp: 1,  wF: 0.18, eOpen: 0.05, ebY: -4, tilt: 10, gGlow: false, shake: false },
   [ORION_EMOTIONS.WORRIED]:        { bY: 2,  bF: 4.5,  wAmp: 6,  wF: 4.0,  eOpen: 0.88, ebY: -5, tilt: 0,  gGlow: false, shake: true  },
   [ORION_EMOTIONS.PROUD]:          { bY: 7,  bF: 0.85, wAmp: 5,  wF: 0.8,  eOpen: 0.6,  ebY: 5,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.CONFUSED]:       { bY: 2,  bF: 0.55, wAmp: 2,  wF: 0.5,  eOpen: 1.15, ebY: 1,  tilt: 16, gGlow: false, shake: false },
   [ORION_EMOTIONS.WAVING]:         { bY: 7,  bF: 0.9,  wAmp: 5,  wF: 0.8,  eOpen: 1.0,  ebY: 2,  tilt: 0,  gGlow: false, shake: false },
-  [ORION_EMOTIONS.IDLE_READING]:   { bY: 2,  bF: 0.3,  wAmp: 2,  wF: 0.3,  eOpen: 0.88, ebY: 0,  tilt: 6,  gGlow: false, shake: false },
   [ORION_EMOTIONS.IDLE_CLEANING]:  { bY: 3,  bF: 1.5,  wAmp: 22, wF: 2.6,  eOpen: 0.9,  ebY: 0,  tilt: -4, gGlow: false, shake: false },
-  [ORION_EMOTIONS.IDLE_COFFEE]:    { bY: 2,  bF: 0.3,  wAmp: 2,  wF: 0.3,  eOpen: 1.0,  ebY: 2,  tilt: 0,  gGlow: false, shake: false },
-  [ORION_EMOTIONS.IDLE_LOOKING]:   { bY: 3,  bF: 0.45, wAmp: 2,  wF: 0.45, eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
 };
 const DEFAULT_EC = EC[ORION_EMOTIONS.IDLE];
 
@@ -855,9 +857,9 @@ const OrionCharacter = ({
       const cy = baseCY + bounceY;
       const bodyBottom = cy + 56;
 
-      // Breathing (±1.2%)
-      const breathX = 1 + Math.sin(t * 0.9) * 0.012;
-      const breathY = 1 - Math.sin(t * 0.9) * 0.012;
+      // Breathing (±1.8% — primary life signal for idle)
+      const breathX = 1 + Math.sin(t * 0.9) * 0.018;
+      const breathY = 1 - Math.sin(t * 0.9) * 0.018;
 
       // Wing angles
       const leftAngle  = Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp;
