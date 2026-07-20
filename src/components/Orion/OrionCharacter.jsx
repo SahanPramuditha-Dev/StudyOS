@@ -133,7 +133,7 @@ const OwlEyes = ({ pupilOffset, isBlinking, emotion }) => {
         {(isSleepy || isBlinking || isProud) && (
           <path 
             d={`M${cx-16},52 A16,16 0 0,1 ${cx+16},52 A16,${eyelidRY + (isBlinking ? 15 : 0)} 0 0,1 ${cx-16},52 Z`} 
-            fill="#d4a373" 
+            fill="#9a3412" 
           />
         )}
         
@@ -295,12 +295,6 @@ const OwlAccessories = ({ emotion }) => {
 
   return (
     <>
-      {/* Feather pen (always visible in background wing) */}
-      <g transform="rotate(-20 95 90) translate(85, 75)">
-        <path d="M0,0 Q5,-20 2,-35 Q-2,-35 0,-20 Q-4,-10 0,0 Z" fill="#a855f7" opacity="0.9" />
-        <path d="M0,0 L2,-10" stroke="#7c3aed" strokeWidth="1" fill="none" />
-        <path d="M2,-35 Q6,-42 4,-50" stroke="#c4b5fd" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      </g>
       
       {/* Book when focused */}
       <AnimatePresence>
