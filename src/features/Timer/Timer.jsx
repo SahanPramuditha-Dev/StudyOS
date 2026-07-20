@@ -616,6 +616,7 @@ const Timer = () => {
           </section>
         </aside>
       </div>
+    </div>
     </>
   );
 };
