@@ -94,6 +94,31 @@ exports.ensureMyUserProfileDoc = onCall(async (request) => {
   return { created: true };
 });
 
+/**
+ * Callable: resolve a username to the account email before sign-in.
+ * This uses the Admin SDK so the login flow does not depend on client-side Firestore reads.
+ */
+exports.resolveUsernameToEmail = onCall(async (request) => {
+  const username = String(request.data?.username || "").trim().toLowerCase().replace(/^@/, "");
+  if (!username) {
+    throw new HttpsError("invalid-argument", "Username is required.");
+  }
+
+  const db = admin.firestore();
+  const snapshot = await db
+    .collection("users")
+    .where("username", "==", username)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) {
+    return { email: null };
+  }
+
+  const userData = snapshot.docs[0].data() || {};
+  return { email: userData.email || null };
+});
+
 const normalizeChatEmail = (email) => String(email || "").trim().toLowerCase();
 
 /**

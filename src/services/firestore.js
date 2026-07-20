@@ -150,10 +150,11 @@ class FirestoreService {
     if (!username) return null;
     const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
     try {
-      const q = query(collection(db, 'users'), where('username', '==', cleanUsername), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs[0].data().email;
+      const resolver = httpsCallable(functions, 'resolveUsernameToEmail');
+      const result = await resolver({ username: cleanUsername });
+      const email = result?.data?.email;
+      if (email) {
+        return email;
       }
       return null;
     } catch (e) {
