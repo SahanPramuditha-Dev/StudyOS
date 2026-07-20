@@ -75,7 +75,7 @@ const EC = {
   [ORION_EMOTIONS.IDLE_COFFEE]:    { bY: 1,  bF: 0.2,  wAmp: 1,  wF: 0.2,  eOpen: 1.0,  ebY: 2,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.IDLE_LOOKING]:   { bY: 1.5,bF: 0.28, wAmp: 1,  wF: 0.28, eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
   // ── Active states: keep full energy ──
-  [ORION_EMOTIONS.HAPPY]:          { bY: 9,  bF: 1.1,  wAmp: 14, wF: 1.8,  eOpen: 1.1,  ebY: 4,  tilt: 0,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.HAPPY]:          { bY: 0,  bF: 0.0,  wAmp: 2,  wF: 0.5,  eOpen: 1.1,  ebY: 4,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.CELEBRATING]:    { bY: 22, bF: 1.8,  wAmp: 42, wF: 3.2,  eOpen: 1.2,  ebY: 6,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.WORRIED]:        { bY: 2,  bF: 4.5,  wAmp: 6,  wF: 4.0,  eOpen: 0.88, ebY: -5, tilt: 0,  gGlow: false, shake: true  },
   [ORION_EMOTIONS.PROUD]:          { bY: 7,  bF: 0.85, wAmp: 5,  wF: 0.8,  eOpen: 0.6,  ebY: 5,  tilt: 0,  gGlow: false, shake: false },

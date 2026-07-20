@@ -210,7 +210,7 @@ export const OrionProvider = ({ children }) => {
 
   const resetInactivityTimer = useCallback(() => {
     if (emotion === ORION_EMOTIONS.SLEEPY || emotion?.startsWith('idle_')) {
-      setEmotion(ORION_EMOTIONS.HAPPY);
+      setEmotion(ORION_EMOTIONS.IDLE);
       if (emotion === ORION_EMOTIONS.SLEEPY) {
         speak('Oh! Welcome back! I was just resting my wings... 🦉');
       }
@@ -294,7 +294,7 @@ export const OrionProvider = ({ children }) => {
     const ctx = PAGE_CONTEXTS[path] || PAGE_CONTEXTS['/dashboard'];
     setTimeout(() => {
       if (emotion !== ORION_EMOTIONS.SLEEPY) {
-        setEmotion(ORION_EMOTIONS.HAPPY);
+        setEmotion(ORION_EMOTIONS.IDLE);
         speak(ctx.greeting, 7000);
       }
     }, 1500);
