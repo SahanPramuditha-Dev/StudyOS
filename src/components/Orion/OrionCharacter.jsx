@@ -289,8 +289,9 @@ const OwlBody = ({ emotion }) => {
 };
 
 const OwlAccessories = ({ emotion }) => {
-  const hasBook = emotion === ORION_EMOTIONS.FOCUSED;
-  const hasCoffee = emotion === ORION_EMOTIONS.IDLE;
+  const hasBook = emotion === ORION_EMOTIONS.FOCUSED || emotion === ORION_EMOTIONS.IDLE_READING;
+  const hasCoffee = emotion === ORION_EMOTIONS.IDLE_COFFEE;
+  const isCleaning = emotion === ORION_EMOTIONS.IDLE_CLEANING;
 
   return (
     <>
@@ -343,6 +344,25 @@ const OwlAccessories = ({ emotion }) => {
               <path d="M6,6 Q4,2 8,-2" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round" />
               <path d="M12,8 Q10,4 14,0" stroke="#d97706" strokeWidth="1.5" fill="none" strokeLinecap="round" />
             </motion.g>
+          </motion.g>
+        )}
+      </AnimatePresence>
+
+      {/* Cleaning Cloth */}
+      <AnimatePresence>
+        {isCleaning && (
+          <motion.g
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.path 
+              d="M75,55 Q85,45 95,55 Q100,65 90,75 Z" 
+              fill="#fbcfe8"
+              opacity="0.8"
+              animate={{ x: [-10, 10, -10], y: [-5, 5, -5] }}
+              transition={{ duration: 1.2, repeat: Infinity }}
+            />
           </motion.g>
         )}
       </AnimatePresence>
@@ -516,6 +536,30 @@ const OrionCharacter = ({
       rotate: [0, -5, 0],
       scale: 1,
       transition: { duration: 1.2, repeat: 3 },
+    },
+    idle_reading: {
+      y: [0, -2, 0],
+      rotate: 0,
+      scale: 1,
+      transition: { duration: 3, repeat: Infinity, ease: 'easeInOut' },
+    },
+    idle_cleaning: {
+      y: [0, -3, 0],
+      rotate: [-2, 2, -2],
+      scale: 1,
+      transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' },
+    },
+    idle_coffee: {
+      y: [0, -1, 0],
+      rotate: 0,
+      scale: 1,
+      transition: { duration: 4, repeat: Infinity, ease: 'easeInOut' },
+    },
+    idle_looking: {
+      y: [0, -4, 0],
+      rotate: [-5, 5, -5],
+      scale: 1,
+      transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
     },
   };
 

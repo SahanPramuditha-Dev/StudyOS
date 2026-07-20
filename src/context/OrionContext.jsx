@@ -16,6 +16,10 @@ export const ORION_EMOTIONS = {
   PROUD: 'proud',
   CONFUSED: 'confused',
   IDLE: 'idle',
+  IDLE_READING: 'idle_reading',
+  IDLE_CLEANING: 'idle_cleaning',
+  IDLE_COFFEE: 'idle_coffee',
+  IDLE_LOOKING: 'idle_looking',
   WAVING: 'waving',
 };
 
@@ -182,18 +186,50 @@ export const OrionProvider = ({ children }) => {
     clearTimeout(speechTimer.current);
   }, []);
 
-  // ─── Inactivity Detection ─────────────────────────────────────────────────
+  // ─── Inactivity & Idle Behavior Engine ────────────────────────────────────
+
+  const idleBehaviorTimer = useRef(null);
+
+  const triggerRandomIdleBehavior = useCallback(() => {
+    // Only trigger idle if we are currently happy, idle, or looking around (don't interrupt thinking/sleeping)
+    setEmotion(prev => {
+      if (prev === ORION_EMOTIONS.THINKING || prev === ORION_EMOTIONS.SLEEPY || prev === ORION_EMOTIONS.WORRIED || prev === ORION_EMOTIONS.FOCUSED) {
+        return prev;
+      }
+      
+      const behaviors = [
+        ORION_EMOTIONS.IDLE_READING,
+        ORION_EMOTIONS.IDLE_CLEANING,
+        ORION_EMOTIONS.IDLE_COFFEE,
+        ORION_EMOTIONS.IDLE_LOOKING,
+        ORION_EMOTIONS.HAPPY
+      ];
+      return behaviors[Math.floor(Math.random() * behaviors.length)];
+    });
+  }, []);
 
   const resetInactivityTimer = useCallback(() => {
-    if (emotion === ORION_EMOTIONS.SLEEPY) {
+    if (emotion === ORION_EMOTIONS.SLEEPY || emotion?.startsWith('idle_')) {
       setEmotion(ORION_EMOTIONS.HAPPY);
-      speak('Oh! Welcome back! I was just resting my wings... 🦉');
+      if (emotion === ORION_EMOTIONS.SLEEPY) {
+        speak('Oh! Welcome back! I was just resting my wings... 🦉');
+      }
     }
+    
     clearTimeout(inactivityTimer.current);
+    clearInterval(idleBehaviorTimer.current);
+
+    // After 15 seconds of no mouse movement, start randomly cycling idle states every 12 seconds
+    idleBehaviorTimer.current = setTimeout(() => {
+      idleBehaviorTimer.current = setInterval(triggerRandomIdleBehavior, 12000);
+      triggerRandomIdleBehavior();
+    }, 15000);
+
     inactivityTimer.current = setTimeout(() => {
+      clearInterval(idleBehaviorTimer.current);
       setEmotion(ORION_EMOTIONS.SLEEPY);
     }, 3 * 60 * 1000); // 3 minutes idle = sleep
-  }, [emotion, speak]);
+  }, [emotion, speak, triggerRandomIdleBehavior]);
 
   // Proactive Break Tracker (Active use without a break)
   const activeUseTimer = useRef(null);
@@ -219,6 +255,7 @@ export const OrionProvider = ({ children }) => {
     return () => {
       events.forEach(e => window.removeEventListener(e, handleActivity));
       clearTimeout(inactivityTimer.current);
+      clearInterval(idleBehaviorTimer.current);
       clearTimeout(activeUseTimer.current);
     };
   }, [resetInactivityTimer, resetActiveUseTimer]);

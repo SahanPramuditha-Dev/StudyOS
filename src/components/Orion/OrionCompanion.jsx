@@ -102,10 +102,19 @@ const OrionCompanion = () => {
     if (isDragging) return;
     toggleChat();
     if (!isChatOpen) {
-      setEmotion(ORION_EMOTIONS.WAVING);
+      // Random single click behavior
+      const actions = [ORION_EMOTIONS.WAVING, ORION_EMOTIONS.HAPPY, ORION_EMOTIONS.CONFUSED];
+      setEmotion(actions[Math.floor(Math.random() * actions.length)]);
       setTimeout(() => setEmotion(ORION_EMOTIONS.HAPPY), 1500);
     }
   }, [isDragging, toggleChat, isChatOpen, setEmotion]);
+
+  const handleDoubleClick = useCallback(() => {
+    if (isDragging) return;
+    setEmotion(ORION_EMOTIONS.CELEBRATING);
+    speak('Wheee! 🦉');
+    setTimeout(() => setEmotion(ORION_EMOTIONS.HAPPY), 2500);
+  }, [isDragging, setEmotion, speak]);
 
   const handleHide = () => {
     setIsHidden(true);
@@ -222,8 +231,14 @@ const OrionCompanion = () => {
               drag
               dragMomentum={false}
               dragElastic={0.1}
-              onDragStart={() => setIsDragging(true)}
-              onDragEnd={() => setTimeout(() => setIsDragging(false), 100)}
+              onDragStart={() => {
+                setIsDragging(true);
+                setEmotion(ORION_EMOTIONS.WAVING); // wings open
+              }}
+              onDragEnd={() => {
+                setTimeout(() => setIsDragging(false), 100);
+                setEmotion(ORION_EMOTIONS.HAPPY);
+              }}
               className="pointer-events-auto cursor-pointer relative"
               whileDrag={{ scale: 1.06 }}
               title="Click to chat with Orion"
@@ -232,6 +247,7 @@ const OrionCompanion = () => {
               aria-label="Orion AI companion — click to chat"
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleOrionClick(); }}
               onClick={handleOrionClick}
+              onDoubleClick={handleDoubleClick}
               onHoverStart={() => {
                 if (!isChatOpen) setShowStats(true);
                 setEmotion(prev => prev === ORION_EMOTIONS.SLEEPY ? prev : ORION_EMOTIONS.HAPPY);
