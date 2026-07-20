@@ -202,7 +202,7 @@ export const OrionProvider = ({ children }) => {
         ORION_EMOTIONS.IDLE_CLEANING,
         ORION_EMOTIONS.IDLE_COFFEE,
         ORION_EMOTIONS.IDLE_LOOKING,
-        ORION_EMOTIONS.HAPPY
+        ORION_EMOTIONS.IDLE
       ];
       return behaviors[Math.floor(Math.random() * behaviors.length)];
     });
