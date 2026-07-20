@@ -255,28 +255,29 @@ const OrionCompanion = () => {
                   transition={{ duration: 1.5, repeat: Infinity }}
                 />
               )}
+              {/* Emotion label badge */}
+              <AnimatePresence>
+                {emotion !== ORION_EMOTIONS.IDLE && (
+                  <motion.div
+                    className="absolute -bottom-6 left-1/2 -translate-x-1/2 pointer-events-none whitespace-nowrap"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded-full border border-slate-200/60 dark:border-slate-700/60 capitalize shadow-sm">
+                      {emotion === ORION_EMOTIONS.WAVING ? '👋 Waving' :
+                       emotion === ORION_EMOTIONS.CELEBRATING ? '🎉 Celebrating' :
+                       emotion === ORION_EMOTIONS.THINKING ? '💭 Thinking' :
+                       emotion === ORION_EMOTIONS.SLEEPY ? '😴 Sleepy' :
+                       emotion === ORION_EMOTIONS.FOCUSED ? '🎯 Focused' :
+                       emotion === ORION_EMOTIONS.HAPPY ? '😊 Happy' : emotion}
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
 
-            {/* Emotion label badge */}
-            <AnimatePresence>
-              {emotion !== ORION_EMOTIONS.IDLE && (
-                <motion.div
-                  className="mt-1 pointer-events-none"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded-full border border-slate-200/60 dark:border-slate-700/60 capitalize">
-                    {emotion === ORION_EMOTIONS.WAVING ? '👋 Waving' :
-                     emotion === ORION_EMOTIONS.CELEBRATING ? '🎉 Celebrating' :
-                     emotion === ORION_EMOTIONS.THINKING ? '💭 Thinking' :
-                     emotion === ORION_EMOTIONS.SLEEPY ? '😴 Sleepy' :
-                     emotion === ORION_EMOTIONS.FOCUSED ? '🎯 Focused' :
-                     emotion === ORION_EMOTIONS.HAPPY ? '😊 Happy' : emotion}
-                  </span>
-                </motion.div>
-              )}
-            </AnimatePresence>
+
           </motion.div>
         )}
       </AnimatePresence>
