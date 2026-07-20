@@ -172,9 +172,11 @@ const OrionChatPanel = () => {
     inputRef.current?.focus();
   };
 
-  const sendMessage = useCallback(async (text = input) => {
+  const sendMessage = useCallback(async (text = input, hiddenContext = null) => {
     const trimmed = text.trim();
-    if (!trimmed || isThinking) return;
+    if (!trimmed && !hiddenContext) return;
+    if (isThinking) return;
+    
     setInput('');
     setShowCommands(false);
 
@@ -189,7 +191,10 @@ const OrionChatPanel = () => {
         role: m.role, content: m.content
       }));
 
-      const response = await askOrion(trimmed, {
+      // If hiddenContext is provided (like a dropped document), send it to the AI, but it won't be in the chat UI
+      const finalPrompt = hiddenContext ? `${hiddenContext}\n\nUser Question: ${trimmed}` : trimmed;
+
+      const response = await askOrion(finalPrompt, {
         pathname: location.pathname,
         studyData,
         conversationHistory,
@@ -253,10 +258,14 @@ const OrionChatPanel = () => {
   useEffect(() => {
     const handleDocumentAnalysis = (e) => {
       const { filename, content } = e.detail;
-      const prompt = `Please analyze this document named "${filename}":\n\n${content}\n\nPlease summarize the key points and ask me if I want to turn it into flashcards or a quiz.`;
+      // Truncate to ~6000 chars to avoid Firebase payload limits / Gemini token limits
+      const safeContent = content.slice(0, 6000);
       
-      // Simulate user sending the message
-      setTimeout(() => sendMessage(prompt), 500);
+      const hiddenContext = `[DOCUMENT ATTACHED: "${filename}"]\n${safeContent}`;
+      const uiMessage = `Please analyze the attached document: **${filename}**`;
+      
+      // Send the short message to the UI, but pass the heavy document as hidden context
+      setTimeout(() => sendMessage(uiMessage, hiddenContext), 500);
     };
 
     window.addEventListener('orion-analyze-document', handleDocumentAnalysis);
