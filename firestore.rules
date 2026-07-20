@@ -202,7 +202,7 @@ service cloud.firestore {
     }
 
     match /settings/{document} {
-      allow read: if isAuthenticated();
+      allow read: if document == 'platform' || isAuthenticated();
       allow write: if isAdmin();
     }
 
