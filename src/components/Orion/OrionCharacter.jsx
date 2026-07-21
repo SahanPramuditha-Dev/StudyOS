@@ -738,35 +738,78 @@ function drawAIBadge(ctx, cx, by) {
   ctx.fillText('AI', cx, by + h / 2 + 0.5);
 }
 
-function drawBook(ctx, cx, cy) {
-  const bx = cx - 26, by = cy + 38, bw = 52, bh = 32;
-  // Shadow
-  ctx.save(); ctx.globalAlpha = 0.14;
-  ctx.beginPath(); ctx.roundRect(bx + 2, by + 2, bw, bh, 4); ctx.fillStyle = '#000'; ctx.fill();
+function drawBook(ctx, cx, cy, t = 0) {
+  // Open book held at chest level - left page + right page
+  const bx = cx, by = cy + 22; // front of chest
+  
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(-0.08); // slight tilt, feels natural
+  
+  const pw = 24, ph = 30, corner = 3;
+
+  // Drop shadow
+  ctx.save(); ctx.globalAlpha = 0.18;
+  ctx.beginPath(); ctx.roundRect(-pw * 2 + 2, -ph / 2 + 3, pw * 4, ph, corner);
+  ctx.fillStyle = '#000'; ctx.fill();
   ctx.restore();
-  // Cover
-  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 4);
-  const cG = ctx.createLinearGradient(bx, by, bx, by + bh);
-  cG.addColorStop(0, '#1e3a8a'); cG.addColorStop(1, '#1e40af');
-  ctx.fillStyle = cG; ctx.fill();
-  // Cover top highlight
-  ctx.save(); ctx.globalAlpha = 0.38;
-  ctx.beginPath(); ctx.roundRect(bx, by, bw, 5, [4, 4, 0, 0]); ctx.fillStyle = '#6b8dff'; ctx.fill();
+
+  // --- LEFT PAGE ---
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(-pw * 2, -ph / 2, pw, ph, [corner, 0, 0, corner]);
+  const lgL = ctx.createLinearGradient(-pw * 2, 0, -pw, 0);
+  lgL.addColorStop(0, '#e2e8f0'); lgL.addColorStop(1, '#f8fafc');
+  ctx.fillStyle = lgL; ctx.fill();
+  // Lines on left page
+  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const lw = i % 3 === 2 ? pw * 0.55 : pw * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-pw * 2 + 4, -ph / 2 + 7 + i * 4);
+    ctx.lineTo(-pw * 2 + 4 + lw, -ph / 2 + 7 + i * 4);
+    ctx.stroke();
+  }
   ctx.restore();
-  // Pages
-  ctx.beginPath(); ctx.roundRect(bx + 3, by + 2, bw - 6, bh - 4, 2); ctx.fillStyle = '#f8fafc'; ctx.fill();
-  // Spine
-  ctx.beginPath(); ctx.moveTo(cx, by + 2); ctx.lineTo(cx, by + bh - 2);
-  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1.5; ctx.stroke();
-  // Text lines
-  ctx.strokeStyle = '#94a3b8'; ctx.lineCap = 'round';
-  [0, 6, 12, 18].forEach(dy => {
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(bx + 6, by + 9 + dy); ctx.lineTo(bx + 6 + (dy === 6 ? 12 : 16), by + 9 + dy); ctx.stroke();
-  });
-  [0, 6, 12].forEach(dy => {
-    ctx.beginPath(); ctx.moveTo(cx + 4, by + 9 + dy); ctx.lineTo(cx + 4 + (dy === 6 ? 11 : 14), by + 9 + dy); ctx.stroke();
-  });
+
+  // --- RIGHT PAGE ---
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(-pw, -ph / 2, pw, ph, [0, corner, corner, 0]);
+  const lgR = ctx.createLinearGradient(-pw, 0, 0, 0);
+  lgR.addColorStop(0, '#f8fafc'); lgR.addColorStop(1, '#f1f5f9');
+  ctx.fillStyle = lgR; ctx.fill();
+  // Lines on right page
+  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    const lw = i % 3 === 0 ? pw * 0.55 : pw * 0.78;
+    ctx.beginPath();
+    ctx.moveTo(-pw + 4, -ph / 2 + 7 + i * 4);
+    ctx.lineTo(-pw + 4 + lw, -ph / 2 + 7 + i * 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // --- SPINE ---
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(-pw - 2, -ph / 2, 4, ph, 1);
+  const spineG = ctx.createLinearGradient(-pw - 2, 0, -pw + 2, 0);
+  spineG.addColorStop(0, '#1e3a8a'); spineG.addColorStop(1, '#3b5fc5');
+  ctx.fillStyle = spineG; ctx.fill();
+  ctx.restore();
+
+  // --- COVER edges (bottom) ---
+  ctx.save(); ctx.globalAlpha = 0.45;
+  ctx.beginPath(); ctx.roundRect(-pw * 2, ph / 2 - 3, pw * 2, 3, [0, 0, corner, corner]);
+  ctx.fillStyle = '#1e3a8a'; ctx.fill();
+  ctx.restore();
+
+  // Animated page turn glint on right
+  const glint = (Math.sin(t * 0.8) + 1) / 2;
+  ctx.save(); ctx.globalAlpha = glint * 0.15;
+  ctx.beginPath(); ctx.roundRect(-pw, -ph / 2, pw, ph, [0, corner, corner, 0]);
+  ctx.fillStyle = '#bfdbfe'; ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
 }
 
 function drawClipboard(ctx, cx, cy) {
@@ -1004,6 +1047,13 @@ const OrionCharacter = ({
       // 3. Body + face mask
       drawBody(ctx, cx, cy, breathX, breathY);
 
+      // 3b. Book BEHIND right wing (so wing wraps over the book)
+      if (!isDragging) {
+        const isReading = em === ORION_EMOTIONS.IDLE_READING || em === ORION_EMOTIONS.FOCUSED;
+        const isTimerPage = contextPath === '/timer';
+        if (isReading || isTimerPage) drawBook(ctx, cx, cy, t);
+      }
+
       // 4. Right wing (in front for waving)
       drawWing(ctx, cx, cy, false, rightAngle);
 
@@ -1044,13 +1094,11 @@ const OrionCharacter = ({
       }
       
       if (contextPath === '/timer') {
-        drawBook(ctx, cx, cy); // Always reading during Pomodoro
+        // Book already drawn behind wing above
       } else if (contextPath === '/dashboard' && em === ORION_EMOTIONS.IDLE) {
         drawClipboard(ctx, cx, cy);
       } else {
-        if (em === ORION_EMOTIONS.FOCUSED || em === ORION_EMOTIONS.IDLE_READING) {
-          drawBook(ctx, cx, cy);
-        }
+        // Book already drawn behind wing above for IDLE_READING and FOCUSED
         if (em === ORION_EMOTIONS.IDLE_COFFEE) drawCoffeeCup(ctx, cx, cy, t);
         if (em === ORION_EMOTIONS.IDLE_CLEANING) drawCleaningCloth(ctx, cx, cy, t);
         if (em === ORION_EMOTIONS.IDLE_STARGAZING) drawTelescope(ctx, cx, cy);
