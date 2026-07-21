@@ -1,91 +1,139 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sparkles } from 'lucide-react';
+import { X, Sparkles, Brain, Trophy, AlertTriangle } from 'lucide-react';
 import { useOrion } from '../../context/OrionContext';
+
+// ─── Emotion theming ──────────────────────────────────────────────────────────
+
+const THEMES = {
+  default: {
+    accent:    'from-amber-400 to-orange-400',
+    icon:      <Sparkles size={13} />,
+    iconColor: 'text-amber-400',
+    glow:      'rgba(251,191,36,0.18)',
+    btn:       'bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border-amber-400/25',
+  },
+  celebrating: {
+    accent:    'from-yellow-300 to-amber-500',
+    icon:      <Trophy size={13} />,
+    iconColor: 'text-yellow-300',
+    glow:      'rgba(253,224,71,0.22)',
+    btn:       'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-300 border-yellow-400/25',
+  },
+  proud: {
+    accent:    'from-yellow-300 to-amber-500',
+    icon:      <Trophy size={13} />,
+    iconColor: 'text-yellow-300',
+    glow:      'rgba(253,224,71,0.22)',
+    btn:       'bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-300 border-yellow-400/25',
+  },
+  focused: {
+    accent:    'from-sky-400 to-blue-500',
+    icon:      <Brain size={13} />,
+    iconColor: 'text-sky-400',
+    glow:      'rgba(56,189,248,0.18)',
+    btn:       'bg-sky-400/10 hover:bg-sky-400/20 text-sky-300 border-sky-400/25',
+  },
+  thinking: {
+    accent:    'from-sky-400 to-blue-500',
+    icon:      <Brain size={13} />,
+    iconColor: 'text-sky-400',
+    glow:      'rgba(56,189,248,0.18)',
+    btn:       'bg-sky-400/10 hover:bg-sky-400/20 text-sky-300 border-sky-400/25',
+  },
+  worried: {
+    accent:    'from-rose-400 to-red-500',
+    icon:      <AlertTriangle size={13} />,
+    iconColor: 'text-rose-400',
+    glow:      'rgba(251,113,133,0.18)',
+    btn:       'bg-rose-400/10 hover:bg-rose-400/20 text-rose-300 border-rose-400/25',
+  },
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 const OrionSpeechBubble = () => {
   const { speechMessage, showSpeech, dismissSpeech, isChatOpen, emotion } = useOrion();
   const timerRef = useRef(null);
 
-  // Auto-dismiss guard on hover
   const handleMouseEnter = () => clearTimeout(timerRef.current);
 
   if (isChatOpen) return null;
 
-  // Map emotion to visual style
-  let bubbleTheme = 'border-slate-200/80 dark:border-slate-700/80 text-amber-500';
-  let glowStyle = 'rgba(0,0,0,0)';
-  
-  if (emotion === 'celebrating' || emotion === 'proud') {
-    bubbleTheme = 'border-amber-400 dark:border-amber-500 text-amber-500';
-    glowStyle = 'rgba(251, 191, 36, 0.2)';
-  } else if (emotion === 'focused' || emotion === 'thinking') {
-    bubbleTheme = 'border-blue-400 dark:border-blue-500 text-blue-500';
-    glowStyle = 'rgba(59, 130, 246, 0.2)';
-  } else if (emotion === 'worried') {
-    bubbleTheme = 'border-red-400 dark:border-red-500 text-red-500';
-    glowStyle = 'rgba(239, 68, 68, 0.2)';
-  }
+  const theme = THEMES[emotion] ?? THEMES.default;
 
   return (
     <AnimatePresence>
       {showSpeech && speechMessage && (
         <motion.div
-          key="speech"
-          className="absolute bottom-full mb-4 right-2 z-20 max-w-[280px] min-w-[200px]"
-          initial={{ opacity: 0, scale: 0.6, y: 30, x: 20, rotate: 10, originX: 1, originY: 1 }}
-          animate={{ opacity: 1, scale: 1, y: 0, x: 0, rotate: 0 }}
-          exit={{ opacity: 0, scale: 0.5, y: 20, x: 10, rotate: -10 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 24 }}
+          key="orion-speech"
+          className="absolute bottom-full mb-3 right-0 z-30 w-[230px]"
+          initial={{ opacity: 0, y: 14, scale: 0.88, originX: 1, originY: 1 }}
+          animate={{ opacity: 1, y: 0,  scale: 1 }}
+          exit={{    opacity: 0, y: 8,  scale: 0.9 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 26 }}
           onMouseEnter={handleMouseEnter}
         >
-          {/* Bubble Container */}
-          <div 
-            className={`relative bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-3xl rounded-br-sm shadow-2xl border-2 p-4 pr-10 ${bubbleTheme.split(' ')[0]} ${bubbleTheme.split(' ')[1]}`}
-            style={{ boxShadow: `0 10px 30px -5px ${glowStyle}, 0 4px 10px -2px rgba(0,0,0,0.1)` }}
+          {/* ── Card ── */}
+          <div
+            className="relative rounded-2xl overflow-hidden"
+            style={{
+              background: 'rgba(10, 16, 38, 0.92)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: `0 8px 32px -4px ${theme.glow}, 0 2px 12px rgba(0,0,0,0.4)`,
+            }}
           >
-            {/* Content */}
-            <div className="flex items-start gap-3">
-              <span className={`mt-0.5 shrink-0 ${bubbleTheme.split(' ')[2]}`}>
-                <Sparkles size={16} />
-              </span>
-              <p className="text-[14px] font-medium leading-relaxed text-slate-800 dark:text-slate-100 font-sans tracking-wide">
-                {speechMessage}
-              </p>
-            </div>
+            {/* Accent bar */}
+            <div className={`h-[3px] w-full bg-gradient-to-r ${theme.accent}`} />
 
-            {/* Dismiss */}
-            <button
-              onClick={dismissSpeech}
-              className="absolute top-2 right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-              aria-label="Dismiss Orion message"
-            >
-              <X size={13} />
-            </button>
+            {/* Body */}
+            <div className="px-3.5 pt-3 pb-3">
+              {/* Header row */}
+              <div className="flex items-start gap-2.5">
+                <span className={`mt-[1px] shrink-0 ${theme.iconColor}`}>
+                  {theme.icon}
+                </span>
+                <p className="text-[12.5px] font-medium leading-[1.55] text-slate-100 tracking-[0.01em] flex-1">
+                  {speechMessage}
+                </p>
+                <button
+                  onClick={dismissSpeech}
+                  className="shrink-0 mt-[1px] text-slate-500 hover:text-slate-300 transition-colors"
+                  aria-label="Dismiss"
+                >
+                  <X size={12} />
+                </button>
+              </div>
 
-            {/* Tail triangle pointing down-right */}
-            <div
-              className="absolute -bottom-2 right-4 w-4 h-2 overflow-hidden"
-              aria-hidden="true"
-            >
-              <div className={`w-4 h-4 bg-white/95 dark:bg-slate-900/95 border-b-2 border-r-2 ${bubbleTheme.split(' ')[0]} ${bubbleTheme.split(' ')[1]} rotate-45 origin-top-left ml-2 shadow-sm`} />
+              {/* Footer row */}
+              <div className="mt-2.5 flex justify-end">
+                <motion.button
+                  onClick={dismissSpeech}
+                  className={`text-[10.5px] font-semibold px-2.5 py-[3px] rounded-full border transition-all ${theme.btn}`}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.25 }}
+                  whileTap={{ scale: 0.94 }}
+                >
+                  Got it ✓
+                </motion.button>
+              </div>
             </div>
           </div>
 
-          {/* Quick-action pill */}
-          <motion.div
-            className="mt-3 flex justify-end"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <button
-              onClick={dismissSpeech}
-              className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 hover:text-primary-500 dark:hover:text-primary-400 transition-colors bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm px-2.5 py-1 rounded-full border border-slate-200/60 dark:border-slate-700/60"
-            >
-              Got it
-            </button>
-          </motion.div>
+          {/* ── Tail ── */}
+          <div
+            className="absolute -bottom-[6px] right-6 w-3 h-3"
+            aria-hidden="true"
+            style={{
+              background: 'rgba(10, 16, 38, 0.92)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderTop: 'none',
+              borderLeft: 'none',
+              transform: 'rotate(45deg)',
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
