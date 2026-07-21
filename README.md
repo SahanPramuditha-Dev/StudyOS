@@ -52,6 +52,17 @@ Testing: Vitest
 Quality: ESLint + Prettier
 ```
 
+## ✅ Prerequisites
+
+Before setting up StudyOS, ensure you have:
+
+- **Node.js** 18.0.0 or higher
+- **npm** 8.0.0 or higher (or yarn/pnpm)
+- **Git** for cloning the repository
+- **Firebase Project** with Firestore, Authentication, and Storage enabled
+- **Google Cloud Project** with Calendar API and OAuth 2.0 credentials
+- A code editor (VS Code recommended)
+
 ## 🚀 Quick Start
 
 ```bash
@@ -80,7 +91,29 @@ VITE_FIREBASE_STORAGE_BUCKET=yourproject.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=123
 VITE_FIREBASE_APP_ID=your_app_id
 GOOGLE_CALENDAR_API_KEY=your_gc_key
+VITE_GOOGLE_CLIENT_ID=your_google_client_id
 ```
+
+### Installation Troubleshooting
+
+**Issue: npm install fails**
+- Clear npm cache: `npm cache clean --force`
+- Delete `node_modules` and `package-lock.json`, then reinstall
+- Ensure Node.js version is 18+: `node --version`
+
+**Issue: Port 5173 already in use**
+- Use a different port: `npm run dev -- --port 3000`
+- Or kill the process: `lsof -ti:5173 | xargs kill`
+
+**Issue: Firebase authentication not working**
+- Verify `VITE_FIREBASE_*` variables are set in `.env.local`
+- Check Firebase Console: Auth → Authorized Domains includes your dev URL
+- Restart dev server after env changes
+
+**Issue: Google Calendar sync not working**
+- Confirm `VITE_GOOGLE_CLIENT_ID` is in `.env.local`
+- Verify OAuth redirect URI in Google Console matches your app URL
+- Check browser console for CORS errors
 
 ## 📁 Project Structure
 
@@ -104,6 +137,58 @@ Detailed: [Projects Guide](src/features/Projects/PROJECTS_GUIDE.md), [Projects S
 
 UI Standards: [UI System Guidelines](docs/UI_SYSTEM_GUIDELINES.md)
 
+## 🗄️ Database Schema (Firestore)
+
+Key collections and structure:
+
+```
+users/
+├── {userId}
+│   ├── email: string
+│   ├── name: string
+│   ├── role: 'student' | 'instructor' | 'admin'
+│   └── profile: { avatar, bio, ... }
+
+courses/
+├── {courseId}
+│   ├── title: string
+│   ├── description: string
+│   ├── owner: userId
+│   ├── members: [userId]
+│   └── createdAt: timestamp
+
+assignments/
+├── {assignmentId}
+│   ├── title: string
+│   ├── courseId: reference
+│   ├── dueDate: timestamp
+│   ├── submissions: []
+│   └── rubric: { ...criteria }
+
+projects/
+├── {projectId}
+│   ├── title: string
+│   ├── tasks: []
+│   ├── collaborators: [userId]
+│   └── githubRepo: string (optional)
+
+notes/
+├── {noteId}
+│   ├── title: string
+│   ├── content: rich text
+│   ├── userId: reference
+│   └── tags: [string]
+
+reminders/
+├── {reminderId}
+│   ├── title: string
+│   ├── dueDate: timestamp
+│   ├── userId: reference
+│   └── completed: boolean
+```
+
+See [firestore.rules](firestore.rules) for role-based security rules.
+
 ## 🔍 Quality & Build
 
 ```bash
@@ -112,6 +197,32 @@ npm run build     # Production build
 npm run preview   # Local prod server
 npm run test      # Vitest
 ```
+
+### Testing Guide
+
+**Run all tests:**
+```bash
+npm run test
+```
+
+**Run tests in watch mode (auto-rerun on file changes):**
+```bash
+npm run test -- --watch
+```
+
+**Run a specific test file:**
+```bash
+npm run test -- src/components/PageHeader.test.jsx
+```
+
+**Run tests with coverage:**
+```bash
+npm run test -- --coverage
+```
+
+**Test file locations:** Tests are colocated with components using `.test.jsx` or `.spec.jsx` suffix.
+
+**Debugging tests:** Use `test.only()` to run a single test, or `test.skip()` to skip tests during development.
 
 ## Deployment
 
@@ -135,15 +246,102 @@ See [firebase.json](firebase.json), [firestore.rules](firestore.rules).
 - Reminder scheduling via Cloud Functions.
 - Profile/account ops via shared services.
 
+## 🔧 Troubleshooting
+
+### Build Issues
+
+**Error: Cannot find module or import**
+- Run `npm install` to ensure all dependencies are installed
+- Clear Vite cache: `rm -rf node_modules/.vite`
+- Restart dev server
+
+**Error: Firebase initialization failed**
+- Verify all `VITE_FIREBASE_*` environment variables
+- Check Firebase Console project is active
+- Ensure Firebase Authentication is enabled
+
+### Runtime Issues
+
+**Orion AI not responding**
+- Check browser console for errors
+- Verify AI service endpoint is configured
+- Check network tab for failed API calls
+
+**Google Calendar sync not syncing**
+- Verify user granted Calendar API permissions during OAuth
+- Check Firebase Functions logs for errors
+- Ensure `GOOGLE_CALENDAR_API_KEY` is valid in Cloud Functions
+
+**Firestore permissions errors**
+- Review [firestore.rules](firestore.rules) for user role
+- Ensure user is authenticated and has proper role set
+- Check Firestore rules in Firebase Console
+
+### Performance Issues
+
+**Slow load times**
+- Run `npm run build` and check bundle size
+- Use Chrome DevTools Performance tab to identify bottlenecks
+- Verify Cloud Functions are in the same region as Firestore
+
+**High Firestore costs**
+- Implement efficient queries (avoid full collection scans)
+- Use composite indexes from Firestore recommendations
+- Consider pagination for large datasets
+
+## ❓ FAQ
+
+**Q: Can I use StudyOS for commercial purposes?**
+A: StudyOS is proprietary. Commercial use requires written permission. Contact: sahan.dev.tech@gmail.com
+
+**Q: Is there a mobile app?**
+A: Mobile app (Capacitor-based) is on the roadmap. Currently web-only.
+
+**Q: Does StudyOS work offline?**
+A: Offline support is implemented with Firebase offline persistence for read operations.
+
+**Q: How do I invite other users to a course?**
+A: Course owners can add members via the course settings; members receive an invite notification.
+
+**Q: Can I export my data?**
+A: Data export features are under development. Currently, you can export notes and assignments individually.
+
+**Q: How are my files stored?**
+A: Files are stored in Firebase Storage with user-level access controls via Firestore rules.
+
+**Q: Does StudyOS support multiple courses per user?**
+A: Yes, unlimited courses. Enroll in or create as many as needed.
+
+## 📚 Related Documentation
+
+- [Architecture Overview](docs/ARCHITECTURE_OVERVIEW.md) - System design and module relationships
+- [Development Guide](docs/DEVELOPMENT.md) - Detailed setup and dev workflow
+- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment procedures
+- [UI System Guidelines](docs/UI_SYSTEM_GUIDELINES.md) - Design system and component standards
+- [Security Guide](docs/SECURITY.md) - Security practices and data protection
+- [Testing Guide](docs/TESTING.md) - Testing strategy and best practices
+- [Developer Guide](src/features/Projects/DEVELOPER_GUIDE.md) - Advanced development tips
+- [Projects Feature Summary](PROJECTS_FEATURE_SUMMARY.md) - Detailed feature breakdown
+
 ## 🤝 Contributing
 
-1. Fork & clone.
-2. Create feature branch `feat/your-feature`.
-3. Commit: `git commit -m 'feat: add X'`.
-4. PR to `main` with tests.
+Contributions are welcome! Please follow these steps:
 
-Issues: [Create New](https://github.com/SahanPramuditha-Dev/StudyOS/issues/new)  
-Code of Conduct: Standard.
+1. Fork the repository
+2. Clone your fork: `git clone https://github.com/yourusername/StudyOS.git`
+3. Create a feature branch: `git checkout -b feat/your-feature`
+4. Make changes and test: `npm run test`
+5. Lint your code: `npm run lint`
+6. Commit with clear message: `git commit -m 'feat: add X'`
+7. Push to your fork and create a Pull Request to `main`
+
+**PR Guidelines:**
+- Include tests for new features
+- Update documentation if needed
+- Follow ESLint rules (run `npm run lint`)
+- Reference any related issues in PR description
+
+[Report Issues](https://github.com/SahanPramuditha-Dev/StudyOS/issues/new) | [View Contributing Guide](CONTRIBUTING.md)
 
 ## 📄 License
 
@@ -159,22 +357,24 @@ sahan.dev.tech@gmail.com
 
 ## 🚀 Roadmap
 
-- [ ] Demo video/GIFs.
-- [ ] PWA support.
-- [ ] Mobile app (Capacitor).
-- [x] AI study assistant (Orion).
-- [ ] Enhanced real-time collaboration features.
+- [ ] Demo video/GIFs and interactive tutorials
+- [ ] PWA support for offline-first experience
+- [ ] Mobile app (iOS/Android via Capacitor)
+- [x] AI study assistant (Orion AI companion)
+- [ ] Enhanced real-time collaboration features
+- [ ] Advanced analytics and learning insights
+- [ ] Integration with LMS platforms (Blackboard, Canvas)
 
 ## 📞 Support
 
 - 💬 Discord/Forum (TBD)
-- 🐛 [Issues](https://github.com/SahanPramuditha-Dev/StudyOS/issues)
-- 📧 Email via app contact form.
+- 🐛 [Report Issues](https://github.com/SahanPramuditha-Dev/StudyOS/issues)
+- 📧 Email: sahan.dev.tech@gmail.com
+- 💼 Commercial inquiries: sahan.dev.tech@gmail.com
 
-⭐ **Star on GitHub** if helpful!  
-[DEVELOPER_GUIDE](src/features/Projects/DEVELOPER_GUIDE.md) for advanced setup.
+⭐ **Star on GitHub** if you find StudyOS helpful!
 
 ---
 
-Built with ❤️ for students worldwide.
+Built with ❤️ for students and developers worldwide.
 
