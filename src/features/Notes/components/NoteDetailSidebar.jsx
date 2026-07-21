@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import NoteEditor from './NoteEditor';
 import NotePreview from './NotePreview';
 import Select from '../../../components/ui/Select';
+import AINotesToolbar from './AINotesToolbar';
 
 const NoteDetailSidebar = ({
   selectedNoteDetail,
@@ -177,6 +178,12 @@ const NoteDetailSidebar = ({
             </div>
           </div>
         </div>
+
+        {/* AI Toolbar */}
+        <AINotesToolbar
+          noteContent={selectedNoteDetail.content}
+          noteTitle={selectedNoteDetail.title}
+        />
 
         {/* Editor/Preview Area */}
         <div className="flex-1 flex overflow-hidden">

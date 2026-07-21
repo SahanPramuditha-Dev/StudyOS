@@ -176,6 +176,7 @@ const OrionChatPanel = () => {
   const [assignments] = useStorage('studyos_assignments', []);
   const [courses]     = useStorage('studyos_courses', []);
   const [goals]       = useStorage('studyos_goals', []);
+  const [notes]       = useStorage('studyos_notes', []);
   const [orionData]   = useStorage('studyos_orion', {});
 
   const studyData = { assignments, courses, goals, orionXP: orionData.xp, orionLevel: orionData.level };
@@ -238,7 +239,54 @@ const OrionChatPanel = () => {
 
     try {
       const conversationHistory = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
-      const finalPrompt = hiddenContext ? `${hiddenContext}\n\nUser Question: ${trimmed}` : trimmed;
+      let finalPrompt = hiddenContext ? `${hiddenContext}\n\nUser Question: ${trimmed}` : trimmed;
+
+      // ── /quiz: Active Recall Quiz from user's actual notes ──────────────────
+      if (trimmed.startsWith('/quiz')) {
+        const topic = trimmed.replace('/quiz', '').trim();
+        const relevantNotes = notes
+          .filter(n => !n.archived)
+          .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+          .slice(0, 3);
+        const notesContext = relevantNotes.length > 0
+          ? relevantNotes.map(n => `### ${n.title}\n${n.content?.slice(0, 800) || ''}`).join('\n\n')
+          : '';
+        finalPrompt = `Generate an active recall quiz${topic ? ` about "${topic}"` : ' based on the student\'s recent notes'}.
+
+${notesContext ? `Student's recent notes:\n${notesContext}\n\n` : ''}Rules:
+- Generate exactly 4 multiple-choice questions (A/B/C/D)
+- Cover different aspects (definitions, applications, comparisons)
+- After each question, put the correct answer and a 1-sentence explanation
+- Format as markdown with clear Q1, Q2 labels
+- End with an encouraging message and award XP`;
+      }
+
+      // ── /study-plan: Personalized study plan from goals + assignments ───────
+      if (trimmed.startsWith('/study-plan')) {
+        const activeGoals = (goals?.goals || goals || []).filter?.(g => !g.completed)?.slice(0, 5) || [];
+        const pendingAssignments = (assignments || [])
+          .filter(a => a.status !== 'Submitted' && a.deadline)
+          .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
+          .slice(0, 6);
+        const enrolledCourses = (courses || []).slice(0, 4);
+        
+        finalPrompt = `Create a personalized 7-day study plan for this student.
+
+Student's active goals: ${activeGoals.length > 0 ? activeGoals.map(g => g.title).join(', ') : 'None set'}
+
+Pending assignments (sorted by deadline): ${pendingAssignments.length > 0
+          ? pendingAssignments.map(a => `${a.title} (due: ${a.deadline})`).join(', ')
+          : 'None'}
+
+Enrolled courses: ${enrolledCourses.length > 0 ? enrolledCourses.map(c => c.title || c.name).join(', ') : 'None'}
+
+Rules:
+- Create a realistic Mon-Sun schedule in a markdown table
+- Balance subjects, rest, and assignment deadlines
+- Include daily focus areas and estimated time
+- Add practical study tips at the bottom
+- Be specific to this student's actual data, not generic`;
+      }
 
       const response = await askOrion(finalPrompt, {
         pathname: location.pathname,

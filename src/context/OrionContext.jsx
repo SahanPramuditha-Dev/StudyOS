@@ -91,6 +91,7 @@ export const useOrion = () => {
 export const OrionProvider = ({ children }) => {
   const location = useLocation();
   const [orionData, setOrionData] = useStorage('studyos_orion', DEFAULT_ORION_STATE);
+  const [assignments] = useStorage('studyos_assignments', []);
 
   const [emotion, setEmotion] = useState(ORION_EMOTIONS.IDLE);
   const [isOpen, setIsOpen] = useState(false);
@@ -314,6 +315,57 @@ export const OrionProvider = ({ children }) => {
       }, 2000);
     }
   }, []); // eslint-disable-line
+
+  // ─── Smart Deadline Warning System ──────────────────────────────────────────
+  const deadlineCheckRef = useRef(false);
+
+  useEffect(() => {
+    if (deadlineCheckRef.current) return;
+    if (!assignments || assignments.length === 0) return;
+    deadlineCheckRef.current = true;
+
+    const now = new Date();
+    const warnings = [];
+
+    assignments.forEach(assignment => {
+      if (assignment.status === 'Submitted' || assignment.status === 'completed') return;
+      const due = new Date(assignment.deadline);
+      if (isNaN(due)) return;
+      const daysLeft = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+
+      if (daysLeft < 0) {
+        warnings.push({ title: assignment.title, daysLeft, urgency: 'overdue' });
+      } else if (daysLeft === 0) {
+        warnings.push({ title: assignment.title, daysLeft, urgency: 'today' });
+      } else if (daysLeft <= 2) {
+        warnings.push({ title: assignment.title, daysLeft, urgency: 'critical' });
+      } else if (daysLeft <= 5) {
+        warnings.push({ title: assignment.title, daysLeft, urgency: 'soon' });
+      }
+    });
+
+    if (warnings.length === 0) return;
+
+    // Sort: overdue first, then by urgency
+    warnings.sort((a, b) => a.daysLeft - b.daysLeft);
+    const top = warnings[0];
+
+    setTimeout(() => {
+      if (top.urgency === 'overdue') {
+        setEmotion(ORION_EMOTIONS.WORRIED);
+        speak(`⚠️ Heads up! "${top.title}" is overdue! Submit it as soon as possible to avoid penalties. You have ${warnings.length} issue${warnings.length > 1 ? 's' : ''} to address.`, 12000);
+      } else if (top.urgency === 'today') {
+        setEmotion(ORION_EMOTIONS.WORRIED);
+        speak(`🚨 "${top.title}" is due TODAY! Don't forget to submit it before midnight!`, 12000);
+      } else if (top.urgency === 'critical') {
+        setEmotion(ORION_EMOTIONS.WORRIED);
+        speak(`⏰ "${top.title}" is due in ${top.daysLeft} day${top.daysLeft > 1 ? 's' : ''}. Make sure you're on track! ${warnings.length > 1 ? `(+${warnings.length - 1} more)` : ''}`, 10000);
+      } else {
+        setEmotion(ORION_EMOTIONS.IDLE);
+        speak(`📋 Reminder: "${top.title}" is due in ${top.daysLeft} days. Plan accordingly! ${warnings.length > 1 ? `(${warnings.length} deadlines coming up)` : ''}`, 8000);
+      }
+    }, 5000); // Delay so it doesn't collide with the daily greeting
+  }, [assignments]); // eslint-disable-line
 
   // ─── Page Context Messages ───────────────────────────────────────────────────
 

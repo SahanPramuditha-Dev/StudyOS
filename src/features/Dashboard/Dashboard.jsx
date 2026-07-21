@@ -14,12 +14,11 @@ import {
   Activity,
   Sparkles,
   Bookmark,
-  PlayCircle,
-  Bot
+  PlayCircle
 } from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
-import { generateDailyBriefing } from '../../services/aiService';
+
 import Select from '../../components/ui/Select';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -90,8 +89,7 @@ const Dashboard = ({ setActiveTab }) => {
     navigate(`/${tab}`);
   };
 
-  const [aiBriefing, setAiBriefing] = useState('');
-  const [isLoadingBriefing, setIsLoadingBriefing] = useState(true);
+
 
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
@@ -554,55 +552,11 @@ const Dashboard = ({ setActiveTab }) => {
     }).length;
   }, [reminders]);
 
-  React.useEffect(() => {
-    let isMounted = true;
-    const fetchBriefing = async () => {
-      try {
-        const contextData = {
-          overdueAssignments,
-          pendingAssignments,
-          activeProjects,
-          dailyStudyGoal,
-          todayStudyMinutes,
-          upcomingRemindersCount: upcomingCount
-        };
-        const briefing = await generateDailyBriefing(contextData);
-        if (isMounted) {
-          setAiBriefing(briefing);
-          setIsLoadingBriefing(false);
-        }
-      } catch (e) {
-        console.error(e);
-        if (isMounted) setIsLoadingBriefing(false);
-      }
-    };
-    fetchBriefing();
-    return () => { isMounted = false; };
-  }, [overdueAssignments, pendingAssignments, activeProjects, dailyStudyGoal, todayStudyMinutes, upcomingCount]);
+
 
   return (
     <div className="space-y-10 w-full max-w-[1680px] mx-auto pb-12 pt-4">
-      {/* AI Daily Briefing Banner */}
-      {!isLoadingBriefing && aiBriefing && (
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-2xl p-4 flex items-start gap-4"
-        >
-          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/20 rounded-xl flex-shrink-0">
-            <Bot className="text-indigo-600 dark:text-indigo-400" size={24} />
-          </div>
-          <div>
-            <h3 className="font-bold text-indigo-900 dark:text-indigo-200 text-sm mb-1 flex items-center gap-2">
-              <Sparkles size={14} className="text-indigo-500" />
-              AI Daily Briefing
-            </h3>
-            <p className="text-indigo-800 dark:text-indigo-300 text-sm leading-relaxed">
-              {aiBriefing}
-            </p>
-          </div>
-        </motion.div>
-      )}
+
 
 
 
