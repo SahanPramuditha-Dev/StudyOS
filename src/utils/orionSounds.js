@@ -1,92 +1,73 @@
 // Simple Web Audio API synthesizer for zero-dependency UI sounds
 
-let audioCtx = null;
 
-const initAudio = () => {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  return audioCtx;
-};
 
-// Generic synthesizer function
+// Generic synthesizer function with safe context initialization
 const playTone = (freq, type, duration, vol) => {
   try {
-    const ctx = initAudio();
+    // Only initialize and play if user has interacted with the document
+    if (typeof document !== 'undefined' && !document.body) return;
+    
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') {
+      // Don't force resume if autoplay-blocked; fail silently
+      ctx.resume().catch(() => void 0);
+    }
+    
     const osc = ctx.createOscillator();
     const gainNode = ctx.createGain();
 
     osc.type = type;
     osc.frequency.setValueAtTime(freq, ctx.currentTime);
     
-    // Envelope
+    // Envelope: Soft attack, exponential decay to prevent pops/clicks
     gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(vol, ctx.currentTime + 0.05);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    gainNode.gain.linearRampToValueAtTime(vol * 0.05, ctx.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
 
     osc.connect(gainNode);
     gainNode.connect(ctx.destination);
 
     osc.start();
     osc.stop(ctx.currentTime + duration);
+    
+    osc.onended = () => {
+      try { ctx.close(); } catch {}
+    };
   } catch (e) {
-    console.warn('Audio play failed:', e);
+    // Fail silently to prevent console spam
   }
 };
 
 export const orionSounds = {
   pop: () => {
-    // Soft pop for opening chat / small actions
-    playTone(600, 'sine', 0.1, 0.2);
+    // Ultra-soft bubble pop (C5)
+    playTone(523.25, 'sine', 0.08, 0.15);
   },
   
   messageSent: () => {
-    // Upward blip
-    try {
-      const ctx = initAudio();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      osc.frequency.setValueAtTime(400, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.1);
-      gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.1);
-    } catch(e){}
+    // Soft upward warm sweep
+    playTone(440, 'sine', 0.12, 0.1);
   },
-
+  
   messageReceived: () => {
-    // Downward blip
-    try {
-      const ctx = initAudio();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      osc.frequency.setValueAtTime(800, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.15);
-      gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } catch(e){}
+    // Soft downward warm sweep
+    playTone(392, 'sine', 0.15, 0.12);
   },
-
+  
   levelUp: () => {
-    // Happy chord chime
-    playTone(440, 'sine', 0.5, 0.1); // A4
-    setTimeout(() => playTone(554.37, 'sine', 0.5, 0.1), 100); // C#5
-    setTimeout(() => playTone(659.25, 'sine', 0.8, 0.15), 200); // E5
+    // Sparkly warm pentatonic chime sequence
+    playTone(523.25, 'sine', 0.25, 0.1); // C5
+    setTimeout(() => playTone(659.25, 'sine', 0.25, 0.08), 80); // E5
+    setTimeout(() => playTone(783.99, 'sine', 0.35, 0.08), 160); // G5
   },
-
+  
   alert: () => {
-    // Gentle warning (e.g., take a break)
-    playTone(300, 'triangle', 0.4, 0.1);
-    setTimeout(() => playTone(300, 'triangle', 0.4, 0.1), 200);
+    // Warm warning note (two consecutive soft triangle tones)
+    playTone(329.63, 'triangle', 0.2, 0.05); // E4
+    setTimeout(() => playTone(329.63, 'triangle', 0.2, 0.05), 180);
   }
 };

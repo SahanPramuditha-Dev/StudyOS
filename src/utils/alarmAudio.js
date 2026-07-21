@@ -73,21 +73,22 @@ const playToneFallback = async (volume = 0.8) => {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return false;
 
-  const context = new AudioContextClass();
+  let context;
+  try {
+    context = new AudioContextClass();
+  } catch {
+    return false;
+  }
+
   const playback = {
     context,
-    oscillator: null,
+    oscillators: [],
+    gainNodes: [],
     stop: () => {
-      try {
-        playback.oscillator?.stop();
-      } catch {
-        void 0;
-      }
-      try {
-        context.close();
-      } catch {
-        void 0;
-      }
+      playback.oscillators.forEach(osc => {
+        try { osc.stop(); } catch {}
+      });
+      try { context.close(); } catch {}
     }
   };
 
@@ -98,38 +99,54 @@ const playToneFallback = async (volume = 0.8) => {
       await context.resume().catch(() => void 0);
     }
 
-    const gainNode = context.createGain();
-    const oscillator = context.createOscillator();
-    playback.oscillator = oscillator;
+    const dest = context.destination;
+    const now = context.currentTime;
+    const targetVolume = Math.max(0, Math.min(1, Number(volume) || 0.8));
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, context.currentTime);
-    gainNode.gain.setValueAtTime(Math.max(0, Math.min(1, Number(volume) || 0.8)) * 0.08, context.currentTime);
+    // Construct a premium electronic chime sound using 3 additive harmonic frequencies
+    // 523.25 Hz (C5) fundamental, 659.25 Hz (E5) major third, and 783.99 Hz (G5) perfect fifth
+    const harmonics = [523.25, 659.25, 783.99];
+    const relativeVolumes = [0.4, 0.25, 0.15]; // Higher frequencies fade faster and are quieter
 
-    oscillator.connect(gainNode);
-    gainNode.connect(context.destination);
+    harmonics.forEach((freq, idx) => {
+      const osc = context.createOscillator();
+      const gain = context.createGain();
 
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.85);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+
+      // Sound Envelope: Soft attack, exponential decay for bell ringing effect
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(relativeVolumes[idx] * targetVolume, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2 - (idx * 0.2)); // Higher harmonics decay faster
+
+      osc.connect(gain);
+      gain.connect(dest);
+
+      osc.start(now);
+      osc.stop(now + 1.2);
+
+      playback.oscillators.push(osc);
+      playback.gainNodes.push(gain);
+    });
 
     await new Promise((resolve, reject) => {
-      oscillator.onended = () => resolve(true);
+      if (playback.oscillators.length > 0) {
+        playback.oscillators[0].onended = () => resolve(true);
+      } else {
+        resolve(true);
+      }
+      
+      const originalStop = playback.stop;
       playback.stop = () => {
-        try {
-          oscillator.stop();
-        } catch {
-          void 0;
-        }
-        try {
-          context.close();
-        } catch {
-          void 0;
-        }
+        originalStop();
         reject(new Error('Alarm stopped'));
       };
     });
 
     return true;
+  } catch (error) {
+    return false;
   } finally {
     if (activePlayback === playback) {
       clearActivePlayback();
@@ -158,14 +175,14 @@ export const playAlarmSound = async ({
     try {
       if (soundUrl) {
         await playAudioElement(soundUrl, volume);
-      } else if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+      } else {
         await playToneFallback(volume);
       }
     } catch (error) {
       if (String(error?.message || '').toLowerCase().includes('alarm stopped')) {
         return { played: false, reason: 'stopped' };
       }
-      if (index === 0 && typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+      if (index === 0 && !soundUrl) {
         await playToneFallback(volume).catch(() => void 0);
       }
       return { played: index > 0, error: error?.message || 'Failed to play alarm sound' };
