@@ -48,9 +48,6 @@ Frontend: React 19 + Vite + Tailwind CSS + MUI + Framer Motion
 Backend: Firebase (Auth/Firestore/Storage/Functions/Analytics)
 Services: Google Calendar API, GitHub API, SMTP Email (Functions)
 Hooks: Custom (useGoogleCalendar, useOnline, useStorage)
-Backend: Firebase (Auth/Firestore/Storage/Functions/Analytics)
-Services: Google Calendar API, GitHub API, SMTP Email (Functions)
-Hooks: Custom (useGoogleCalendar, useOnline, useStorage)
 Testing: Vitest
 Quality: ESLint + Prettier
 ```
@@ -58,8 +55,8 @@ Quality: ESLint + Prettier
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/yourusername/studyos.git
-cd studyos
+git clone https://github.com/SahanPramuditha-Dev/StudyOS.git
+cd StudyOS
 npm install
 cp .env.example .env.local
 
@@ -145,7 +142,7 @@ See [firebase.json](firebase.json), [firestore.rules](firestore.rules).
 3. Commit: `git commit -m 'feat: add X'`.
 4. PR to `main` with tests.
 
-Issues: [Create New](https://github.com/yourusername/studyos/issues/new)  
+Issues: [Create New](https://github.com/SahanPramuditha-Dev/StudyOS/issues/new)  
 Code of Conduct: Standard.
 
 ## 📄 License
@@ -165,7 +162,8 @@ sahan.dev.tech@gmail.com
 - [ ] Demo video/GIFs.
 - [ ] PWA support.
 - [ ] Mobile app (Capacitor).
-- [ ] AI study assistant.
+- [x] AI study assistant (Orion).
+- [ ] Enhanced real-time collaboration features.
 
 ## 📞 Support
 
