@@ -158,14 +158,14 @@ export const playAlarmSound = async ({
     try {
       if (soundUrl) {
         await playAudioElement(soundUrl, volume);
-      } else {
+      } else if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         await playToneFallback(volume);
       }
     } catch (error) {
       if (String(error?.message || '').toLowerCase().includes('alarm stopped')) {
         return { played: false, reason: 'stopped' };
       }
-      if (index === 0) {
+      if (index === 0 && typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         await playToneFallback(volume).catch(() => void 0);
       }
       return { played: index > 0, error: error?.message || 'Failed to play alarm sound' };

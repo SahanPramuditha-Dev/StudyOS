@@ -301,16 +301,25 @@ export const OrionProvider = ({ children }) => {
       addXP('DAILY_LOGIN');
       
       // Daily Briefing
+      const getTimeGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour >= 5 && hour < 12) return 'Good morning';
+        if (hour >= 12 && hour < 17) return 'Good afternoon';
+        if (hour >= 17 && hour < 21) return 'Good evening';
+        return 'Good night';
+      };
+
       setTimeout(async () => {
         setEmotion(ORION_EMOTIONS.THINKING);
+        const greeting = getTimeGreeting();
         try {
           // Pass empty study data for now, would normally pass actual StudyOS goals/assignments
           const response = await getOrionContextMessage({ pathname: 'daily_briefing', studyData: {} });
           setEmotion(response.emotion);
-          speak(`Good morning! ${response.message} Here's your daily XP! ⭐`, 10000);
+          speak(`${greeting}! ${response.message} Here's your daily XP! ⭐`, 10000);
         } catch {
           setEmotion(ORION_EMOTIONS.HAPPY);
-          speak('Good morning! Ready to tackle your goals today? Here\'s your daily XP bonus! ⭐', 8000);
+          speak(`${greeting}! Ready to tackle your goals today? Here's your daily XP bonus! ⭐`, 8000);
         }
       }, 2000);
     }

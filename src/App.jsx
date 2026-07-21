@@ -80,7 +80,7 @@ const App = () => {
     deliveryMode: 'server',
     defaultSnoozeMinutes: 10,
     alarm: {
-      enabled: true,
+      enabled: false,
       muted: false,
       volume: 0.8,
       repeatCount: 1,
