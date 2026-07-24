@@ -108,10 +108,8 @@ const CourseFilter = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <ArrowUpDown size={16} className="text-primary-500" />
+            <div className="flex items-center gap-2">
               <Select
-                variant="ghost"
                 value={sortBy}
                 onChange={setSortBy}
                 options={[
@@ -121,6 +119,7 @@ const CourseFilter = ({
                   { label: 'Highest Progress', value: 'progress' },
                   { label: 'Platform', value: 'platform' },
                 ]}
+                className="w-48"
               />
             </div>
 
@@ -168,31 +167,27 @@ const CourseFilter = ({
             {showArchived ? 'Including Archived' : 'Hide Archived'}
           </button>
 
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-            <Filter size={15} className="text-primary-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Category</span>
+          <div className="flex items-center gap-2">
             <Select
-              variant="ghost"
               value={filterCategory}
               onChange={setFilterCategory}
               options={[
-                { label: 'All', value: 'All' },
-                ...availableCategories.map(c => ({ label: c, value: c }))
+                { label: 'Category: All', value: 'All' },
+                ...availableCategories.map(c => ({ label: `Category: ${c}`, value: c }))
               ]}
+              className="w-44"
             />
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700 transition-colors">
-            <Filter size={15} className="text-primary-500" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Difficulty</span>
+          <div className="flex items-center gap-2">
             <Select
-              variant="ghost"
               value={filterDifficulty}
               onChange={setFilterDifficulty}
               options={[
-                { label: 'All', value: 'All' },
-                ...availableDifficulties.map(diff => ({ label: diff, value: diff }))
+                { label: 'Difficulty: All', value: 'All' },
+                ...availableDifficulties.map(diff => ({ label: `Difficulty: ${diff}`, value: diff }))
               ]}
+              className="w-44"
             />
           </div>
         </div>

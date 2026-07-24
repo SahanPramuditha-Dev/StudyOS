@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useStorage } from '../hooks/useStorage';
-import { orionSounds } from '../utils/orionSounds';
+import { orionSounds, setOrionMuted } from '../utils/orionSounds';
 import { getOrionContextMessage } from '../services/orionBrain';
+import { OrionTTS, OrionSTT } from '../utils/orionVoice';
+
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -23,6 +25,9 @@ export const ORION_EMOTIONS = {
   IDLE_MUSIC: 'idle_music',
   IDLE_STARGAZING: 'idle_stargazing',
   WAVING: 'waving',
+  IDLE_STRETCHING: 'idle_stretching',
+  DETERMINED: 'determined',
+  IDLE_COOKIE: 'idle_cookie',
 };
 
 export const ORION_LEVELS = [
@@ -39,6 +44,14 @@ export const ORION_LEVELS = [
   { level: 50, xpRequired: 14000, title: 'Legendary Knowledge Guardian', color: '#fbbf24' },
 ];
 
+export const ORION_ACCESSORIES = [
+  { id: 'bow_tie', name: 'Gentleman Bow Tie', icon: '🎀', type: 'neck', levelRequired: 3 },
+  { id: 'cozy_scarf', name: 'Cozy Winter Scarf', icon: '🧣', type: 'neck', levelRequired: 5 },
+  { id: 'cyber_glasses', name: 'Cyber Visor', icon: '🕶️', type: 'eyes', friendshipRequired: 25 },
+  { id: 'wizard_hat', name: 'Wizard Hat', icon: '🧙', type: 'head', friendshipRequired: 50 },
+  { id: 'gold_crown', name: 'Royal Crown', icon: '👑', type: 'head', friendshipRequired: 80 },
+];
+
 export const XP_EVENTS = {
   DAILY_LOGIN: { xp: 10, label: 'Daily Login' },
   TASK_COMPLETE: { xp: 15, label: 'Task Completed' },
@@ -49,6 +62,7 @@ export const XP_EVENTS = {
   AI_CONVERSATION: { xp: 5,  label: 'AI Conversation' },
   STREAK_BONUS: { xp: 50, label: 'Streak Bonus' },
   GOAL_COMPLETE: { xp: 40, label: 'Goal Completed' },
+  FEED_SNACK: { xp: 5, label: 'Snack Fed!' },
 };
 
 const PAGE_CONTEXTS = {
@@ -74,6 +88,7 @@ const DEFAULT_ORION_STATE = {
   lastLoginDate: null,
   totalSessions: 0,
   totalMessages: 0,
+  isMuted: false,
 };
 
 // ─── Context ───────────────────────────────────────────────────────────────────
@@ -94,6 +109,11 @@ export const OrionProvider = ({ children }) => {
   const [assignments] = useStorage('studyos_assignments', []);
 
   const [emotion, setEmotion] = useState(ORION_EMOTIONS.IDLE);
+  const emotionRef = useRef(emotion);
+  useEffect(() => {
+    emotionRef.current = emotion;
+  }, [emotion]);
+
   const [isOpen, setIsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [speechMessage, setSpeechMessage] = useState('');
@@ -102,6 +122,40 @@ export const OrionProvider = ({ children }) => {
   const [isThinking, setIsThinking] = useState(false);
   const [levelUpData, setLevelUpData] = useState(null);
   const [xpGainDisplay, setXpGainDisplay] = useState(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [isSpeakingTTS, setIsSpeakingTTS] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [xpMultiplier, setXpMultiplier] = useState(1);
+  const [boosterTimeLeft, setBoosterTimeLeft] = useState(0);
+
+  useEffect(() => {
+    if (boosterTimeLeft <= 0) {
+      if (xpMultiplier > 1) {
+        setXpMultiplier(1);
+        speak("Ah, that coffee was delicious! The focus boost is wearing off, but let's keep working hard! 🦉");
+      }
+      return;
+    }
+    const timer = setInterval(() => {
+      setBoosterTimeLeft(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [boosterTimeLeft, xpMultiplier]);
+
+  // Sync mute state on change or startup
+  useEffect(() => {
+    if (orionData && orionData.isMuted !== undefined) {
+      setOrionMuted(orionData.isMuted);
+    }
+  }, [orionData?.isMuted]);
+
+  const toggleMute = useCallback(() => {
+    setOrionData(prev => {
+      const nextMuted = !prev.isMuted;
+      setOrionMuted(nextMuted);
+      return { ...prev, isMuted: nextMuted };
+    });
+  }, [setOrionData]);
 
   const inactivityTimer = useRef(null);
   const speechTimer = useRef(null);
@@ -139,7 +193,7 @@ export const OrionProvider = ({ children }) => {
   const addXP = useCallback((eventKey) => {
     const event = XP_EVENTS[eventKey];
     if (!event) return;
-    const amount = event.xp;
+    const amount = event.xp * xpMultiplier;
 
     setOrionData(prev => {
       const newXP = (prev.xp || 0) + amount;
@@ -158,14 +212,51 @@ export const OrionProvider = ({ children }) => {
         ...prev,
         xp: newXP,
         level: newLevel.level,
-        friendship: Math.min(100, (prev.friendship || 0) + Math.floor(amount / 10)),
+        friendship: Math.min(100, (prev.friendship || 0) + Math.max(1, Math.floor(amount / 10))),
       };
     });
 
     // Show XP gain popup
-    setXpGainDisplay({ amount, label: event.label });
+    setXpGainDisplay({ amount, label: xpMultiplier > 1 ? `${event.label} (2x Boost!)` : event.label });
     setTimeout(() => setXpGainDisplay(null), 2000);
-  }, [getCurrentLevel, setOrionData]);
+  }, [getCurrentLevel, setOrionData, xpMultiplier]);
+
+  const toggleAccessory = useCallback((id) => {
+    const item = ORION_ACCESSORIES.find(a => a.id === id);
+    if (!item) return;
+
+    setOrionData(prev => {
+      const currentAcc = prev.accessories || [];
+      
+      // Calculate active level
+      const currentLevelObj = ORION_LEVELS.reduce((acc, lvl) => {
+        if (prev.xp >= lvl.xpRequired) return lvl;
+        return acc;
+      }, ORION_LEVELS[0]);
+      
+      const currentLvl = currentLevelObj.level;
+      const currentFriendship = prev.friendship || 0;
+      const isUnlocked = (!item.levelRequired || currentLvl >= item.levelRequired) && 
+                         (!item.friendshipRequired || currentFriendship >= item.friendshipRequired);
+      
+      if (!isUnlocked) return prev;
+
+      let nextAcc;
+      if (currentAcc.includes(id)) {
+        nextAcc = currentAcc.filter(x => x !== id);
+      } else {
+        const typeFiltered = currentAcc.filter(x => {
+          const accItem = ORION_ACCESSORIES.find(a => a.id === x);
+          return !accItem || accItem.type !== item.type;
+        });
+        nextAcc = [...typeFiltered, id];
+      }
+      return {
+        ...prev,
+        accessories: nextAcc
+      };
+    });
+  }, [setOrionData]);
 
   // ─── Animation System ────────────────────────────────────────────────────────
 
@@ -182,11 +273,64 @@ export const OrionProvider = ({ children }) => {
     orionSounds.pop();
     clearTimeout(speechTimer.current);
     speechTimer.current = setTimeout(() => setShowSpeech(false), duration);
-  }, []);
+
+    if (voiceEnabled) {
+      OrionTTS.speak(message, {
+        onStart: () => setIsSpeakingTTS(true),
+        onEnd: () => setIsSpeakingTTS(false),
+        onError: () => setIsSpeakingTTS(false),
+      });
+    }
+  }, [voiceEnabled]);
 
   const dismissSpeech = useCallback(() => {
     setShowSpeech(false);
     clearTimeout(speechTimer.current);
+    OrionTTS.stop();
+    setIsSpeakingTTS(false);
+  }, []);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceEnabled(prev => {
+      const next = !prev;
+      if (next) {
+        orionSounds.pop(); // small confirmation sound
+      } else {
+        OrionTTS.stop();
+        setIsSpeakingTTS(false);
+      }
+      return next;
+    });
+  }, [setVoiceEnabled]);
+
+  const startListening = useCallback((onResult) => {
+    if (!OrionSTT.isSupported()) return;
+    orionSounds.micOn();
+    setIsListening(true);
+    OrionSTT.startListening(
+      onResult,
+      () => { // onError
+        setIsListening(false);
+        orionSounds.micOff();
+      },
+      () => { // onEnd
+        setIsListening(false);
+        orionSounds.micOff();
+      }
+    );
+  }, []);
+
+  const stopListening = useCallback(() => {
+    if (OrionSTT.isListening()) {
+      OrionSTT.stopListening();
+      setIsListening(false);
+      orionSounds.micOff();
+    }
+  }, []);
+
+  const cancelSpeech = useCallback(() => {
+    OrionTTS.stop();
+    setIsSpeakingTTS(false);
   }, []);
 
   // ─── Inactivity & Idle Behavior Engine ────────────────────────────────────
@@ -204,17 +348,18 @@ export const OrionProvider = ({ children }) => {
       let behaviors = [ORION_EMOTIONS.IDLE];
 
       if (hour >= 5 && hour < 12) {
-        // Morning: Coffee, Reading, Looking, Music
+        // Morning: Coffee, Reading, Looking, Music, Stretching (natural wake-up)
         behaviors = [
           ORION_EMOTIONS.IDLE_COFFEE, ORION_EMOTIONS.IDLE_COFFEE,
           ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE_LOOKING,
-          ORION_EMOTIONS.IDLE_MUSIC, ORION_EMOTIONS.IDLE
+          ORION_EMOTIONS.IDLE_MUSIC, ORION_EMOTIONS.IDLE_STRETCHING, ORION_EMOTIONS.IDLE
         ];
       } else if (hour >= 12 && hour < 18) {
-        // Afternoon: Focused, Music, Reading, Cleaning
+        // Afternoon: Focused, Music, Reading, Cleaning, Stretching (post-lunch)
         behaviors = [
           ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE_MUSIC,
-          ORION_EMOTIONS.IDLE_CLEANING, ORION_EMOTIONS.IDLE, ORION_EMOTIONS.IDLE_LOOKING
+          ORION_EMOTIONS.IDLE_CLEANING, ORION_EMOTIONS.IDLE, ORION_EMOTIONS.IDLE_LOOKING,
+          ORION_EMOTIONS.IDLE_STRETCHING
         ];
       } else if (hour >= 18 && hour < 22) {
         // Evening: Stargazing, Reading, Music
@@ -223,10 +368,10 @@ export const OrionProvider = ({ children }) => {
           ORION_EMOTIONS.IDLE_MUSIC, ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE
         ];
       } else {
-        // Night: Sleepy, Stargazing, Idle
+        // Night: Sleepy, Stargazing, Idle, Stretching (winding down)
         behaviors = [
           ORION_EMOTIONS.SLEEPY, ORION_EMOTIONS.IDLE_STARGAZING,
-          ORION_EMOTIONS.IDLE, ORION_EMOTIONS.IDLE_READING
+          ORION_EMOTIONS.IDLE, ORION_EMOTIONS.IDLE_READING, ORION_EMOTIONS.IDLE_STRETCHING
         ];
       }
 
@@ -241,10 +386,15 @@ export const OrionProvider = ({ children }) => {
   }, []);
 
   const resetInactivityTimer = useCallback(() => {
-    if (emotion === ORION_EMOTIONS.SLEEPY || emotion?.startsWith('idle_')) {
-      setEmotion(ORION_EMOTIONS.IDLE);
-      if (emotion === ORION_EMOTIONS.SLEEPY) {
-        speak('Oh! Welcome back! I was just resting my wings... 🦉');
+    const currentEmotion = emotionRef.current;
+    if (currentEmotion === ORION_EMOTIONS.SLEEPY || currentEmotion?.startsWith('idle_')) {
+      if (currentEmotion === ORION_EMOTIONS.SLEEPY) {
+        // Wake from sleep with a satisfying stretch before returning to idle
+        setEmotion(ORION_EMOTIONS.IDLE_STRETCHING);
+        speak('Yaaawn! Just had a little nap — let me stretch my wings! 🦉');
+        setTimeout(() => setEmotion(ORION_EMOTIONS.IDLE), 3500);
+      } else {
+        setEmotion(ORION_EMOTIONS.IDLE);
       }
     }
     
@@ -261,7 +411,7 @@ export const OrionProvider = ({ children }) => {
       clearInterval(idleBehaviorTimer.current);
       setEmotion(ORION_EMOTIONS.SLEEPY);
     }, 3 * 60 * 1000); // 3 minutes idle = sleep
-  }, [emotion, speak, triggerRandomIdleBehavior]);
+  }, [speak, triggerRandomIdleBehavior]);
 
   // Proactive Break Tracker (Active use without a break)
   const activeUseTimer = useRef(null);
@@ -277,18 +427,71 @@ export const OrionProvider = ({ children }) => {
   }, [speak]);
 
   useEffect(() => {
-    const events = ['mousemove', 'keydown', 'click', 'scroll'];
-    const handleActivity = () => {
-      resetInactivityTimer();
+    let typingTimer;
+    let scrollTimer;
+    let lastScrollTime = 0;
+    let scrollCount = 0;
+
+    const handleActivity = () => resetInactivityTimer();
+    
+    const handleKeydown = (e) => {
+      handleActivity();
+      // Ignore modifier keys
+      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) return;
+      
+      // Trigger focused state when typing
+      setEmotion(prev => {
+        if (prev === ORION_EMOTIONS.FOCUSED || prev === ORION_EMOTIONS.SLEEPY) return prev;
+        return ORION_EMOTIONS.FOCUSED;
+      });
+      
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        setEmotion(prev => prev === ORION_EMOTIONS.FOCUSED ? ORION_EMOTIONS.IDLE : prev);
+      }, 1500);
     };
-    events.forEach(e => window.addEventListener(e, handleActivity, { passive: true }));
+
+    const handleScroll = () => {
+      handleActivity();
+      const now = Date.now();
+      if (now - lastScrollTime < 100) {
+        scrollCount++;
+      } else {
+        scrollCount = 1;
+      }
+      lastScrollTime = now;
+
+      // Trigger confused/dizzy if scrolling very fast
+      if (scrollCount > 12) {
+        setEmotion(prev => {
+           if (prev === ORION_EMOTIONS.CONFUSED || prev === ORION_EMOTIONS.SLEEPY) return prev;
+           return ORION_EMOTIONS.CONFUSED;
+        });
+        scrollCount = 0;
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(() => {
+          setEmotion(prev => prev === ORION_EMOTIONS.CONFUSED ? ORION_EMOTIONS.IDLE : prev);
+        }, 2000);
+      }
+    };
+
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('click', handleActivity, { passive: true });
+    window.addEventListener('keydown', handleKeydown, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    
     resetInactivityTimer();
     resetActiveUseTimer(); // Start tracking active use on mount
     return () => {
-      events.forEach(e => window.removeEventListener(e, handleActivity));
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('scroll', handleScroll);
       clearTimeout(inactivityTimer.current);
       clearInterval(idleBehaviorTimer.current);
       clearTimeout(activeUseTimer.current);
+      clearTimeout(typingTimer);
+      clearTimeout(scrollTimer);
     };
   }, [resetInactivityTimer, resetActiveUseTimer]);
 
@@ -317,9 +520,15 @@ export const OrionProvider = ({ children }) => {
           const response = await getOrionContextMessage({ pathname: 'daily_briefing', studyData: {} });
           setEmotion(response.emotion);
           speak(`${greeting}! ${response.message} Here's your daily XP! ⭐`, 10000);
+          setTimeout(() => {
+            setEmotion(prev => (prev === response.emotion ? ORION_EMOTIONS.IDLE : prev));
+          }, 3500);
         } catch {
           setEmotion(ORION_EMOTIONS.HAPPY);
           speak(`${greeting}! Ready to tackle your goals today? Here's your daily XP bonus! ⭐`, 8000);
+          setTimeout(() => {
+            setEmotion(prev => (prev === ORION_EMOTIONS.HAPPY ? ORION_EMOTIONS.IDLE : prev));
+          }, 3500);
         }
       }, 2000);
     }
@@ -402,6 +611,41 @@ export const OrionProvider = ({ children }) => {
     return () => window.removeEventListener('orion-xp', handleXPEvent);
   }, [addXP]);
 
+  useEffect(() => {
+    const handleTimerStart = () => {
+      setEmotion(ORION_EMOTIONS.FOCUSED);
+      speak("Focus time! Let's get to work! 🦉", 5000);
+    };
+    const handleTimerStop = () => {
+      setEmotion(ORION_EMOTIONS.IDLE);
+    };
+    window.addEventListener('orion-timer-start', handleTimerStart);
+    window.addEventListener('orion-timer-stop', handleTimerStop);
+    return () => {
+      window.removeEventListener('orion-timer-start', handleTimerStart);
+      window.removeEventListener('orion-timer-stop', handleTimerStop);
+    };
+  }, [speak]);
+
+  const feedSnack = useCallback((type) => {
+    if (type === 'coffee') {
+      setXpMultiplier(2);
+      setBoosterTimeLeft(15 * 60); // 15 minutes
+      setEmotion(ORION_EMOTIONS.IDLE_COFFEE);
+      speak("Gulp... Ah! ☕ Double XP study mode activated! I am full of energy now!");
+      orionSounds.levelUp();
+    } else if (type === 'cookie') {
+      setOrionData(prev => ({
+        ...prev,
+        friendship: Math.min(100, (prev.friendship || 0) + 5)
+      }));
+      setEmotion(ORION_EMOTIONS.IDLE_COOKIE);
+      speak("Nom nom nom... 🍪 Mmm, delicious! Thanks for the treat! Orion feels closer to you.");
+      orionSounds.levelUp();
+      setTimeout(() => setEmotion(ORION_EMOTIONS.IDLE), 4000);
+    }
+  }, [setOrionData, speak]);
+
   // ─── Computed Values ─────────────────────────────────────────────────────────
 
   const currentLevel = getCurrentLevel(orionData.xp || 0);
@@ -427,6 +671,11 @@ export const OrionProvider = ({ children }) => {
     nextLevel,
     xpProgress,
     pageContext,
+    voiceEnabled,
+    isSpeakingTTS,
+    isListening,
+    xpMultiplier,
+    boosterTimeLeft,
 
     // Actions
     setEmotion,
@@ -438,6 +687,13 @@ export const OrionProvider = ({ children }) => {
     dismissSpeech,
     triggerAnimation,
     setOrionData,
+    toggleVoice,
+    startListening,
+    stopListening,
+    cancelSpeech,
+    toggleAccessory,
+    feedSnack,
+    toggleMute,
   };
 
   return <OrionContext.Provider value={value}>{children}</OrionContext.Provider>;

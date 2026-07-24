@@ -25,6 +25,7 @@ const STORAGE_KEYS = {
   PRIVACY: 'studyos_privacy',
   SEMESTERS: 'studyos_semesters',
   ACADEMIC_SETTINGS: 'studyos_academic_settings',
+  GRADE_CENTER: 'studyos_grade_center',
 };
 
 const defaultSchemas = {
@@ -75,6 +76,18 @@ const defaultSchemas = {
     dataRetentionDays: 365,
     autoDeleteCompletedReminders: false,
     autoDeleteImportedBackups: false
+  },
+  [STORAGE_KEYS.GRADE_CENTER]: {
+    mode: null,
+    schoolLevel: null,
+    universityLevel: null,
+    degreeName: '',
+    major: '',
+    totalCreditsRequired: 120,
+    expectedGraduation: '',
+    gradeScale: 'standard_4.0',
+    targetCgpa: 3.5,
+    totalDegreeCredits: 120
   }
 };
 

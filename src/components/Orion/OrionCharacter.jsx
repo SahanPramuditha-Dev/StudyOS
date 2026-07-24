@@ -57,6 +57,23 @@ const HeartParticle = ({ index }) => {
   );
 };
 
+const PettingParticle = ({ index }) => {
+  const chars = ['❤️', '💖', '✨', '💕', '✨'];
+  const char = chars[index % chars.length];
+  const x = (Math.random() - 0.5) * 110;
+  const isHeart = char.includes('❤️') || char.includes('💖') || char.includes('💕');
+  const colorClass = isHeart ? 'text-pink-500' : 'text-amber-400';
+  return (
+    <motion.span
+      className={`absolute pointer-events-none select-none drop-shadow-md ${colorClass}`}
+      style={{ fontSize: `${12 + Math.random() * 8}px`, top: '15%', left: `${35 + Math.random() * 20}%` }}
+      initial={{ opacity: 0, y: 0, x: 0, scale: 0.5, rotate: 0 }}
+      animate={{ opacity: [0, 1, 1, 0], y: -65, x, scale: [0.5, 1.2, 1], rotate: (Math.random() - 0.5) * 90 }}
+      transition={{ duration: 1.8, delay: index * 0.28, repeat: Infinity }}
+    >{char}</motion.span>
+  );
+};
+
 const MusicParticle = ({ index }) => {
   const char = index % 2 === 0 ? '♪' : '♫';
   const x = (Math.random() - 0.5) * 100;
@@ -70,6 +87,50 @@ const MusicParticle = ({ index }) => {
     >{char}</motion.span>
   );
 };
+
+const ThinkingParticle = ({ index }) => {
+  // Glow nodes, stars, and binary stream digits
+  const symbols = ['1', '✦', '0', '✧', '•', '1', '0', '✦'];
+  const symbol = symbols[index % symbols.length];
+  
+  // Custom trajectories to rise from behind cap/eyes
+  const startX = (index % 2 === 0 ? -1 : 1) * (14 + (index * 8) % 18);
+  const endX = startX + (Math.random() - 0.5) * 44;
+  const endY = -(75 + Math.random() * 45);
+  
+  const colors = ['#38bdf8', '#818cf8', '#a78bfa', '#34d399'];
+  const color = colors[index % colors.length];
+
+  return (
+    <motion.span
+      className="absolute font-mono select-none pointer-events-none"
+      style={{ 
+        color, 
+        fontSize: symbol === '1' || symbol === '0' ? '10px' : '12px',
+        fontWeight: 'bold',
+        top: '15%', 
+        left: '50%',
+        textShadow: `0 0 6px ${color}, 0 0 12px ${color}`
+      }}
+      initial={{ opacity: 0, x: startX, y: 0, scale: 0.5 }}
+      animate={{ 
+        opacity: [0, 1, 1, 0], 
+        y: endY, 
+        x: endX, 
+        scale: [0.5, 1.2, 1.0, 0.4] 
+      }}
+      transition={{ 
+        duration: 2.0, 
+        delay: index * 0.3, 
+        repeat: Infinity,
+        ease: "easeInOut"
+      }}
+    >
+      {symbol}
+    </motion.span>
+  );
+};
+
 
 const XPPopup = ({ amount, label }) => (
   <motion.div
@@ -103,6 +164,7 @@ const EC = {
   [ORION_EMOTIONS.IDLE_LOOKING]:   { bY: 1.5,bF: 0.28, wAmp: 1,  wF: 0.28, eOpen: 1.0,  ebY: 0,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.IDLE_MUSIC]:     { bY: 2,  bF: 1.5,  wAmp: 1,  wF: 1.5,  eOpen: 0.9,  ebY: 1,  tilt: 4,  gGlow: false, shake: false },
   [ORION_EMOTIONS.IDLE_STARGAZING]:{ bY: 0.5,bF: 0.15, wAmp: 1,  wF: 0.15, eOpen: 1.0,  ebY: -1, tilt: -12,gGlow: false, shake: false },
+  [ORION_EMOTIONS.IDLE_STRETCHING]:{ bY: 2,  bF: 0.35, wAmp: 50, wF: 0.32, eOpen: 1.2,  ebY: 4,  tilt: -8, gGlow: false, shake: false },
   // ── Active states: keep full energy ──
   [ORION_EMOTIONS.HAPPY]:          { bY: 0,  bF: 0.0,  wAmp: 2,  wF: 0.5,  eOpen: 1.1,  ebY: 4,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.CELEBRATING]:    { bY: 22, bF: 1.8,  wAmp: 42, wF: 3.2,  eOpen: 1.2,  ebY: 6,  tilt: 0,  gGlow: false, shake: false },
@@ -110,6 +172,8 @@ const EC = {
   [ORION_EMOTIONS.PROUD]:          { bY: 7,  bF: 0.85, wAmp: 5,  wF: 0.8,  eOpen: 0.6,  ebY: 5,  tilt: 0,  gGlow: false, shake: false },
   [ORION_EMOTIONS.CONFUSED]:       { bY: 2,  bF: 0.55, wAmp: 2,  wF: 0.5,  eOpen: 1.15, ebY: 1,  tilt: 16, gGlow: false, shake: false },
   [ORION_EMOTIONS.WAVING]:         { bY: 7,  bF: 0.9,  wAmp: 5,  wF: 0.8,  eOpen: 1.0,  ebY: 2,  tilt: 0,  gGlow: false, shake: false },
+  [ORION_EMOTIONS.DETERMINED]:     { bY: 1.5,bF: 0.35, wAmp: 12, wF: 0.8,  eOpen: 1.0,  ebY: -2.5,tilt: 0,  gGlow: true,  shake: false },
+  [ORION_EMOTIONS.IDLE_COOKIE]:    { bY: 1.2,bF: 0.22, wAmp: 1,  wF: 0.2,  eOpen: 1.1,  ebY: 2,  tilt: 2,  gGlow: false, shake: false },
 };
 const DEFAULT_EC = EC[ORION_EMOTIONS.IDLE];
 
@@ -249,59 +313,80 @@ function drawWing(ctx, cx, cy, isLeft, angle) {
   ctx.rotate(angle * Math.PI / 180);
   ctx.translate(-originX, -originY);
 
-  const wg = ctx.createLinearGradient(originX, cy - 4, originX + dir * 28, cy + 58);
-  wg.addColorStop(0,    '#c2410c');
-  wg.addColorStop(0.35, '#9a3412');
-  wg.addColorStop(0.75, '#7c2d12');
-  wg.addColorStop(1,    '#4c1205');
+  // Layer 1: Longest/Back feather
+  const gLong = ctx.createLinearGradient(originX, originY, originX + dir * 26, originY + 56);
+  gLong.addColorStop(0.0, '#9a3412');
+  gLong.addColorStop(0.5, '#7c2d12');
+  gLong.addColorStop(1.0, '#4c1205');
 
-  // Wing main shape — wider, more feathered tip
   ctx.beginPath();
   ctx.moveTo(originX, originY);
-  ctx.bezierCurveTo(
-    originX + dir * 24, originY + 6,
-    originX + dir * 30, originY + 34,
-    originX + dir * 16, originY + 55
-  );
-  ctx.bezierCurveTo(
-    originX + dir * 10, originY + 42,
-    originX + dir * 5,  originY + 22,
-    originX, originY
-  );
+  ctx.bezierCurveTo(originX + dir * 24, originY + 8, originX + dir * 30, originY + 34, originX + dir * 16, originY + 56);
+  ctx.bezierCurveTo(originX + dir * 10, originY + 44, originX + dir * 4, originY + 22, originX, originY);
   ctx.closePath();
-  ctx.fillStyle = wg;
+  ctx.fillStyle = gLong;
   ctx.fill();
 
-  // Specular sheen on upper wing
-  const wingSpecG = ctx.createRadialGradient(originX + dir * 8, originY + 6, 0, originX + dir * 10, originY + 14, 14);
-  wingSpecG.addColorStop(0,   'rgba(220,100,30,0.3)');
-  wingSpecG.addColorStop(1,   'transparent');
-  ctx.beginPath();
-  ctx.moveTo(originX, originY);
-  ctx.bezierCurveTo(originX + dir * 24, originY + 6, originX + dir * 30, originY + 34, originX + dir * 16, originY + 55);
-  ctx.bezierCurveTo(originX + dir * 10, originY + 42, originX + dir * 5, originY + 22, originX, originY);
-  ctx.closePath();
-  ctx.fillStyle = wingSpecG;
-  ctx.fill();
-
-  // Wing edge highlight
-  ctx.strokeStyle = 'rgba(210,88,22,0.42)';
-  ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(originX, originY + 4);
-  ctx.bezierCurveTo(originX + dir * 20, originY + 10, originX + dir * 24, originY + 30, originX + dir * 16, originY + 46);
+  // Subtle stroke to define outer back feather
+  ctx.strokeStyle = 'rgba(76,18,5,0.4)';
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 
-  // Feather tip detail lines at bottom
-  ctx.strokeStyle = 'rgba(80,18,4,0.5)';
-  ctx.lineWidth = 1.2;
-  const tipBase = { x: originX + dir * 16, y: originY + 55 };
-  [[-4, 0], [0, 2], [4, 0]].forEach(([tdx, tdy]) => {
-    ctx.beginPath();
-    ctx.moveTo(tipBase.x + dir * tdx, tipBase.y);
-    ctx.quadraticCurveTo(tipBase.x + dir * (tdx + 2), tipBase.y + 5 + tdy, tipBase.x + dir * (tdx + 1), tipBase.y + 10 + tdy);
-    ctx.stroke();
-  });
+  // Layer 2: Mid feather (overlapping)
+  const gMid = ctx.createLinearGradient(originX, originY, originX + dir * 22, originY + 44);
+  gMid.addColorStop(0.0, '#ea580c');
+  gMid.addColorStop(0.6, '#b45309');
+  gMid.addColorStop(1.0, '#7c2d12');
+
+  ctx.beginPath();
+  ctx.moveTo(originX, originY + 2);
+  ctx.bezierCurveTo(originX + dir * 20, originY + 8, originX + dir * 25, originY + 28, originX + dir * 13, originY + 44);
+  ctx.bezierCurveTo(originX + dir * 8, originY + 34, originX + dir * 3, originY + 18, originX, originY + 2);
+  ctx.closePath();
+  ctx.fillStyle = gMid;
+
+  // Add subtle drop shadow to separate layers
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetX = dir * 1.2;
+  ctx.shadowOffsetY = 1.8;
+  ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; // Reset shadow
+
+  ctx.strokeStyle = 'rgba(124,45,18,0.3)';
+  ctx.lineWidth = 1.0;
+  ctx.stroke();
+
+  // Layer 3: Shortest/Front feather
+  const gShort = ctx.createLinearGradient(originX, originY, originX + dir * 18, originY + 30);
+  gShort.addColorStop(0.0, '#ff7a30');
+  gShort.addColorStop(0.5, '#ea580c');
+  gShort.addColorStop(1.0, '#9a3412');
+
+  ctx.beginPath();
+  ctx.moveTo(originX, originY + 4);
+  ctx.bezierCurveTo(originX + dir * 15, originY + 8, originX + dir * 18, originY + 22, originX + dir * 10, originY + 32);
+  ctx.bezierCurveTo(originX + dir * 5, originY + 26, originX + dir * 2, originY + 14, originX, originY + 4);
+  ctx.closePath();
+  ctx.fillStyle = gShort;
+
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+  ctx.shadowBlur = 3.0;
+  ctx.shadowOffsetX = dir * 1.0;
+  ctx.shadowOffsetY = 1.5;
+  ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; // Reset shadow
+
+  // Specular reflection sheen on top feather
+  const specG = ctx.createRadialGradient(originX + dir * 4, originY + 8, 0, originX + dir * 6, originY + 14, 8);
+  specG.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+  specG.addColorStop(1, 'transparent');
+  ctx.fillStyle = specG;
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1.0;
+  ctx.stroke();
 
   ctx.restore();
 }
@@ -390,23 +475,30 @@ function drawSingleEye(ctx, ex, ey, eyeR, pOffX, pOffY, eOpen, emotion, blink) {
       ctx.fill();
     }
   } else {
-    // Eyelid completely closed or squinting
-    const lidProgress = 1 - eOpen;
-    const lidH = lidProgress * (eyeR * 2.25);
+    // Fill the sclera with warm cream so it matches the face mask
     ctx.beginPath();
-    ctx.rect(ex - eyeR - 2, ey - eyeR - 2, (eyeR + 2) * 2, lidH + 2);
-    ctx.fillStyle = '#8b3b0a';
+    ctx.ellipse(ex, ey, eyeR, eyeR, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffbeb';
     ctx.fill();
-    // Sleepy crease line
-    if (emotion === ORION_EMOTIONS.SLEEPY) {
-      ctx.strokeStyle = '#5c1d07';
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(ex - eyeR + 3, ey - eyeR + lidH - 1);
-      ctx.lineTo(ex + eyeR - 3, ey - eyeR + lidH - 1);
-      ctx.stroke();
-    }
+
+    // Draw a beautiful curved closed eyelid line (sleeping lash line: ⌒)
+    ctx.strokeStyle = '#5c1d07'; // Deep brown lash color
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(ex, ey + 4, 9, 1.15 * Math.PI, 1.85 * Math.PI, false);
+    ctx.stroke();
+
+    // Add tiny sleeping eyelashes on the outer sides
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    // Left lash tick
+    ctx.moveTo(ex - 7, ey - 2);
+    ctx.lineTo(ex - 11, ey - 5);
+    // Right lash tick
+    ctx.moveTo(ex + 7, ey - 2);
+    ctx.lineTo(ex + 11, ey - 5);
+    ctx.stroke();
   }
 
   ctx.restore();
@@ -447,31 +539,139 @@ function drawHeadphones(ctx, cx, cy, t) {
 }
 
 function drawTelescope(ctx, cx, cy) {
-  const tx = cx - 18, ty = cy + 28;
+  // Translate to the right eye center
+  const tx = cx + 18;
+  const ty = cy - 17;
   
   ctx.save();
   ctx.translate(tx, ty);
-  ctx.rotate(-35 * Math.PI / 180); // Pointing up left
+  // Rotate so it points up and to the right (-30 degrees)
+  ctx.rotate(-30 * Math.PI / 180);
   
-  // Stand / Tripod
-  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(-10, 35); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(10, 35); ctx.stroke();
+  // Eyepiece is at (0, 0)
+  // Tube: from x = 6 to x = 50. Height = 10.
+  ctx.beginPath();
+  ctx.roundRect(6, -5, 44, 10, 2);
+  const tG = ctx.createLinearGradient(6, 0, 50, 0);
+  tG.addColorStop(0, '#94a3b8');
+  tG.addColorStop(1, '#f1f5f9');
+  ctx.fillStyle = tG;
+  ctx.fill();
   
-  // Main tube
-  ctx.beginPath(); ctx.roundRect(-25, 0, 50, 14, 2);
-  const tG = ctx.createLinearGradient(-25, 0, 25, 0);
-  tG.addColorStop(0, '#f1f5f9'); tG.addColorStop(1, '#94a3b8');
-  ctx.fillStyle = tG; ctx.fill();
+  // Lens hood (thick part at the far end)
+  ctx.beginPath();
+  ctx.roundRect(46, -7, 8, 14, 2);
+  ctx.fillStyle = '#334155';
+  ctx.fill();
   
-  // Lens hood
-  ctx.beginPath(); ctx.roundRect(-30, -2, 10, 18, 2);
-  ctx.fillStyle = '#334155'; ctx.fill();
+  // Eyepiece (small part touching the eye at x = 0 to x = 6)
+  ctx.beginPath();
+  ctx.roundRect(0, -3, 6, 6, 1);
+  ctx.fillStyle = '#1e293b';
+  ctx.fill();
+
+  // Stand/Tripod (legs pointing downwards)
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(28, 0);
+  ctx.lineTo(15, 32); // Left leg
+  ctx.stroke();
   
-  // Eyepiece
-  ctx.beginPath(); ctx.roundRect(25, 4, 8, 6, 1);
-  ctx.fillStyle = '#1e293b'; ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(28, 0);
+  ctx.lineTo(34, 30); // Right leg
+  ctx.stroke();
   
+  ctx.restore();
+}
+
+function drawHoldingWings(ctx, cx, cy) {
+  // Left Wing (holding left side of book)
+  ctx.save();
+  ctx.translate(cx - 28, cy + 8);
+  ctx.rotate(32 * Math.PI / 180); // tilt up slightly
+
+  // Layer 1: Back/long feather cradling the bottom-left of the book
+  const gLongL = ctx.createLinearGradient(0, 0, 24, 12);
+  gLongL.addColorStop(0, '#9a3412');
+  gLongL.addColorStop(1, '#4c1205');
+  ctx.beginPath();
+  ctx.moveTo(0, -6);
+  ctx.bezierCurveTo(15, -4, 28, 6, 26, 16);
+  ctx.bezierCurveTo(20, 20, 8, 12, 0, 0);
+  ctx.closePath();
+  ctx.fillStyle = gLongL; ctx.fill();
+  ctx.strokeStyle = 'rgba(76,18,5,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Layer 2: Mid feather resting on the left page
+  const gMidL = ctx.createLinearGradient(0, -2, 20, 6);
+  gMidL.addColorStop(0, '#ea580c');
+  gMidL.addColorStop(1, '#7c2d12');
+  ctx.beginPath();
+  ctx.moveTo(-2, -4);
+  ctx.bezierCurveTo(10, -3, 22, 2, 21, 10);
+  ctx.bezierCurveTo(15, 14, 6, 6, -2, 0);
+  ctx.closePath();
+  ctx.fillStyle = gMidL; ctx.fill();
+  ctx.stroke();
+
+  // Layer 3: Top/short feather (thumb-like grip on side page)
+  const gShortL = ctx.createLinearGradient(0, -2, 14, 2);
+  gShortL.addColorStop(0, '#f97316');
+  gShortL.addColorStop(1, '#b45309');
+  ctx.beginPath();
+  ctx.moveTo(-2, -2);
+  ctx.bezierCurveTo(6, -1, 15, 1, 14, 6);
+  ctx.bezierCurveTo(10, 8, 4, 4, -2, 0);
+  ctx.closePath();
+  ctx.fillStyle = gShortL; ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+
+  // Right Wing (holding right side of book)
+  ctx.save();
+  ctx.translate(cx + 28, cy + 8);
+  ctx.rotate(-32 * Math.PI / 180); // tilt up slightly
+
+  // Layer 1: Back/long feather cradling the bottom-right of the book
+  const gLongR = ctx.createLinearGradient(0, 0, -24, 12);
+  gLongR.addColorStop(0, '#9a3412');
+  gLongR.addColorStop(1, '#4c1205');
+  ctx.beginPath();
+  ctx.moveTo(0, -6);
+  ctx.bezierCurveTo(-15, -4, -28, 6, -26, 16);
+  ctx.bezierCurveTo(-20, 20, -8, 12, 0, 0);
+  ctx.closePath();
+  ctx.fillStyle = gLongR; ctx.fill();
+  ctx.strokeStyle = 'rgba(76,18,5,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Layer 2: Mid feather resting on the right page
+  const gMidR = ctx.createLinearGradient(0, -2, -20, 6);
+  gMidR.addColorStop(0, '#ea580c');
+  gMidR.addColorStop(1, '#7c2d12');
+  ctx.beginPath();
+  ctx.moveTo(2, -4);
+  ctx.bezierCurveTo(-10, -3, -22, 2, -21, 10);
+  ctx.bezierCurveTo(-15, 14, -6, 6, 2, 0);
+  ctx.closePath();
+  ctx.fillStyle = gMidR; ctx.fill();
+  ctx.stroke();
+
+  // Layer 3: Top/short feather (thumb-like grip on side page)
+  const gShortR = ctx.createLinearGradient(0, -2, -14, 2);
+  gShortR.addColorStop(0, '#f97316');
+  gShortR.addColorStop(1, '#b45309');
+  ctx.beginPath();
+  ctx.moveTo(2, -2);
+  ctx.bezierCurveTo(-6, -1, -15, 1, -14, 6);
+  ctx.bezierCurveTo(-10, 8, -4, 4, 2, 0);
+  ctx.closePath();
+  ctx.fillStyle = gShortR; ctx.fill();
+  ctx.stroke();
+
   ctx.restore();
 }
 
@@ -599,7 +799,7 @@ function drawGlasses(ctx, cx, cy, isGlowing, t) {
   });
 }
 
-function drawBeak(ctx, cx, cy) {
+function drawBeak(ctx, cx, cy, openAmount = 0) {
   const bx = cx, by = cy + 4;
 
   // Beak shadow
@@ -625,12 +825,52 @@ function drawBeak(ctx, cx, cy) {
   ctx.strokeStyle = 'rgba(253,230,100,0.85)'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(bx - 5, by - 1.5); ctx.quadraticCurveTo(bx, by - 5, bx + 5, by - 1.5); ctx.stroke();
 
-  // Crease
-  ctx.strokeStyle = 'rgba(180,80,0,0.45)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(bx - 5, by + 1); ctx.quadraticCurveTo(bx, by + 8, bx + 5, by + 1); ctx.stroke();
+  if (openAmount > 0.05) {
+    // Open mouth — dark ellipse at crease seam scaled by openAmount
+    const mW = 6.5 * openAmount, mH = 4.5 * openAmount;
+    ctx.beginPath();
+    ctx.ellipse(bx, by + 2, mW, mH, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#7f1d1d';
+    ctx.fill();
+    // Tongue hint when mouth is wide open
+    if (openAmount > 0.45) {
+      ctx.beginPath();
+      ctx.ellipse(bx, by + 2.5 + mH * 0.25, mW * 0.55, mH * 0.45, 0, 0, Math.PI);
+      ctx.fillStyle = '#dc2626';
+      ctx.fill();
+    }
+  } else {
+    // Crease (closed beak)
+    ctx.strokeStyle = 'rgba(180,80,0,0.45)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(bx - 5, by + 1); ctx.quadraticCurveTo(bx, by + 8, bx + 5, by + 1); ctx.stroke();
+  }
 }
 
-function drawCap(ctx, cx, topY) {
+function drawSweatband(ctx, cx, cy) {
+  const bx = cx;
+  const by = cy - 25; // Forehead level (below cap, above eyes)
+  
+  ctx.save();
+  
+  // Sweatband band: wrapped horizontally
+  ctx.fillStyle = '#ef4444'; // Bright Red
+  ctx.beginPath();
+  ctx.roundRect(bx - 18, by - 4, 36, 8, 2);
+  ctx.fill();
+  ctx.strokeStyle = '#b91c1c';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // White sports stripes/logo detail on the sweatband
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.roundRect(bx - 10, by - 2, 20, 4, 1);
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+function drawCap(ctx, cx, topY, t = 0) {
   const stemTop = topY + 17;
   const stemBot = topY + 29;
 
@@ -675,10 +915,11 @@ function drawCap(ctx, cx, topY) {
   ctx.fillStyle = '#fde68a'; ctx.fill();
   ctx.restore();
 
-  // Tassel
-  const tx = cx + 22, ty = midY + 7;
+  // Tassel (gently swings based on time — feels alive)
+  const tasselSwing = Math.sin(t * 2.4) * 4;
+  const tx = cx + 22 + tasselSwing, ty = midY + 7 + Math.abs(tasselSwing) * 0.25;
   ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(cx, midY + 1); ctx.quadraticCurveTo(cx + 12, midY + 1, tx, ty); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, midY + 1); ctx.quadraticCurveTo(cx + 12 + tasselSwing * 0.5, midY + 1, tx, ty); ctx.stroke();
   ctx.beginPath(); ctx.ellipse(tx, ty, 5, 3.5, 0.3, 0, Math.PI * 2); ctx.fillStyle = '#d97706'; ctx.fill();
   [[-4, '#f59e0b'], [0, '#fbbf24'], [4, '#f59e0b']].forEach(([dx, col]) => {
     ctx.strokeStyle = col; ctx.lineWidth = 2.5;
@@ -687,6 +928,232 @@ function drawCap(ctx, cx, topY) {
     ctx.quadraticCurveTo(tx + dx - 1, ty + 11, tx + dx, ty + 14);
     ctx.stroke();
   });
+}
+
+function drawBowTie(ctx, cx, cy) {
+  const bx = cx;
+  const by = cy + 13; // Just below beak
+  ctx.save();
+  
+  // Center knot
+  ctx.fillStyle = '#dc2626'; // Deep Red
+  ctx.beginPath();
+  ctx.arc(bx, by, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Left wing
+  ctx.beginPath();
+  ctx.moveTo(bx, by);
+  ctx.lineTo(bx - 12, by - 6);
+  ctx.lineTo(bx - 12, by + 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Right wing
+  ctx.beginPath();
+  ctx.moveTo(bx, by);
+  ctx.lineTo(bx + 12, by - 6);
+  ctx.lineTo(bx + 12, by + 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Shading/Lines
+  ctx.strokeStyle = '#991b1b';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(bx - 6, by - 3); ctx.lineTo(bx - 6, by + 3);
+  ctx.moveTo(bx + 6, by - 3); ctx.lineTo(bx + 6, by + 3);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawCozyScarf(ctx, cx, cy) {
+  const sx = cx;
+  const sy = cy + 23;
+  ctx.save();
+  
+  // Main neck loop
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#b91c1c'; // Red
+  ctx.beginPath();
+  ctx.moveTo(sx - 18, sy);
+  ctx.quadraticCurveTo(sx, sy + 6, sx + 18, sy);
+  ctx.stroke();
+
+  // Stripes on loop
+  ctx.strokeStyle = '#fbbf24'; // Gold stripes
+  ctx.lineWidth = 3;
+  [sx - 12, sx, sx + 12].forEach(x => {
+    ctx.beginPath();
+    ctx.moveTo(x - 1, sy + 1);
+    ctx.lineTo(x + 1, sy + 3);
+    ctx.stroke();
+  });
+
+  // Hanging tail of scarf
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#b91c1c';
+  ctx.beginPath();
+  ctx.moveTo(sx + 10, sy + 2);
+  ctx.quadraticCurveTo(sx + 16, sy + 14, sx + 14, sy + 24);
+  ctx.stroke();
+
+  // Scarf fringe/tassel
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(sx + 12, sy + 24); ctx.lineTo(sx + 10, sy + 29);
+  ctx.moveTo(sx + 14, sy + 24); ctx.lineTo(sx + 14, sy + 30);
+  ctx.moveTo(sx + 16, sy + 24); ctx.lineTo(sx + 18, sy + 29);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawWizardHat(ctx, cx, topY, t = 0) {
+  const baseWidth = 44;
+  const h = 38;
+  const bx = cx;
+  const by = topY + 28; // position relative to head
+  
+  ctx.save();
+  
+  // Hat brim (oval)
+  ctx.fillStyle = '#5b21b6'; // Dark Purple
+  ctx.beginPath();
+  ctx.ellipse(bx, by, baseWidth / 2, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#4c1d95';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Hat cone
+  ctx.fillStyle = '#6d28d9'; // Mid Purple
+  const swing = Math.sin(t * 1.5) * 2;
+  ctx.beginPath();
+  ctx.moveTo(bx - 16, by - 1);
+  ctx.bezierCurveTo(bx - 14, by - 16, bx - 8, by - 30, bx + swing, by - h); // top
+  ctx.bezierCurveTo(bx + 4, by - 30, bx + 14, by - 16, bx + 16, by - 1);
+  ctx.closePath();
+  ctx.fill();
+
+  // Gold Hat Band
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath();
+  ctx.moveTo(bx - 16, by - 1);
+  ctx.quadraticCurveTo(bx, by + 1.5, bx + 16, by - 1);
+  ctx.lineTo(bx + 15, by - 4);
+  ctx.quadraticCurveTo(bx, by - 1.5, bx - 15, by - 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Little Gold Star on Hat
+  ctx.fillStyle = '#fde68a';
+  ctx.font = '8px Arial';
+  ctx.fillText('★', bx - 5 + swing * 0.5, by - 14);
+  ctx.fillText('★', bx + 6 + swing * 0.7, by - 24);
+
+  // Tassel/Star at the tip
+  const starX = bx + swing;
+  const starY = by - h;
+  ctx.beginPath();
+  ctx.arc(starX, starY, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#fbbf24';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawGoldCrown(ctx, cx, topY) {
+  const bx = cx;
+  const by = topY + 26;
+  ctx.save();
+  
+  // Base band
+  ctx.fillStyle = '#d97706'; // Dark Gold/Amber
+  ctx.beginPath();
+  ctx.roundRect(bx - 14, by - 2, 28, 4, 1);
+  ctx.fill();
+
+  // Shiny Crown spikes
+  ctx.fillStyle = '#fbbf24'; // Bright Gold
+  ctx.beginPath();
+  ctx.moveTo(bx - 14, by - 2);
+  ctx.lineTo(bx - 14, by - 12);
+  ctx.lineTo(bx - 7, by - 6);
+  ctx.lineTo(bx, by - 15); // middle spike tallest
+  ctx.lineTo(bx + 7, by - 6);
+  ctx.lineTo(bx + 14, by - 12);
+  ctx.lineTo(bx + 14, by - 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Jewels (red/blue dots)
+  ctx.fillStyle = '#ef4444'; // Red jewel in center
+  ctx.beginPath(); ctx.arc(bx, by - 8, 2, 0, Math.PI * 2); ctx.fill();
+  
+  ctx.fillStyle = '#3b82f6'; // Blue jewels on sides
+  ctx.beginPath(); ctx.arc(bx - 9, by - 6, 1.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + 9, by - 6, 1.5, 0, Math.PI * 2); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawCyberGlasses(ctx, cx, cy, t) {
+  const eyeY = cy - 17;
+  ctx.save();
+
+  // Outer glow
+  ctx.shadowColor = '#06b6d4';
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 2.5;
+
+  // Visor band across both eyes
+  ctx.fillStyle = 'rgba(8, 47, 73, 0.85)'; // Dark cyan glass
+  ctx.beginPath();
+  ctx.roundRect(cx - 36, eyeY - 14, 72, 28, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.shadowBlur = 0; // Reset shadow
+
+  // Glowing tech grid/lines
+  ctx.strokeStyle = '#67e8f9';
+  ctx.lineWidth = 1;
+  // Horizontal scan line animating
+  const scanY = eyeY - 10 + ((t * 15) % 20);
+  if (scanY < eyeY + 12) {
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(cx - 32, scanY);
+    ctx.lineTo(cx + 32, scanY);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+  }
+
+  // Digital brackets
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.5;
+  // Left bracket
+  ctx.beginPath();
+  ctx.moveTo(cx - 30, eyeY - 8);
+  ctx.lineTo(cx - 33, eyeY - 8);
+  ctx.lineTo(cx - 33, eyeY + 8);
+  ctx.lineTo(cx - 30, eyeY + 8);
+  ctx.stroke();
+
+  // Right bracket
+  ctx.beginPath();
+  ctx.moveTo(cx + 30, eyeY - 8);
+  ctx.lineTo(cx + 33, eyeY - 8);
+  ctx.lineTo(cx + 33, eyeY + 8);
+  ctx.lineTo(cx + 30, eyeY + 8);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function drawFeet(ctx, cx, fy) {
@@ -715,27 +1182,83 @@ function drawFeet(ctx, cx, fy) {
 }
 
 function drawAIBadge(ctx, cx, by) {
-  const w = 24, h = 13, r = 5;
+  // Sleeker, slightly wider pill container for a modern tech look
+  const w = 32, h = 15, r = 7.5;
   const bx = cx - w / 2;
 
-  // Rounded rect background
-  ctx.beginPath();
-  ctx.moveTo(bx + r, by); ctx.lineTo(bx + w - r, by);
-  ctx.quadraticCurveTo(bx + w, by, bx + w, by + r);
-  ctx.lineTo(bx + w, by + h - r);
-  ctx.quadraticCurveTo(bx + w, by + h, bx + w - r, by + h);
-  ctx.lineTo(bx + r, by + h);
-  ctx.quadraticCurveTo(bx, by + h, bx, by + h - r);
-  ctx.lineTo(bx, by + r);
-  ctx.quadraticCurveTo(bx, by, bx + r, by);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(15,23,42,0.85)'; ctx.fill();
-  ctx.save(); ctx.globalAlpha = 0.15; ctx.fillStyle = '#0ea5e9'; ctx.fill(); ctx.restore();
+  ctx.save();
 
-  ctx.fillStyle = '#38bdf8';
-  ctx.font = 'bold 8px system-ui, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('AI', cx, by + h / 2 + 0.5);
+  // Subtle outer drop shadow glow
+  ctx.shadowColor = 'rgba(14, 165, 233, 0.4)';
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 1;
+
+  // Draw capsule background path
+  ctx.beginPath();
+  ctx.roundRect(bx, by, w, h, r);
+  
+  // Dark Glassmorphism background gradient
+  const bgG = ctx.createLinearGradient(bx, by, bx, by + h);
+  bgG.addColorStop(0.0, 'rgba(15, 23, 42, 0.9)');
+  bgG.addColorStop(1.0, 'rgba(30, 41, 59, 0.95)');
+  ctx.fillStyle = bgG;
+  ctx.fill();
+  
+  // Disable shadow for internal details
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  // Diagonal gloss shine highlight
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(bx, by, w, h, r);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(bx - 5, by - 5);
+  ctx.lineTo(bx + w + 5, by + h + 5);
+  ctx.stroke();
+  ctx.restore();
+
+  // Futuristic cyber gradient border
+  const borderG = ctx.createLinearGradient(bx, by, bx + w, by);
+  borderG.addColorStop(0.0, '#38bdf8'); // cyan
+  borderG.addColorStop(0.5, '#6366f1'); // indigo
+  borderG.addColorStop(1.0, '#a855f7'); // purple
+  ctx.strokeStyle = borderG;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, w, h, r);
+  ctx.stroke();
+
+  // Glowing "AI" label text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 8px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Shift slightly to the left to balance the active status LED dot on the right
+  ctx.fillText('AI', cx - 2.5, by + h / 2 + 0.5);
+
+  // Tiny glowing active status LED indicator dot
+  const dotX = cx + 8;
+  const dotY = by + h / 2;
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 1.3, 0, Math.PI * 2);
+  ctx.fillStyle = '#4ade80'; // Emerald green
+  ctx.fill();
+  
+  // LED outer soft glow
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 3.0, 0, Math.PI * 2);
+  ctx.fillStyle = '#4ade80';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
 }
 
 function drawBook(ctx, cx, cy, t = 0) {
@@ -748,16 +1271,16 @@ function drawBook(ctx, cx, cy, t = 0) {
   
   const pw = 24, ph = 30, corner = 3;
 
-  // Drop shadow
+  // Drop shadow centered
   ctx.save(); ctx.globalAlpha = 0.18;
-  ctx.beginPath(); ctx.roundRect(-pw * 2 + 2, -ph / 2 + 3, pw * 4, ph, corner);
+  ctx.beginPath(); ctx.roundRect(-pw + 2, -ph / 2 + 3, pw * 2, ph, corner);
   ctx.fillStyle = '#000'; ctx.fill();
   ctx.restore();
 
   // --- LEFT PAGE ---
   ctx.save();
-  ctx.beginPath(); ctx.roundRect(-pw * 2, -ph / 2, pw, ph, [corner, 0, 0, corner]);
-  const lgL = ctx.createLinearGradient(-pw * 2, 0, -pw, 0);
+  ctx.beginPath(); ctx.roundRect(-pw, -ph / 2, pw, ph, [corner, 0, 0, corner]);
+  const lgL = ctx.createLinearGradient(-pw, 0, 0, 0);
   lgL.addColorStop(0, '#e2e8f0'); lgL.addColorStop(1, '#f8fafc');
   ctx.fillStyle = lgL; ctx.fill();
   // Lines on left page
@@ -765,16 +1288,16 @@ function drawBook(ctx, cx, cy, t = 0) {
   for (let i = 0; i < 6; i++) {
     const lw = i % 3 === 2 ? pw * 0.55 : pw * 0.8;
     ctx.beginPath();
-    ctx.moveTo(-pw * 2 + 4, -ph / 2 + 7 + i * 4);
-    ctx.lineTo(-pw * 2 + 4 + lw, -ph / 2 + 7 + i * 4);
+    ctx.moveTo(-pw + 4, -ph / 2 + 7 + i * 4);
+    ctx.lineTo(-pw + 4 + lw, -ph / 2 + 7 + i * 4);
     ctx.stroke();
   }
   ctx.restore();
 
   // --- RIGHT PAGE ---
   ctx.save();
-  ctx.beginPath(); ctx.roundRect(-pw, -ph / 2, pw, ph, [0, corner, corner, 0]);
-  const lgR = ctx.createLinearGradient(-pw, 0, 0, 0);
+  ctx.beginPath(); ctx.roundRect(0, -ph / 2, pw, ph, [0, corner, corner, 0]);
+  const lgR = ctx.createLinearGradient(0, 0, pw, 0);
   lgR.addColorStop(0, '#f8fafc'); lgR.addColorStop(1, '#f1f5f9');
   ctx.fillStyle = lgR; ctx.fill();
   // Lines on right page
@@ -782,30 +1305,33 @@ function drawBook(ctx, cx, cy, t = 0) {
   for (let i = 0; i < 6; i++) {
     const lw = i % 3 === 0 ? pw * 0.55 : pw * 0.78;
     ctx.beginPath();
-    ctx.moveTo(-pw + 4, -ph / 2 + 7 + i * 4);
-    ctx.lineTo(-pw + 4 + lw, -ph / 2 + 7 + i * 4);
+    ctx.moveTo(4, -ph / 2 + 7 + i * 4);
+    ctx.lineTo(4 + lw, -ph / 2 + 7 + i * 4);
     ctx.stroke();
   }
   ctx.restore();
 
   // --- SPINE ---
   ctx.save();
-  ctx.beginPath(); ctx.roundRect(-pw - 2, -ph / 2, 4, ph, 1);
-  const spineG = ctx.createLinearGradient(-pw - 2, 0, -pw + 2, 0);
+  ctx.beginPath(); ctx.roundRect(-2, -ph / 2, 4, ph, 1);
+  const spineG = ctx.createLinearGradient(-2, 0, 2, 0);
   spineG.addColorStop(0, '#1e3a8a'); spineG.addColorStop(1, '#3b5fc5');
   ctx.fillStyle = spineG; ctx.fill();
+  // Spine cap/detail
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath(); ctx.arc(0, -ph / 2, 1.5, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
   // --- COVER edges (bottom) ---
   ctx.save(); ctx.globalAlpha = 0.45;
-  ctx.beginPath(); ctx.roundRect(-pw * 2, ph / 2 - 3, pw * 2, 3, [0, 0, corner, corner]);
+  ctx.beginPath(); ctx.roundRect(-pw, ph / 2 - 3, pw * 2, 3, [0, 0, corner, corner]);
   ctx.fillStyle = '#1e3a8a'; ctx.fill();
   ctx.restore();
 
   // Animated page turn glint on right
   const glint = (Math.sin(t * 0.8) + 1) / 2;
   ctx.save(); ctx.globalAlpha = glint * 0.15;
-  ctx.beginPath(); ctx.roundRect(-pw, -ph / 2, pw, ph, [0, corner, corner, 0]);
+  ctx.beginPath(); ctx.roundRect(0, -ph / 2, pw, ph, [0, corner, corner, 0]);
   ctx.fillStyle = '#bfdbfe'; ctx.fill();
   ctx.restore();
 
@@ -836,11 +1362,24 @@ function drawClipboard(ctx, cx, cy) {
 }
 
 function drawCoffeeCup(ctx, cx, cy, t) {
-  const cpx = cx + 18, cpy = cy + 44;
+  // Move cup to mouth level with up/down drinking motion
+  const cpx = cx + 16;
+  const cpy = cy - 2 + Math.sin(t * 8) * 3;
 
-  // Steam (animated)
   ctx.save();
-  ctx.globalAlpha = 0.55 + Math.sin(t * 3) * 0.3;
+  ctx.translate(cpx, cpy);
+  
+  // Calculate tilt angle when raised near the beak (Math.sin(t * 8) is negative)
+  const sipFactor = Math.sin(t * 8);
+  const tiltAngle = (sipFactor < 0) ? (sipFactor * -22) * Math.PI / 180 : 0; // tilt up to 22 degrees
+  ctx.rotate(tiltAngle);
+
+  // Translate back relative to local coordinates (so cup draws around 0,0)
+  ctx.translate(-cpx, -cpy);
+
+  // Steam (animated, fades out when tilted to drink!)
+  ctx.save();
+  ctx.globalAlpha = (1 - Math.max(0, -sipFactor)) * (0.55 + Math.sin(t * 3) * 0.3);
   ctx.strokeStyle = '#d97706'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
   const so = Math.sin(t * 2) * 2;
   ctx.beginPath(); ctx.moveTo(cpx - 4, cpy - 6); ctx.quadraticCurveTo(cpx - 6 + so, cpy - 12, cpx - 3 + so, cpy - 18); ctx.stroke();
@@ -875,6 +1414,59 @@ function drawCoffeeCup(ctx, cx, cy, t) {
   ctx.moveTo(cpx + 10, cpy + 3);
   ctx.bezierCurveTo(cpx + 18, cpy + 3, cpx + 18, cpy + 13, cpx + 10, cpy + 13);
   ctx.stroke();
+
+  ctx.restore(); // restores the translate/rotate transform matrix
+}
+
+function drawCookieSnack(ctx, cx, cy, t) {
+  // Center of cookie: right wing wraps near beak. Beak is around cx, cy.
+  // We offset the cookie to his beak level cy - 4, moving up and down to feed himself
+  const bx = cx + 16;
+  const by = cy - 2 + Math.sin(t * 8) * 3; // feeding motion
+
+  ctx.save();
+  
+  // Draw the cookie base (golden brown cookie circle)
+  ctx.fillStyle = '#d97706'; // Golden brown cookie color
+  ctx.beginPath();
+  ctx.arc(bx, by, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#b45309';
+  ctx.lineWidth = 1.0;
+  ctx.stroke();
+
+  // Chocolate chips (dark brown spots)
+  ctx.fillStyle = '#451a03'; // Chocolate dark brown
+  // Chip 1
+  ctx.beginPath(); ctx.arc(bx - 3, by - 2, 1.6, 0, Math.PI * 2); ctx.fill();
+  // Chip 2
+  ctx.beginPath(); ctx.arc(bx + 2, by - 3, 1.4, 0, Math.PI * 2); ctx.fill();
+  // Chip 3
+  ctx.beginPath(); ctx.arc(bx - 2, by + 3, 1.8, 0, Math.PI * 2); ctx.fill();
+  // Chip 4
+  ctx.beginPath(); ctx.arc(bx + 3, by + 2, 1.2, 0, Math.PI * 2); ctx.fill();
+
+  // Draw bite marks
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  ctx.arc(bx - 6, by - 3, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.arc(bx - 7, by + 1, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.restore();
+
+  // Draw cookie crumbs falling down!
+  ctx.save();
+  ctx.fillStyle = '#d97706';
+  const crumbPhase = (t * 6) % 1;
+  const crumbY1 = by + 6 + crumbPhase * 24;
+  const crumbY2 = by + 4 + ((t * 6 + 0.5) % 1) * 24;
+  // Crumb 1
+  ctx.beginPath(); ctx.arc(bx - 3, crumbY1, 1.0, 0, Math.PI * 2); ctx.fill();
+  // Crumb 2
+  ctx.beginPath(); ctx.arc(bx + 1, crumbY2, 0.8, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 function drawCleaningCloth(ctx, cx, cy, t) {
@@ -903,18 +1495,35 @@ const OrionCharacter = ({
   xpGainDisplay,
   isPetting = false,
   isDragging = false,
+  isSpeaking = false,
   contextPath = '',
   size = 140,
+  accessories = [],
+  walkDirection = 0,
 }) => {
   const canvasRef    = useRef(null);
   const rafRef       = useRef(null);
   const emotionRef   = useRef(emotion);
   const blinkRef     = useRef(false);
-  const pupilRef     = useRef({ px: 0, py: 0 });
+  const pupilRef       = useRef({ px: 0, py: 0 });
+  const lerpCfgRef     = useRef({ ...DEFAULT_EC });   // smooth emotion transition state
+  const isSpeakingRef  = useRef(false);
+  const mouseDistRef   = useRef(1000);
+  const contextPathRef = useRef(contextPath);
+  const accessoriesRef = useRef(accessories);
+  const walkDirectionRef = useRef(walkDirection);
   const [showConfetti, setShowConfetti] = useState(false);
 
   // Sync emotion ref whenever prop changes
   useEffect(() => { emotionRef.current = emotion; }, [emotion]);
+
+  // Sync isSpeaking ref whenever prop changes (avoids stale closure in rAF)
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+
+  // Sync contextPath and accessories refs
+  useEffect(() => { contextPathRef.current = contextPath; }, [contextPath]);
+  useEffect(() => { accessoriesRef.current = accessories; }, [accessories]);
+  useEffect(() => { walkDirectionRef.current = walkDirection; }, [walkDirection]);
 
   // ── Blink loop (ref-based, no re-renders) ──────────────────────────────────
   useEffect(() => {
@@ -950,6 +1559,7 @@ const OrionCharacter = ({
       const eyeCY = rect.top  + rect.height * 0.38;
       const dx = e.clientX - eyeCX, dy = e.clientY - eyeCY;
       const dist = Math.sqrt(dx * dx + dy * dy);
+      mouseDistRef.current = dist;
       const tFactor = Math.min(1, dist / 400);
       const angle = Math.atan2(dy, dx);
       pupilRef.current = { px: Math.cos(angle) * tFactor * 4.5, py: Math.sin(angle) * tFactor * 4.5 };
@@ -980,29 +1590,65 @@ const OrionCharacter = ({
     canvas.style.height = `${H}px`;
 
     const ctx = canvas.getContext('2d');
-    const scale = (W / 120) * dpr; // Uniform scale: both X and Y
+    const scale = (W / 152) * dpr; // Uniform scale: both X and Y
+
+    let lastT = 0;
+    let phaseB = 0;
+    let phaseW = 0;
 
     const render = (ts) => {
       const t  = ts / 1000;
+      const dt = lastT ? t - lastT : 0;
+      lastT = t;
+
       const em = emotionRef.current || ORION_EMOTIONS.IDLE;
-      const cfg = EC[em] || DEFAULT_EC;
+      const targetCfg = EC[em] || DEFAULT_EC;
+
+      // ── Smooth lerp of physics params toward target emotion config ──
+      // Creates buttery transitions instead of jarring state snaps (~18 frames to 95%)
+      const lc = lerpCfgRef.current;
+      const lf = 0.055;
+      lc.bY    += (targetCfg.bY    - lc.bY)    * lf;
+      lc.bF    += (targetCfg.bF    - lc.bF)    * lf;
+      lc.wAmp  += (targetCfg.wAmp  - lc.wAmp)  * lf;
+      lc.wF    += (targetCfg.wF    - lc.wF)    * lf;
+      lc.eOpen += (targetCfg.eOpen - lc.eOpen) * lf;
+      lc.ebY   += (targetCfg.ebY   - lc.ebY)   * lf;
+      lc.tilt  += (targetCfg.tilt  - lc.tilt)  * lf;
+      lc.gGlow  = targetCfg.gGlow;  // booleans snap immediately
+      lc.shake  = targetCfg.shake;
+      const cfg = lc;
       const { px: puffX, py: puffY } = pupilRef.current;
       const blink = blinkRef.current;
+
+      // ── Proximity Glow ──
+      // The canvas element gets a dynamic drop-shadow based on mouse distance
+      const mDist = mouseDistRef.current;
+      const glowIntensity = Math.max(0, 1 - (mDist / 250)); // Glows when within 250px
+      if (glowIntensity > 0) {
+        canvas.style.filter = `drop-shadow(0 12px 24px rgba(0,0,0,0.28)) drop-shadow(0 4px 8px rgba(0,0,0,0.14)) drop-shadow(0 0 ${10 + glowIntensity * 40}px rgba(251, 146, 60, ${glowIntensity * 0.7}))`;
+      } else {
+        canvas.style.filter = 'drop-shadow(0 12px 24px rgba(0,0,0,0.28)) drop-shadow(0 4px 8px rgba(0,0,0,0.14))';
+      }
+
+      // Accumulate phase properly based on current lerped frequency
+      phaseB += cfg.bF * dt;
+      phaseW += cfg.wF * dt;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       ctx.scale(scale, scale);
 
       // Body center (internal coords)
-      const cx = 60;
+      const cx = 76;
       const baseCY = 72;
 
       // Bounce / shake (disabled if dragged to let him hang)
       const bounceY = (cfg.shake || isDragging)
         ? 0
-        : Math.sin(t * cfg.bF * Math.PI * 2) * cfg.bY;
+        : Math.sin(phaseB * Math.PI * 2) * cfg.bY;
       const shakeX = cfg.shake
-        ? Math.sin(t * cfg.bF * Math.PI * 2) * 3
+        ? Math.sin(phaseB * Math.PI * 2) * 3
         : 0;
 
       // When dragging, he's lifted up slightly
@@ -1017,12 +1663,14 @@ const OrionCharacter = ({
       // Wing angles (flap wildly if dragged, calm otherwise)
       const leftAngle  = isDragging 
         ? Math.sin(t * 12) * 35 
-        : Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp;
+        : Math.sin(phaseW * Math.PI * 2) * cfg.wAmp;
       const rightAngle = isDragging
         ? -Math.sin(t * 12) * 35 
         : (em === ORION_EMOTIONS.WAVING
             ? Math.sin(t * 5 * Math.PI * 2) * 44
-            : -Math.sin(t * cfg.wF * Math.PI * 2) * cfg.wAmp);
+            : (em === ORION_EMOTIONS.IDLE_COOKIE)
+                ? -68 + Math.sin(t * 8) * 8
+                : -Math.sin(phaseW * Math.PI * 2) * cfg.wAmp);
 
       // Eyelids close when petting
       const eOpen = isPetting ? 0.05 : cfg.eOpen;
@@ -1035,27 +1683,52 @@ const OrionCharacter = ({
       // Eyebrow subtle breathing
       const ebY = cfg.ebY + Math.sin(t * 0.7) * 0.4;
 
+      // ── Beak open amount: fast chatter when speaking, slow yawn when stretching ──
+      const isSpeakingNow = isSpeakingRef.current;
+      const beakOpen = isSpeakingNow
+        ? (Math.sin(t * 9) * 0.5 + 0.5) * 0.7              // speech: rapid open/close
+        : (em === ORION_EMOTIONS.IDLE_STRETCHING
+            ? Math.max(0, Math.sin(phaseW * Math.PI * 2)) * 0.85  // yawn: peaks with wings
+            : 0);
+
+      // ── Head bob: gentle vertical nod synced with music beat ──
+      const headBobY = (em === ORION_EMOTIONS.IDLE_MUSIC)
+        ? Math.sin(phaseW * Math.PI * 2 + Math.PI * 0.5) * 2.5
+        : 0;
+
       ctx.save();
       ctx.translate(shakeX, 0);
 
       // 1. Ground shadow
       drawShadow(ctx, cx, bodyBottom);
 
-      // 2. Left wing (behind body)
-      drawWing(ctx, cx, cy, true, leftAngle);
-
-      // 3. Body + face mask
+      // 2. Body + face mask
       drawBody(ctx, cx, cy, breathX, breathY);
 
-      // 3b. Book BEHIND right wing (so wing wraps over the book)
-      if (!isDragging) {
-        const isReading = em === ORION_EMOTIONS.IDLE_READING || em === ORION_EMOTIONS.FOCUSED;
-        const isTimerPage = contextPath === '/timer';
-        if (isReading || isTimerPage) drawBook(ctx, cx, cy, t);
+      // Draw neck accessories (Bow tie / Cozy scarf)
+      if (accessoriesRef.current.includes('bow_tie')) {
+        drawBowTie(ctx, cx, cy);
+      }
+      if (accessoriesRef.current.includes('cozy_scarf')) {
+        drawCozyScarf(ctx, cx, cy);
       }
 
-      // 4. Right wing (in front for waving)
-      drawWing(ctx, cx, cy, false, rightAngle);
+      const isReading = em === ORION_EMOTIONS.IDLE_READING || em === ORION_EMOTIONS.FOCUSED;
+
+      // 3. Book BEHIND right wing (so wing wraps over the book)
+      if (!isDragging) {
+        if (isReading) drawBook(ctx, cx, cy, t);
+      }
+
+      // 4. Wings (either holding book or default flapping)
+      if (!isDragging && isReading) {
+        drawHoldingWings(ctx, cx, cy);
+      } else {
+        // Left wing (in front of body)
+        drawWing(ctx, cx, cy, true, leftAngle);
+        // Right wing (in front of body)
+        drawWing(ctx, cx, cy, false, rightAngle);
+      }
 
       // 5. Head group (with tilt)
       const headPivotY = cy - 10;
@@ -1063,14 +1736,60 @@ const OrionCharacter = ({
       ctx.translate(cx, headPivotY);
       ctx.rotate(headTilt * Math.PI / 180);
       ctx.translate(-cx, -headPivotY);
+      // Additional vertical bob (e.g. nodding to music) applied after tilt
+      if (headBobY) ctx.translate(0, headBobY);
 
       drawEarTufts(ctx, cx, cy);
-      drawCap(ctx, cx, cy - 50);
+      
+      // Draw head accessory (Wizard hat / Gold crown / default Cap)
+      if (accessoriesRef.current.includes('wizard_hat')) {
+        drawWizardHat(ctx, cx, cy - 50, t);
+      } else if (accessoriesRef.current.includes('gold_crown')) {
+        drawGoldCrown(ctx, cx, cy - 50);
+      } else {
+        drawCap(ctx, cx, cy - 50, t);
+      }
+
       drawEyebrows(ctx, cx, cy, isPetting ? -2 : ebY, em);
-      drawSingleEye(ctx, cx - 18, cy - 17, 15, puffX, puffY, eOpen, em, blink);
-      drawSingleEye(ctx, cx + 18, cy - 17, 15, puffX, puffY, eOpen, em, blink);
-      drawBeak(ctx, cx, cy);
-      drawGlasses(ctx, cx, cy, cfg.gGlow, t);
+
+      if (em === ORION_EMOTIONS.DETERMINED) {
+        drawSweatband(ctx, cx, cy);
+      }
+
+      const isStargazing = em === ORION_EMOTIONS.IDLE_STARGAZING;
+      const leftEyeOpen = isStargazing ? 0.05 : eOpen;
+      const rightEyeOpen = isStargazing ? 1.0 : eOpen;
+      const leftEyeBlink = isStargazing ? false : blink;
+
+      // Force pupil focus downward at the book when reading
+      let pupilX = puffX;
+      let pupilY = puffY;
+      if (isReading) {
+        pupilX = 0;
+        pupilY = 3.5;
+      } else if (em === ORION_EMOTIONS.IDLE_CLEANING) {
+        pupilX = -3.5;
+        pupilY = -1;
+      } else if (walkDirectionRef.current !== 0) {
+        pupilX = walkDirectionRef.current * 3.5;
+        pupilY = 0;
+      }
+
+      drawSingleEye(ctx, cx - 18, cy - 17, 15, pupilX, pupilY, leftEyeOpen, em, leftEyeBlink);
+      drawSingleEye(ctx, cx + 18, cy - 17, 15, pupilX, pupilY, rightEyeOpen, em, blink);
+      drawBeak(ctx, cx, cy, beakOpen);
+
+      // Draw eyes accessory (Cyber glasses / default Glasses)
+      if (accessoriesRef.current.includes('cyber_glasses')) {
+        drawCyberGlasses(ctx, cx, cy, t);
+      } else {
+        drawGlasses(ctx, cx, cy, cfg.gGlow, t);
+      }
+
+      // Draw telescope on top of right eye so it tilts and rotates with the head
+      if (em === ORION_EMOTIONS.IDLE_STARGAZING) {
+        drawTelescope(ctx, cx, cy);
+      }
 
       ctx.restore(); // head tilt
 
@@ -1093,15 +1812,12 @@ const OrionCharacter = ({
         drawHeadphones(ctx, cx, cy, t);
       }
       
-      if (contextPath === '/timer') {
-        // Book already drawn behind wing above
-      } else if (contextPath === '/dashboard' && em === ORION_EMOTIONS.IDLE) {
+      if (contextPathRef.current === '/dashboard' && em === ORION_EMOTIONS.IDLE) {
         drawClipboard(ctx, cx, cy);
       } else {
-        // Book already drawn behind wing above for IDLE_READING and FOCUSED
         if (em === ORION_EMOTIONS.IDLE_COFFEE) drawCoffeeCup(ctx, cx, cy, t);
+        if (em === ORION_EMOTIONS.IDLE_COOKIE) drawCookieSnack(ctx, cx, cy, t);
         if (em === ORION_EMOTIONS.IDLE_CLEANING) drawCleaningCloth(ctx, cx, cy, t);
-        if (em === ORION_EMOTIONS.IDLE_STARGAZING) drawTelescope(ctx, cx, cy);
       }
 
       ctx.restore(); // shakeX
@@ -1154,9 +1870,11 @@ const OrionCharacter = ({
           <FloatingParticle key="s2" char="✨" index={2} color="#f59e0b" />
         </>)}
         {isPetting && (<>
-          <HeartParticle key="h1" index={0} />
-          <HeartParticle key="h2" index={1} />
-          <HeartParticle key="h3" index={2} />
+          <PettingParticle key="p1" index={0} />
+          <PettingParticle key="p2" index={1} />
+          <PettingParticle key="p3" index={2} />
+          <PettingParticle key="p4" index={3} />
+          <PettingParticle key="p5" index={4} />
         </>)}
         {emotion === ORION_EMOTIONS.IDLE_MUSIC && (<>
           <MusicParticle key="m1" index={0} />
@@ -1167,27 +1885,18 @@ const OrionCharacter = ({
           <FloatingParticle key="st1" char="✨" index={0} color="#fbbf24" />
           <FloatingParticle key="st2" char="⭐" index={2} color="#fcd34d" />
         </>)}
+        {isThinking && (<>
+          {[...Array(8)].map((_, i) => (
+            <ThinkingParticle key={`think-${i}`} index={i} />
+          ))}
+        </>)}
       </AnimatePresence>
 
-      {/* AI thinking spinner */}
-      {isThinking && (
-        <motion.div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        >
-          <motion.div
-            className="w-8 h-8 rounded-full"
-            style={{ border: '3px solid rgba(14,165,233,0.2)', borderTopColor: '#0ea5e9', boxShadow: '0 0 14px rgba(14,165,233,0.4)' }}
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          />
-        </motion.div>
-      )}
 
       {/* The canvas */}
       <canvas
         ref={canvasRef}
-        style={{ display: 'block', filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.28)) drop-shadow(0 4px 8px rgba(0,0,0,0.14))' }}
+        style={{ display: 'block', filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.28)) drop-shadow(0 4px 8px rgba(0,0,0,0.14))', transition: 'filter 0.1s ease-out' }}
       />
     </div>
   );

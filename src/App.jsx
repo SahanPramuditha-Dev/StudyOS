@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
@@ -7,34 +7,6 @@ import posthog from 'posthog-js';
 import { Bell, Menu, Moon, Search, Shield, Sun, XCircle, Circle } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import RealtimePresence from './components/RealtimePresence';
-import Dashboard from './features/Dashboard/Dashboard';
-import Courses from './features/Courses/Courses';
-import Videos from './features/Videos/Videos';
-import Notes from './features/Notes/Notes';
-import Resources from './features/Resources/Resources';
-import Projects from './features/Projects/Projects';
-import Assignments from './features/Assignments/Assignments';
-import Workspace from './features/Workspace/Workspace';
-import Tasks from './Tasks';
-import Analytics from './features/Analytics/Analytics';
-import Goals from './features/Goals/Goals';
-import Budget from './features/Budget/index';
-import WeeklyPlanner from './features/Planner/WeeklyPlanner';
-import ReviewHub from './features/Review/ReviewHub';
-import Chat from './features/Chat/Chat';
-import Reminders from './features/Reminders/Reminders';
-import Timer from './features/Timer/Timer';
-import Grades from './features/Grades/Grades';
-import GlobalSearch from './features/Search/Search';
-import Auth from './features/Auth/Auth';
-import CredentialSetup from './features/Auth/CredentialSetup';
-import Admin from './features/Admin/Admin';
-import Settings from './features/Settings/Settings';
-import Legal from './features/Legal/Legal';
-import Privacy from './features/Legal/Privacy';
-import Terms from './features/Legal/Terms';
-import Support from './features/Legal/Support';
-import AIChatbot from './components/AIChatbot';
 import { OrionCompanion } from './components/Orion';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
@@ -44,6 +16,42 @@ import { STORAGE_KEYS } from './services/storage';
 import { FirestoreService } from './services/firestore';
 import { playAlarmSound, stopAlarmSound, getIsPlaying, setIsPlaying } from './utils/alarmAudio';
 import toast from 'react-hot-toast';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
+
+const Dashboard = lazy(() => import('./features/Dashboard/Dashboard'));
+const Courses = lazy(() => import('./features/Courses/Courses'));
+const Videos = lazy(() => import('./features/Videos/Videos'));
+const Notes = lazy(() => import('./features/Notes/Notes'));
+const Resources = lazy(() => import('./features/Resources/Resources'));
+const Projects = lazy(() => import('./features/Projects/Projects'));
+const Assignments = lazy(() => import('./features/Assignments/Assignments'));
+const Workspace = lazy(() => import('./features/Workspace/Workspace'));
+const Tasks = lazy(() => import('./Tasks'));
+const Analytics = lazy(() => import('./features/Analytics/Analytics'));
+const Goals = lazy(() => import('./features/Goals/Goals'));
+const Budget = lazy(() => import('./features/Budget/index'));
+const WeeklyPlanner = lazy(() => import('./features/Planner/WeeklyPlanner'));
+const ReviewHub = lazy(() => import('./features/Review/ReviewHub'));
+const Chat = lazy(() => import('./features/Chat/Chat'));
+const Reminders = lazy(() => import('./features/Reminders/Reminders'));
+const Timer = lazy(() => import('./features/Timer/Timer'));
+const Grades = lazy(() => import('./features/Grades/Grades'));
+const GlobalSearch = lazy(() => import('./features/Search/Search'));
+const Auth = lazy(() => import('./features/Auth/Auth'));
+const CredentialSetup = lazy(() => import('./features/Auth/CredentialSetup'));
+const Admin = lazy(() => import('./features/Admin/Admin'));
+const Settings = lazy(() => import('./features/Settings/Settings'));
+const Legal = lazy(() => import('./features/Legal/Legal'));
+const Privacy = lazy(() => import('./features/Legal/Privacy'));
+const Terms = lazy(() => import('./features/Legal/Terms'));
+const Support = lazy(() => import('./features/Legal/Support'));
+const NotFound = lazy(() => import('./components/NotFound/NotFound'));
+
+const GlobalLoader = () => (
+  <div className="h-[50vh] w-full flex items-center justify-center p-12">
+    <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
 
 const SOUND_FRESH_WINDOW_MS = 90 * 1000;
 const SOUND_COOLDOWN_MS = 10 * 1000;
@@ -251,14 +259,18 @@ const App = () => {
   const renderPublicLegalRoutes = () => (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <Routes>
-          <Route path="/legal" element={<Legal />} />
-          <Route path="/legal/privacy" element={<Privacy />} />
-          <Route path="/legal/terms" element={<Terms />} />
-          <Route path="/legal/support" element={<Support />} />
-          <Route path="/support" element={<Support />} />
-          <Route path="*" element={<Navigate to="/legal" replace />} />
-        </Routes>
+        <ErrorBoundary>
+          <Suspense fallback={<GlobalLoader />}>
+            <Routes>
+              <Route path="/legal" element={<Legal />} />
+              <Route path="/legal/privacy" element={<Privacy />} />
+              <Route path="/legal/terms" element={<Terms />} />
+              <Route path="/legal/support" element={<Support />} />
+              <Route path="/support" element={<Support />} />
+              <Route path="*" element={<Navigate to="/legal" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </div>
   );
@@ -461,37 +473,41 @@ const App = () => {
 
 
     return (
-      <Routes>
-        <Route path="/" element={<Dashboard setActiveTab={setActiveTab} />} />
-        <Route path="/dashboard" element={<Dashboard setActiveTab={setActiveTab} />} />
-        <Route path="/courses" element={hasPermission('courses') ? <Courses /> : <RestrictedModule name="Courses" />} />
-        <Route path="/videos" element={hasPermission('videos') ? <Videos /> : <RestrictedModule name="Videos" />} />
-        <Route path="/notes" element={hasPermission('notes') ? <Notes /> : <RestrictedModule name="Notes" />} />
-        <Route path="/resources" element={hasPermission('resources') ? <Resources /> : <RestrictedModule name="Resources" />} />
-        <Route path="/papers" element={hasPermission('resources') ? <Navigate to="/resources?view=papers" replace /> : <RestrictedModule name="Papers" />} />
-        <Route path="/projects" element={hasPermission('projects') ? <Projects onSelectProject={handleSelectProject} /> : <RestrictedModule name="Projects" />} />
-        <Route path="/assignments" element={hasPermission('assignments') ? <Assignments /> : <RestrictedModule name="Assignments" />} />
-        <Route path="/grades" element={hasPermission('grades') ? <Grades /> : <RestrictedModule name="Grades" />} />
-        <Route path="/workspace" element={hasPermission('workspace') ? <Workspace activeProjectIdOverride={activeProjectId} setActiveTab={setActiveTab} /> : <RestrictedModule name="Workspace" />} />
-        <Route path="/tasks" element={<Tasks />} />
-        <Route path="/timer" element={<Timer />} />
-        <Route path="/analytics" element={hasPermission('analytics') ? <Analytics /> : <RestrictedModule name="Analytics" />} />
-        <Route path="/goals" element={<Goals />} />
-        <Route path="/budget" element={<Budget />} />
-        <Route path="/expenses" element={<Budget />} />
-        <Route path="/planner" element={<WeeklyPlanner />} />
-        <Route path="/review" element={<ReviewHub />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/reminders" element={(hasPermission('reminders') || hasPermission('calendarAccess')) ? <Reminders /> : <RestrictedModule name="Calendar" />} />
-        <Route path="/admin" element={isAdmin ? <Admin /> : <Dashboard setActiveTab={setActiveTab} />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/legal" element={<Legal />} />
-        <Route path="/legal/privacy" element={<Privacy />} />
-        <Route path="/legal/terms" element={<Terms />} />
-        <Route path="/legal/support" element={<Support />} />
-        <Route path="/support" element={<Support />} />
-        <Route path="*" element={<Dashboard setActiveTab={setActiveTab} />} /> {/* Catch-all for unknown routes */}
-      </Routes>
+      <ErrorBoundary>
+        <Suspense fallback={<GlobalLoader />}>
+          <Routes>
+            <Route path="/" element={<Dashboard setActiveTab={setActiveTab} />} />
+            <Route path="/dashboard" element={<Dashboard setActiveTab={setActiveTab} />} />
+            <Route path="/courses" element={hasPermission('courses') ? <Courses /> : <RestrictedModule name="Courses" />} />
+            <Route path="/videos" element={hasPermission('videos') ? <Videos /> : <RestrictedModule name="Videos" />} />
+            <Route path="/notes" element={hasPermission('notes') ? <Notes /> : <RestrictedModule name="Notes" />} />
+            <Route path="/resources" element={hasPermission('resources') ? <Resources /> : <RestrictedModule name="Resources" />} />
+            <Route path="/papers" element={hasPermission('resources') ? <Navigate to="/resources?view=papers" replace /> : <RestrictedModule name="Papers" />} />
+            <Route path="/projects" element={hasPermission('projects') ? <Projects onSelectProject={handleSelectProject} /> : <RestrictedModule name="Projects" />} />
+            <Route path="/assignments" element={hasPermission('assignments') ? <Assignments /> : <RestrictedModule name="Assignments" />} />
+            <Route path="/grades" element={hasPermission('grades') ? <Grades /> : <RestrictedModule name="Grades" />} />
+            <Route path="/workspace" element={hasPermission('workspace') ? <Workspace activeProjectIdOverride={activeProjectId} setActiveTab={setActiveTab} /> : <RestrictedModule name="Workspace" />} />
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/timer" element={<Timer />} />
+            <Route path="/analytics" element={hasPermission('analytics') ? <Analytics /> : <RestrictedModule name="Analytics" />} />
+            <Route path="/goals" element={<Goals />} />
+            <Route path="/budget" element={<Budget />} />
+            <Route path="/expenses" element={<Budget />} />
+            <Route path="/planner" element={<WeeklyPlanner />} />
+            <Route path="/review" element={<ReviewHub />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/reminders" element={(hasPermission('reminders') || hasPermission('calendarAccess')) ? <Reminders /> : <RestrictedModule name="Calendar" />} />
+            <Route path="/admin" element={isAdmin ? <Admin /> : <Dashboard setActiveTab={setActiveTab} />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/legal" element={<Legal />} />
+            <Route path="/legal/privacy" element={<Privacy />} />
+            <Route path="/legal/terms" element={<Terms />} />
+            <Route path="/legal/support" element={<Support />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     );
   };
 
@@ -508,9 +524,9 @@ const App = () => {
           isMobileOpen={isMobileSidebarOpen}
           setIsMobileOpen={setIsMobileSidebarOpen}
         />
-        <div className="flex flex-1 flex-col h-screen overflow-hidden min-h-0">
+        <div className="flex flex-1 flex-col h-screen overflow-hidden min-h-0 print:h-auto print:overflow-visible">
           {/* Header */}
-          <header className="relative z-[10002] flex-shrink-0 flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <header className="print:hidden relative z-[10002] flex-shrink-0 flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <div className="flex items-center gap-4">
               <button
                 className="lg:hidden text-slate-600 dark:text-slate-400"
@@ -751,7 +767,7 @@ const App = () => {
           )}
 
           {/* Main Content Area */}
-          <main className={`flex-1 min-h-0 relative flex flex-col scroll-smooth ${isChatRoute ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
+          <main className={`print:h-auto print:overflow-visible flex-1 min-h-0 relative flex flex-col scroll-smooth ${isChatRoute ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
             {user && <RealtimePresence user={user} profile={profile} />}
             <div className={`w-full ${isChatRoute ? 'flex-1 min-h-0 p-0 flex flex-col' : 'flex-1 p-4 lg:p-12 lg:pb-16'}`}>
               <div className={`${isChatRoute ? 'flex-1 min-h-0 max-w-none mx-0 space-y-0' : 'max-w-[1600px] mx-auto space-y-12'}`}>
@@ -771,8 +787,9 @@ const App = () => {
           />
         )}
       </AnimatePresence>
-      {/* Orion replaces AIChatbot as the primary AI interface */}
-      {user && <OrionCompanion />}
+      <Suspense fallback={null}>
+        {user && <OrionCompanion />}
+      </Suspense>
     </>
   );
 };

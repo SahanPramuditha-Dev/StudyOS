@@ -20,7 +20,8 @@ import {
   ClipboardList,
   Activity,
   Server,
-  Upload
+  Upload,
+  ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FirestoreService } from '../../services/firestore';
@@ -35,6 +36,7 @@ import { STORAGE_KEYS } from '../../services/storage';
 import { computeUsageMetrics } from '../../services/usageMetrics';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePlatformSettings } from '../../hooks/usePlatformSettings';
+import RoleBuilder from './components/RoleBuilder';
 
 const Admin = () => {
   const queryClient = useQueryClient();
@@ -103,6 +105,7 @@ const Admin = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterType] = useState('All');
+  const [filterStatus, setFilterStatus] = useState('All');
   const [sortField, setSortField] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
   const [selectedUser, setSelectedUser] = useState(null);
@@ -116,12 +119,28 @@ const Admin = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [auditFeed, setAuditFeed] = useState([]);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
+  
+  // Phase 2 states
+  const [customRoles, setCustomRoles] = useState([]);
+  const [systemAuditLogs, setSystemAuditLogs] = useState([]);
+  const [permissionRequests, setPermissionRequests] = useState([]);
+  const [editingRole, setEditingRole] = useState(null);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   const [createUserData, setCreateUserData] = useState({ email: '', name: '', password: '' });
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const { data: platformSettings = { maintenanceMode: false, allowNewSignups: true, globalAnnouncement: '' } } = usePlatformSettings();
   const [bannerDraft, setBannerDraft] = useState('');
   
+  useEffect(() => {
+    if (activeAdminPage === 'roles') {
+      FirestoreService.getCustomRoles().then(setCustomRoles);
+    } else if (activeAdminPage === 'audit') {
+      FirestoreService.getAuditLogs(100).then(setSystemAuditLogs);
+    } else if (activeAdminPage === 'requests') {
+      FirestoreService.getPermissionRequests().then(setPermissionRequests);
+    }
+  }, [activeAdminPage]);
+
   useEffect(() => {
     if (platformSettings.globalAnnouncement !== undefined) {
       setBannerDraft(platformSettings.globalAnnouncement);
@@ -437,6 +456,24 @@ const Admin = () => {
     }
   };
 
+  const applyBulkDelete = async () => {
+    if (!selectedUserIds.length) return;
+    const confirm = window.confirm(`Are you sure you want to permanently delete ${selectedUserIds.length} user(s)? This cannot be undone.`);
+    if (!confirm) return;
+    
+    try {
+      await Promise.all(selectedUserIds.map((id) => {
+        if (id === currentUser?.id) return Promise.resolve();
+        return FirestoreService.deleteUserData(id);
+      }));
+      setUsers((prev) => prev.filter((u) => !selectedUserIds.includes(u.id) || u.id === currentUser?.id));
+      toast.success(`Deleted ${selectedUserIds.length} user(s)`);
+      setSelectedUserIds([]);
+    } catch {
+      toast.error('Bulk delete failed');
+    }
+  };
+
   const fetchInitialUsers = async () => {
     try {
       setLoading(true);
@@ -591,6 +628,7 @@ const Admin = () => {
         { id: 'overview', label: 'Overview', icon: Layout },
         { id: 'users', label: 'Users', icon: Users },
         { id: 'roles', label: 'Roles', icon: ClipboardList },
+        { id: 'requests', label: 'Access Requests', icon: ShieldAlert },
         { id: 'features', label: 'Features', icon: Settings },
         { id: 'audit', label: 'Audit Logs', icon: Activity },
         { id: 'health', label: 'System Health', icon: Server },
@@ -713,7 +751,13 @@ const Admin = () => {
       'Limited Access': 'restricted'
     };
     const matchesRole = !roleMap[filterRole] || u.role === roleMap[filterRole];
-    return matchesSearch && matchesRole;
+    
+    let matchesStatus = true;
+    if (filterStatus === 'Active') matchesStatus = u.status?.isActive && !u.status?.isBlocked;
+    if (filterStatus === 'Inactive') matchesStatus = !u.status?.isActive;
+    if (filterStatus === 'Blocked') matchesStatus = u.status?.isBlocked;
+    
+    return matchesSearch && matchesRole && matchesStatus;
   }).sort((a, b) => {
     let aVal = a[sortField];
     let bVal = b[sortField];
@@ -994,22 +1038,10 @@ const Admin = () => {
     return (
       <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
-        <div className="card space-y-5">
-          <h2 className="text-xl font-black">Role Template Manager</h2>
-          <p className="text-sm text-slate-500">Apply reusable role bundles to selected users in one click.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {roleTemplates.map((tpl) => (
-              <div key={tpl.id} className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-                <p className="font-black text-slate-800 dark:text-white">{tpl.name}</p>
-                <p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Role: {ROLE_META[tpl.role]?.label || tpl.role}</p>
-                <p className="text-xs text-slate-500 mt-2">{tpl.modules.length} modules, {tpl.actions.length} actions</p>
-                <button onClick={() => applyRoleTemplate(tpl)} className="mt-3 px-4 py-2 rounded-xl bg-primary-500 text-white text-sm font-bold">
-                  Apply to Selected Users
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <RoleBuilder 
+          roles={customRoles} 
+          onRoleUpdate={() => FirestoreService.getCustomRoles().then(setCustomRoles)} 
+        />
       </div>
     );
   }
@@ -1019,17 +1051,73 @@ const Admin = () => {
       <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="card space-y-4">
-          <h2 className="text-xl font-black">Audit Logs</h2>
+          <h2 className="text-xl font-black">Audit Logs (System Health)</h2>
           <div className="space-y-2 max-h-[65vh] overflow-y-auto custom-scrollbar">
-            {auditFeed.length === 0 && <p className="text-sm text-slate-400">No logs found.</p>}
-            {auditFeed.map((log) => (
+            {systemAuditLogs.length === 0 && <p className="text-sm text-slate-400">No logs found.</p>}
+            {systemAuditLogs.map((log) => (
               <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-                <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{getAuditTypeLabel(log.type)}</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{getAuditTargetLabel(log)}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{getAuditSummary(log)}</p>
+                <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{log.type}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{log.details}</p>
                 <p className="text-xs text-slate-400 mt-1">
-                  {getAuditTimestamp(log) || 'Unknown time'} • by {getAuditActorLabel(log)}
+                  {new Date(log.timestamp).toLocaleString()} • by {log.actorId}
                 </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'requests') {
+    const handleApprove = async (reqId) => {
+      try {
+        const reviewerId = currentUser?.uid || currentUser?.id;
+        await FirestoreService.updatePermissionRequest(reqId, 'approved', reviewerId);
+        setPermissionRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'approved' } : r));
+        toast.success('Request approved');
+      } catch (e) {
+        toast.error('Failed to approve request');
+      }
+    };
+    const handleDeny = async (reqId) => {
+      try {
+        const reviewerId = currentUser?.uid || currentUser?.id;
+        await FirestoreService.updatePermissionRequest(reqId, 'denied', reviewerId);
+        setPermissionRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'denied' } : r));
+        toast.success('Request denied');
+      } catch (e) {
+        toast.error('Failed to deny request');
+      }
+    };
+
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <div className="card space-y-4">
+          <h2 className="text-xl font-black">Permission Requests</h2>
+          <div className="space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar">
+            {permissionRequests.length === 0 && <p className="text-sm text-slate-400">No pending requests.</p>}
+            {permissionRequests.map((req) => (
+              <div key={req.id} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 justify-between items-start">
+                <div>
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">User ID: {req.userId}</p>
+                  <p className="text-xs text-slate-500">Requested Resource: <span className="font-bold text-primary-500">{req.requestedResource}</span></p>
+                  <p className="text-xs text-slate-400 mt-2 italic">"{req.reason}"</p>
+                  <p className="text-[10px] text-slate-400 mt-2">{new Date(req.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="flex gap-2">
+                  {req.status === 'pending' ? (
+                    <>
+                      <button onClick={() => handleApprove(req.id)} className="px-3 py-1.5 rounded-lg bg-green-100 text-green-700 text-xs font-bold uppercase tracking-widest hover:bg-green-200 transition-colors">Approve</button>
+                      <button onClick={() => handleDeny(req.id)} className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-xs font-bold uppercase tracking-widest hover:bg-red-200 transition-colors">Deny</button>
+                    </>
+                  ) : (
+                    <span className={`px-3 py-1 rounded text-xs font-bold uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {req.status}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -1254,6 +1342,23 @@ const Admin = () => {
               </button>
             ))}
           </div>
+          
+          <div className="flex items-center gap-2 mt-4 md:mt-0">
+            <Filter size={18} className="text-slate-400 mr-2" />
+            {['All', 'Active', 'Inactive', 'Blocked'].map(status => (
+              <button
+                key={status}
+                onClick={() => setFilterStatus(status)}
+                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  filterStatus === status 
+                    ? 'bg-slate-900 text-white shadow-lg' 
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-500 hover:border-slate-200'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
         </div>
         {selectedUserIds.length > 0 && (
           <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex flex-wrap items-center gap-2">
@@ -1264,6 +1369,7 @@ const Admin = () => {
             <button onClick={() => applyBulkStatus({ isBlocked: false })} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-100 text-blue-700">Unblock</button>
             <button onClick={() => applyBulkRole('user')} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-indigo-100 text-indigo-700">Set User</button>
             <button onClick={() => applyBulkRole('restricted')} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-orange-100 text-orange-700">Set Limited</button>
+            <button onClick={applyBulkDelete} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-red-600 text-white shadow-sm hover:bg-red-700 ml-auto">Delete</button>
             <button onClick={() => setSelectedUserIds([])} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-200 text-slate-700">Clear</button>
           </div>
         )}

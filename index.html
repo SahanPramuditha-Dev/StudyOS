@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>studyos</title>
+    <meta name="description" content="StudyOS - The all-in-one smart platform for students to manage courses, tasks, and notes." />
+    <meta property="og:title" content="StudyOS" />
+    <meta property="og:description" content="StudyOS - The all-in-one smart platform for students." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <title>StudyOS</title>
+    <script>
+      try {
+        const settings = JSON.parse(localStorage.getItem('studyos_settings') || '{}');
+        if (settings.theme === 'dark' || (!settings.theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

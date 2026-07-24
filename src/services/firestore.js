@@ -1160,6 +1160,200 @@ class FirestoreService {
       updatedAt: new Date().toISOString()
     });
   }
+
+  static async syncLocalGamificationState(userId, pendingXP, pendingStudyTime) {
+    if (!userId) return;
+    try {
+      const docRef = doc(db, 'users', userId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) return;
+
+      const currentData = docSnap.data();
+      const newXP = (currentData.orionXP || 0) + pendingXP;
+      const newTime = (currentData.studyTimeMinutes || 0) + pendingStudyTime;
+
+      await updateDoc(docRef, {
+        orionXP: newXP,
+        studyTimeMinutes: newTime,
+        lastActive: new Date().toISOString()
+      });
+      console.log('[FirestoreService] Successfully synced local gamification state to Firestore.');
+    } catch (error) {
+      console.error('[FirestoreService] Error syncing gamification state:', error);
+    }
+  }
+  static async logUserSession(userId, deviceInfo) {
+    if (!userId) return;
+    try {
+      const docRef = collection(db, 'users', userId, 'sessions');
+      const now = new Date().toISOString();
+      await addDoc(docRef, {
+        ...deviceInfo,
+        createdAt: now,
+        lastActive: now,
+        isActive: true
+      });
+    } catch (e) {
+      console.warn('Failed to log user session:', e);
+    }
+  }
+
+  static async getActiveSessions(userId) {
+    if (!userId) return [];
+    try {
+      const sessionsRef = collection(db, 'users', userId, 'sessions');
+      const q = query(sessionsRef, where('isActive', '==', true), orderBy('lastActive', 'desc'), limit(10));
+      const snap = await getDocs(q);
+      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn('Failed to get active sessions:', e);
+      return [];
+    }
+  }
+
+  static async revokeSession(userId, sessionId) {
+    if (!userId || !sessionId) return;
+    try {
+      const sessionRef = doc(db, 'users', userId, 'sessions', sessionId);
+      await updateDoc(sessionRef, { isActive: false, revokedAt: new Date().toISOString() });
+    } catch (e) {
+      console.warn('Failed to revoke session:', e);
+      throw e;
+    }
+  }
+
+  static async inviteToWorkspace(workspaceId, email, role) {
+    if (!workspaceId || !email) throw new Error('Workspace ID and email are required');
+    try {
+      const docRef = collection(db, 'workspaces', workspaceId, 'invites');
+      const now = new Date().toISOString();
+      await addDoc(docRef, {
+        email: email.trim().toLowerCase(),
+        role: role || 'member',
+        status: 'pending',
+        createdAt: now,
+        invitedBy: auth.currentUser?.uid
+      });
+      return true;
+    } catch (e) {
+      console.warn('Failed to invite to workspace:', e);
+      throw e;
+    }
+  }
+
+  // --- PHASE 2: ADVANCED ADMINISTRATION ---
+
+  static async getCustomRoles() {
+    try {
+      const q = query(collection(db, 'roles'));
+      const snap = await getDocs(q);
+      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn('Failed to get custom roles:', e);
+      return [];
+    }
+  }
+
+  static async createCustomRole(roleData) {
+    try {
+      const docRef = await addDoc(collection(db, 'roles'), {
+        ...roleData,
+        createdAt: new Date().toISOString()
+      });
+      return docRef.id;
+    } catch (e) {
+      console.warn('Failed to create custom role:', e);
+      throw e;
+    }
+  }
+
+  static async updateCustomRole(roleId, updates) {
+    if (!roleId) return;
+    try {
+      await updateDoc(doc(db, 'roles', roleId), {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Failed to update custom role:', e);
+      throw e;
+    }
+  }
+
+  static async deleteCustomRole(roleId) {
+    if (!roleId) return;
+    try {
+      await deleteDoc(doc(db, 'roles', roleId));
+    } catch (e) {
+      console.warn('Failed to delete custom role:', e);
+      throw e;
+    }
+  }
+
+  static async logAdminAction(actionType, actorId, details) {
+    try {
+      await addDoc(collection(db, 'audit_logs'), {
+        type: actionType,
+        actorId,
+        details,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Failed to log admin action:', e);
+    }
+  }
+
+  static async getAuditLogs(limitCount = 50) {
+    try {
+      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(limitCount));
+      const snap = await getDocs(q);
+      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn('Failed to get audit logs:', e);
+      return [];
+    }
+  }
+
+  static async submitPermissionRequest(userId, requestedResource, reason) {
+    if (!userId) return;
+    try {
+      await addDoc(collection(db, 'permission_requests'), {
+        userId,
+        requestedResource,
+        reason,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Failed to submit permission request:', e);
+      throw e;
+    }
+  }
+
+  static async getPermissionRequests() {
+    try {
+      const q = query(collection(db, 'permission_requests'), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(q);
+      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.warn('Failed to get permission requests:', e);
+      return [];
+    }
+  }
+
+  static async updatePermissionRequest(requestId, status, reviewerId) {
+    if (!requestId) return;
+    try {
+      await updateDoc(doc(db, 'permission_requests', requestId), {
+        status,
+        reviewedBy: reviewerId,
+        reviewedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Failed to update permission request:', e);
+      throw e;
+    }
+  }
 }
 
 export { FirestoreService };

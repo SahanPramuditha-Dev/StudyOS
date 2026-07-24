@@ -309,21 +309,7 @@ const Videos = () => {
     return () => window.removeEventListener('message', onMsg);
   }, [setVideos, addNotification]);
 
-  // ── Watch-time accumulator ────────────────────────────────────────────────
-
-  useEffect(() => {
-    clearInterval(watchIntervalRef.current);
-    if (isPlaying && activeVideoId) {
-      watchIntervalRef.current = setInterval(() => {
-        setVideos(prev => prev.map(v =>
-          v.id === activeVideoId ? { ...v, totalWatchTime: (v.totalWatchTime || 0) + 1 } : v
-        ));
-      }, 1000);
-    }
-    return () => clearInterval(watchIntervalRef.current);
-  }, [isPlaying, activeVideoId, setVideos]);
-
-  // ── Session tracking ──────────────────────────────────────────────────────
+  // ── Session tracking (Optimized to reduce db write costs) ─────────────────────────
 
   useEffect(() => {
     if (isPlaying && activeVideo && !sessionStartRef.current) {
@@ -338,7 +324,12 @@ const Videos = () => {
         const log = { ...sessionStartRef.current, endTime: new Date().toISOString(), duration: dur };
         setVideos(prev => prev.map(v =>
           v.id === activeVideoId
-            ? { ...v, playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50) }
+            ? { 
+                ...v, 
+                playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50),
+                totalWatchTime: (v.totalWatchTime || 0) + Math.round(dur),
+                lastWatched: new Date().toISOString()
+              }
             : v
         ));
       }
@@ -351,7 +342,12 @@ const Videos = () => {
           const log = { ...sessionStartRef.current, endTime: new Date().toISOString(), duration: dur };
           setVideos(prev => prev.map(v =>
             v.id === activeVideoIdRef.current
-              ? { ...v, playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50) }
+              ? { 
+                  ...v, 
+                  playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50),
+                  totalWatchTime: (v.totalWatchTime || 0) + Math.round(dur),
+                  lastWatched: new Date().toISOString()
+                }
               : v
           ));
         }

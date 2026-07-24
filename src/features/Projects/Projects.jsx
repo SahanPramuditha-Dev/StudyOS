@@ -68,7 +68,7 @@ const Projects = ({ onSelectProject }) => {
     const total = projects.length;
     const active = projects.filter(p => p.status === 'Ongoing').length;
     const completed = projects.filter(p => p.status === 'Completed').length;
-    const totalTasks = projects.reduce((acc, p) => {
+    const totalTasks = (projects || []).reduce((acc, p) => {
       const pTasks = p.board ? (
         (p.board.todo?.length || 0) + 
         (p.board.doing?.length || 0) + 

@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles, Brain, Trophy, AlertTriangle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { useOrion } from '../../context/OrionContext';
 
 // ─── Emotion theming ──────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ const OrionSpeechBubble = () => {
           exit={{    opacity: 0, y: 8,  scale: 0.9 }}
           transition={{ type: 'spring', stiffness: 380, damping: 26 }}
           onMouseEnter={handleMouseEnter}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* ── Card ── */}
           <div
@@ -94,9 +96,9 @@ const OrionSpeechBubble = () => {
                 <span className={`mt-[1px] shrink-0 ${theme.iconColor}`}>
                   {theme.icon}
                 </span>
-                <p className="text-[12.5px] font-medium leading-[1.55] text-slate-100 tracking-[0.01em] flex-1">
-                  {speechMessage}
-                </p>
+                <div className="text-[12.5px] font-medium leading-[1.55] text-slate-100 tracking-[0.01em] flex-1 prose prose-invert prose-p:my-0 prose-strong:text-white max-w-none">
+                  <ReactMarkdown>{speechMessage}</ReactMarkdown>
+                </div>
                 <button
                   onClick={dismissSpeech}
                   className="shrink-0 mt-[1px] text-slate-500 hover:text-slate-300 transition-colors"

@@ -385,3 +385,16 @@ body {
     animation: none;
   }
 }
+
+/* Remove default focus outlines and borders on Recharts SVG and container wrappers */
+.recharts-wrapper, 
+.recharts-wrapper *, 
+.recharts-surface, 
+.recharts-surface *,
+.recharts-responsive-container,
+.recharts-responsive-container * {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+

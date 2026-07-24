@@ -33,6 +33,22 @@ export const generateGeminiResponse = async (prompt, systemInstruction = null, t
   }
 };
 
+export const generateOrionTTS = async (text) => {
+  try {
+    const ttsGateway = httpsCallable(functions, 'orionTTSGateway');
+    const response = await ttsGateway({ text });
+    
+    if (!response.data || !response.data.data) {
+      throw new Error('Invalid response from TTS Gateway');
+    }
+    
+    return response.data; // { mimeType, data: base64 }
+  } catch (error) {
+    console.error('TTS Gateway Error:', error);
+    throw error;
+  }
+};
+
 export const summarizeText = async (text) => {
   const prompt = `You are an expert academic summarizer. Your goal is to summarize the following notes into a concise, easy-to-study bulleted list.
 
@@ -242,6 +258,45 @@ export const fetchYoutubeTranscriptText = async (url) => {
   }
 };
 
+export const generateStudyPlan = async (plannerData) => {
+  const prompt = `You are an expert AI Study Planner. Create a structured study plan based on the following inputs:
+- Subjects/Topics: ${plannerData.subjects}
+- Exam Dates/Deadlines: ${plannerData.exams}
+- Available Hours per Week: ${plannerData.hours}
+- Goal/Difficulty: ${plannerData.goals}
+
+Respond with ONLY a valid JSON object matching exactly this structure:
+{
+  "dailyPlan": "String describing a recommended daily routine",
+  "weeklyRoadmap": ["Array", "of", "strings", "describing weekly milestones"],
+  "revisionSchedule": "String describing when and how to revise before exams"
+}`;
+
+  try {
+    const response = await generateGeminiResponse(prompt);
+    const cleaned = response.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error) {
+    console.error('Failed to parse AI study plan JSON', error);
+    throw error;
+  }
+};
+
+export const summarizeDocument = async (text) => {
+  const prompt = `You are an expert academic summarizer. Summarize the following document text into a structured, highly scannable set of notes formatted in markdown. Focus on key concepts, definitions, and takeaways.
+
+Document text:
+${text.substring(0, 25000)} /* Truncated to avoid token limits */`;
+
+  try {
+    return await generateGeminiResponse(prompt, null, 'summarize');
+  } catch (error) {
+    console.error('Failed to summarize document', error);
+    throw error;
+  }
+};
+
+
 export const generateVideoSummary = async (videoTitle, videoUrl) => {
   const transcript = await fetchYoutubeTranscriptText(videoUrl);
   
@@ -300,12 +355,23 @@ Text to expand:
   }
 };
 
-export const breakdownAssignment = async (assignmentTitle, assignmentDesc) => {
+export const breakdownAssignment = async (assignmentTitle, assignmentDesc, assignmentDeadline = null) => {
+  const deadlineContext = assignmentDeadline 
+    ? `\nThe assignment has a final deadline of: ${assignmentDeadline}. Calculate a logical "dueDate" for each sub-task leading up to this deadline.`
+    : `\nThe assignment does not have a set deadline. Leave the "dueDate" field empty ("") for each sub-task.`;
+
   const prompt = `You are a helpful study assistant. A student has an assignment titled "${assignmentTitle}".
-The description is: "${assignmentDesc || 'No description provided.'}".
+The description is: "${assignmentDesc || 'No description provided.'}".${deadlineContext}
+
 Please break this assignment down into 3-5 manageable sub-tasks.
-Provide the output as a simple JSON array of strings, for example: ["Task 1", "Task 2", "Task 3"].
-DO NOT include any markdown formatting like \`\`\`json, just return the raw array.`;
+Provide the output as a simple JSON array of objects, with NO markdown formatting like \`\`\`json. Just return the raw JSON array.
+Each object MUST have the following structure:
+{
+  "title": "String, short task name",
+  "description": "String, brief actionable description of what to do",
+  "priority": "String, either 'High', 'Medium', or 'Low'",
+  "dueDate": "String, YYYY-MM-DD format (if deadline provided), otherwise empty string"
+}`;
 
   try {
     const result = await generateGeminiResponse(prompt, null, 'assignment');

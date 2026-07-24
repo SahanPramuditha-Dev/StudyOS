@@ -244,13 +244,13 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
             >
               {sidebarContent}
             </motion.aside>
-          </>
+          </>
         )}
       </AnimatePresence>
 
       {/* Desktop Sidebar */}
       <aside 
-        className={`hidden lg:flex flex-col h-screen sticky top-0 bg-white border-r border-slate-100 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} z-50 dark:bg-slate-900 dark:border-slate-800`}
+        className={`print:hidden hidden lg:flex flex-col h-screen sticky top-0 bg-white border-r border-slate-100 transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'} z-50 dark:bg-slate-900 dark:border-slate-800`}
       >
         {sidebarContent}
       </aside>

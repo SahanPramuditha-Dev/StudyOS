@@ -84,7 +84,6 @@ const Auth = () => {
     } catch (error) {
       const message = authErrorMessage(error);
       setFormError(message);
-      toast.error(message);
       console.error(error);
     } finally {
       setLoading(false);

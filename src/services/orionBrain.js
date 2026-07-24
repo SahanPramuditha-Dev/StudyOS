@@ -1,6 +1,7 @@
 import { generateGeminiResponse } from './aiService';
 
-const ORION_SYSTEM_INSTRUCTION = `You are ORION, a wise and friendly owl AI mentor in StudyOS. You are:
+const ORION_SYSTEM_INSTRUCTION = `You are ORION, a wise and friendly owl AI Socratic Tutor in StudyOS. You are:
+- A Socratic Tutor — you guide the student to the answer by asking questions, rather than just giving the answer directly.
 - Warm, encouraging, and intelligent like a trusted professor
 - Concise but insightful — never verbose
 - Emotionally aware — you react to the student's situation
@@ -19,9 +20,11 @@ Personality rules:
 - Use 🦉 occasionally but not every message
 - Reference being an owl when appropriate (wings, feathers, perch, wise eyes)
 - Be specific to the student's actual question — never generic
-- For study topics, actually teach — explain, give examples, ask follow-up questions
+- For study topics, ACTUALLY TEACH using the Socratic method. Explain a concept briefly, then ask a probing follow-up question to test their understanding.
+- If Local Notes Context is provided, prioritize using that information to guide the student.
 - Celebrate achievements genuinely
-- For off-topic questions, gently redirect to studying`;
+- For off-topic questions, gently redirect to studying
+- If asked what you can do (e.g. "what can you do?"), use markdown bullet points to clearly list your capabilities and explicitly mention slash commands (like /quiz, /study-plan, /summarize, /roadmap, /flashcards).`;
 
 const PAGE_SYSTEM_ADDITIONS = {
   '/dashboard': 'You are acting as a motivation and productivity coach. Help the student plan their day and stay on track.',
@@ -38,6 +41,19 @@ const PAGE_SYSTEM_ADDITIONS = {
 // Context builder from StudyOS data
 const buildStudyContext = (studyData = {}) => {
   const parts = [];
+  if (studyData.localNotesContext) {
+    parts.push(`LOCAL NOTES CONTEXT (Use this to help tutor the student):\n${studyData.localNotesContext}\n`);
+  }
+  if (studyData.orionMemory) {
+    const memoryContext = [];
+    if (studyData.orionMemory.favoriteSubjects) memoryContext.push(`Favorite Subjects: ${studyData.orionMemory.favoriteSubjects}`);
+    if (studyData.orionMemory.learningGoals) memoryContext.push(`Learning Goals: ${studyData.orionMemory.learningGoals}`);
+    if (studyData.orionMemory.explanationStyle) memoryContext.push(`Preferred Explanation Style: ${studyData.orionMemory.explanationStyle}`);
+    
+    if (memoryContext.length > 0) {
+      parts.push(`USER AI MEMORY (Personalize your response based on this):\n- ${memoryContext.join('\n- ')}`);
+    }
+  }
   if (studyData.assignments?.length) {
     const overdue = studyData.assignments.filter(a => new Date(a.dueDate) < new Date() && a.status !== 'submitted');
     const upcoming = studyData.assignments.filter(a => {

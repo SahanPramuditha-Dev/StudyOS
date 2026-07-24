@@ -1120,3 +1120,4 @@ exports.adminCreateUser = onCall(async (request) => {
 });
 
 exports.aiGateway = require("./aiRouter").aiGateway;
+exports.orionTTSGateway = require("./aiRouter").orionTTSGateway;

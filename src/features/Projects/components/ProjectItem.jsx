@@ -47,7 +47,7 @@ const ProjectItem = ({ project, onDelete, onEdit, onOpenWorkspace, isSelected, o
   const progress = taskCount > 0 ? Math.round((completedTasks / taskCount) * 100) : 0;
 
   // Storage usage calculation (mock or real)
-  const storageUsage = project.files?.reduce((acc, f) => acc + (f.size || 0), 0) || 0;
+  const storageUsage = (project.files || []).reduce((acc, f) => acc + (f.size || 0), 0) || 0;
   const storageMB = (storageUsage / (1024 * 1024)).toFixed(2);
 
   // Deadline countdown

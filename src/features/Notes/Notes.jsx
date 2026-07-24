@@ -20,6 +20,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import BulkActionBar from '../../components/BulkActionBar';
 import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
+import SmartNoteImporter from './components/SmartNoteImporter';
 
 const Notes = () => {
   const [notes, setNotes] = useStorage(STORAGE_KEYS.NOTES, []);
@@ -33,8 +34,14 @@ const Notes = () => {
   const [viewMode, setViewMode] = useState('grid');
   const [showArchived, setShowArchived] = useState(false);
   const [showInitialSkeleton, setShowInitialSkeleton] = useState(true);
+  const [importerOpen, setImporterOpen] = useState(false);
 
   const [selectedNoteIds, setSelectedNoteIds] = useState([]);
+
+  const handleImportComplete = (newNote) => {
+    setNotes([newNote, ...notes]);
+    setSelectedNoteDetail(newNote);
+  };
   const [bulkTagInput, setBulkTagInput] = useState('');
 
   const [selectedNoteDetail, setSelectedNoteDetail] = useState(null);
@@ -280,6 +287,7 @@ const Notes = () => {
         sortBy={sortBy}
         setSortBy={setSortBy}
         onAdd={handleCreateNote}
+        onImport={() => setImporterOpen(true)}
         noteCount={filteredAndSortedNotes.length}
         showArchived={showArchived}
         setShowArchived={setShowArchived}
@@ -434,6 +442,12 @@ const Notes = () => {
         message={confirmConfig.message}
         title={confirmConfig.title}
         type="danger"
+      />
+
+      <SmartNoteImporter 
+        isOpen={importerOpen}
+        onClose={() => setImporterOpen(false)}
+        onImportComplete={handleImportComplete}
       />
     </div>
   );

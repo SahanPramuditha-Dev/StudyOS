@@ -126,6 +126,18 @@ export const useStorage = (key, initialValue) => {
           return;
         }
         console.error(`[useStorage] [Cloud Save Error] ${key}:`, error);
+        toast.error('Cloud sync failed. Reverting changes.');
+        
+        // Rollback to the last known good cloud state
+        if (lastCloudValueRef.current !== 'null') {
+          try {
+            setStoredValue(JSON.parse(lastCloudValueRef.current));
+          } catch (e) {
+            setStoredValue(initialValue);
+          }
+        } else {
+          setStoredValue(initialValue);
+        }
       }
     }, 1800);
 

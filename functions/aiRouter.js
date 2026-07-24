@@ -266,3 +266,58 @@ exports.aiGateway = onCall(
   }
 }
 );
+
+/**
+ * Orion TTS Gateway Cloud Function
+ * Converts text to speech using Gemini's audio modality.
+ */
+exports.orionTTSGateway = onCall(
+  { secrets: [geminiApiKey] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "User must be logged in.");
+    }
+
+    const { text } = request.data;
+    if (!text) {
+      throw new HttpsError("invalid-argument", "Missing text for TTS.");
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+      
+      const config = {
+        responseModalities: ['audio'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: 'Kore' // Natural, warm voice
+            }
+          }
+        }
+      };
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-tts-preview',
+        contents: text,
+        config: config,
+      });
+
+      const parts = response.candidates?.[0]?.content?.parts || [];
+      const inlineData = parts.find(p => p.inlineData)?.inlineData;
+
+      if (!inlineData || !inlineData.data) {
+        throw new Error('No audio data returned from Gemini TTS API.');
+      }
+
+      return {
+        mimeType: inlineData.mimeType || 'audio/wav',
+        data: inlineData.data // base64 string
+      };
+
+    } catch (error) {
+      console.error("[TTS Gateway] Error generating speech:", error);
+      throw new HttpsError("internal", "Failed to generate speech audio.");
+    }
+  }
+);

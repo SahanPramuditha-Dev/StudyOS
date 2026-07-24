@@ -260,6 +260,25 @@ export const AuthProvider = ({ children }) => {
           name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
         });
 
+        // Hydrate permissions from custom roles
+        try {
+          const customRoles = await FirestoreService.getCustomRoles();
+          let userRole = customRoles.find(r => r.role === userProfile.role);
+          if (!userRole && customRoles.length > 0) {
+            userRole = customRoles.find(r => r.role === 'user') || customRoles[0];
+          }
+          if (userRole) {
+            const hydratedModules = {};
+            ['courses', 'videos', 'notes', 'resources', 'projects', 'workspace', 'reminders', 'analytics', 'adminPanel', 'manageUsers', 'changePermissions'].forEach(mod => {
+              hydratedModules[mod] = userRole.modules?.includes(mod) || false;
+            });
+            userProfile.permissions = hydratedModules;
+            userProfile.actions = userRole.actions || [];
+          }
+        } catch (e) {
+          console.warn('Failed to hydrate custom role permissions', e);
+        }
+
         const resolvedAvatar = userProfile?.avatar || resolveAvatarFromAuth(hydratedUser) || buildFallbackAvatar(hydratedUser.displayName, hydratedUser.email);
 
         setUser({
@@ -505,6 +524,35 @@ export const AuthProvider = ({ children }) => {
       toast.error('Error logging out');
     }
   };
+
+  // Auto-logout on inactivity (30 minutes)
+  useEffect(() => {
+    let inactivityTimer;
+
+    const resetTimer = () => {
+      clearTimeout(inactivityTimer);
+      if (user) {
+        inactivityTimer = setTimeout(() => {
+          logout();
+          toast.error('You have been signed out due to inactivity.', { duration: 5000 });
+        }, 30 * 60 * 1000); // 30 minutes
+      }
+    };
+
+    if (user) {
+      resetTimer();
+      window.addEventListener('mousedown', resetTimer);
+      window.addEventListener('keydown', resetTimer);
+      window.addEventListener('scroll', resetTimer);
+    }
+
+    return () => {
+      clearTimeout(inactivityTimer);
+      window.removeEventListener('mousedown', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('scroll', resetTimer);
+    };
+  }, [user]);
 
   const resendVerificationEmail = async () => {
     if (!auth.currentUser) return;

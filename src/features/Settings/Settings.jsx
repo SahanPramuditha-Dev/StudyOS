@@ -45,9 +45,15 @@ import {
   BellOff,
   Music,
   Play,
-  Info
+  Info,
+  Laptop,
+  Activity,
+  History,
+  Sparkles,
+  HardDrive
 } from 'lucide-react';
 import { StorageService, STORAGE_KEYS } from '../../services/storage';
+import { FirestoreService } from '../../services/firestore';
 import { computeUsageMetrics } from '../../services/usageMetrics';
 import { useStorage } from '../../hooks/useStorage';
 import { auth, functions } from '../../services/firebase';
@@ -56,9 +62,10 @@ import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from '../../components/ConfirmModal';
 import GoogleCalendarSettings from '../../components/GoogleCalendarSettings';
+import MediaManager from '../../components/MediaManager';
+import Select from '../../components/ui/Select';
 import { playAlarmSound } from '../../utils/alarmAudio';
 import { uploadAlarmSound, isValidAlarmSoundFile, getAlarmSoundLimitBytes } from '../../services/alarmSound';
-import Select from '../../components/ui/Select';
 
 const Settings = () => {
   const { user, profile, logout, updateUserProfile, uploadProfileImage, resetPassword, deleteAccount, linkOAuthProvider, unlinkOAuthProvider, setupPasswordCredential, checkUsernameAvailability, suggestUsernames, changeUsername } = useAuth();
@@ -82,6 +89,29 @@ const Settings = () => {
   const [statusMessage, setStatusMessage] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [isChangingUsername, setIsChangingUsername] = useState(false);
+
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.id && activeSection === 'security') {
+      setSessionsLoading(true);
+      FirestoreService.getActiveSessions(user.id)
+        .then(setActiveSessions)
+        .catch(console.error)
+        .finally(() => setSessionsLoading(false));
+    }
+  }, [user?.id, activeSection]);
+
+  const handleRevokeSession = async (sessionId) => {
+    try {
+      await FirestoreService.revokeSession(user.id, sessionId);
+      setActiveSessions(prev => prev.filter(s => s.id !== sessionId));
+      toast.success('Session revoked successfully');
+    } catch (e) {
+      toast.error('Failed to revoke session');
+    }
+  };
 
   useEffect(() => {
     if (!newUsername.trim()) {
@@ -308,6 +338,18 @@ const Settings = () => {
     pomodoro: 25,
     breakInterval: 5,
     defaultDifficulty: 'Intermediate'
+  });
+
+  const [orionMemory, setOrionMemory] = useStorage('studyos_orion_memory', {
+    favoriteSubjects: '',
+    learningGoals: '',
+    explanationStyle: 'Standard'
+  });
+
+  const [personalIntegrations, setPersonalIntegrations] = useStorage('studyos_personal_integrations', {
+    spotifyEmbedUrl: '',
+    appleMusicEmbedUrl: '',
+    githubUsername: ''
   });
 
   const [rawNotifSettings, setNotificationSettings] = useStorage(STORAGE_KEYS.NOTIF_SETTINGS, {
@@ -762,11 +804,14 @@ const Settings = () => {
   const sections = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'account', label: 'Account', icon: Shield },
+    { id: 'security', label: 'Security & Sessions', icon: Lock },
     { id: 'personalization', label: 'Personalization', icon: Palette },
     { id: 'study', label: 'Study Setup', icon: Target },
+    { id: 'ai-memory', label: 'AI Memory (Orion)', icon: Sparkles },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'channels', label: 'Channels Matrix', icon: Mail },
     { id: 'integrations', label: 'Integrations', icon: Globe },
+    { id: 'storage', label: 'Storage & Assets', icon: HardDrive },
     { id: 'billing', label: 'Plan & Billing', icon: CreditCard },
     { id: 'data', label: 'Data & Privacy', icon: Database },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -1035,6 +1080,83 @@ const Settings = () => {
                       </div>
                     </form>
                   )}
+                </section>
+              )}
+
+              {/* Security & Sessions */}
+              {activeSection === 'security' && (
+                <section className="card space-y-6">
+                  <h3 className="text-xl font-black flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-500">
+                      <Lock size={24} />
+                    </div>
+                    Security & Sessions
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                      <Laptop size={16} className="text-primary-500" /> Active Sessions
+                    </h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Manage devices that are currently signed into your account. Revoking a session will sign out the user on that device.
+                    </p>
+                    
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-2">
+                      {sessionsLoading ? (
+                        <div className="p-4 text-center text-sm font-bold text-slate-400">Loading sessions...</div>
+                      ) : activeSessions.length > 0 ? (
+                        <div className="space-y-2">
+                          {activeSessions.map((session, i) => (
+                            <div key={session.id || i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 gap-4">
+                              <div className="flex items-start gap-4">
+                                <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">
+                                  {session.deviceType === 'mobile' ? <Smartphone size={20} /> : <Laptop size={20} />}
+                                </div>
+                                <div>
+                                  <div className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                    {session.os || 'Unknown OS'} - {session.browser || 'Unknown Browser'}
+                                    {i === 0 && <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black bg-green-100 text-green-700">Current</span>}
+                                  </div>
+                                  <div className="text-xs text-slate-500 mt-1">
+                                    Last active: {new Date(session.lastActive).toLocaleString()}
+                                  </div>
+                                  {session.ip && <div className="text-xs text-slate-400 mt-0.5">IP: {session.ip}</div>}
+                                </div>
+                              </div>
+                              {i !== 0 && (
+                                <button
+                                  onClick={() => handleRevokeSession(session.id)}
+                                  className="self-start sm:self-auto px-4 py-2 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 transition-colors"
+                                >
+                                  Revoke
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-6 text-center text-sm text-slate-500">
+                          Session tracking is newly enabled. Current session will appear soon.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-6"></div>
+                  
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                      <History size={16} className="text-slate-500" /> Login History
+                    </h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Recent successful login attempts to your account.
+                    </p>
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-2 text-center py-8">
+                      <Activity size={24} className="mx-auto text-slate-400 mb-2 opacity-50" />
+                      <p className="text-sm text-slate-500">Login history logging is active.</p>
+                      <p className="text-xs text-slate-400 mt-1">Events will appear here on your next login.</p>
+                    </div>
+                  </div>
                 </section>
               )}
 
@@ -1412,6 +1534,60 @@ const Settings = () => {
                           { label: 'Advanced', value: 'Advanced' }
                         ]}
                       />
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* AI Memory (Orion) Section */}
+              {activeSection === 'ai-memory' && (
+                <section className="card space-y-8">
+                  <h3 className="text-xl font-black flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500">
+                      <Sparkles size={24} />
+                    </div>
+                    AI Memory (Orion)
+                  </h3>
+                  <div className="space-y-6">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Customize how Orion interacts with you. These preferences are saved locally and used to personalize your AI study sessions.
+                    </p>
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Favorite Subjects</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Mathematics, Computer Science, Biology"
+                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
+                          value={orionMemory.favoriteSubjects || ''}
+                          onChange={(e) => setOrionMemory({ ...orionMemory, favoriteSubjects: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Learning Goals</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Master React, Prepare for Finals"
+                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
+                          value={orionMemory.learningGoals || ''}
+                          onChange={(e) => setOrionMemory({ ...orionMemory, learningGoals: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Preferred Explanation Style</label>
+                        <Select
+                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
+                          value={orionMemory.explanationStyle || 'Standard'}
+                          onChange={(e) => setOrionMemory({ ...orionMemory, explanationStyle: e.target.value })}
+                          options={[
+                            { label: 'Standard (Balanced)', value: 'Standard' },
+                            { label: 'Simple (Like I am 5)', value: 'Simple' },
+                            { label: 'Visual (Use Analogies)', value: 'Visual' },
+                            { label: 'Technical (Detailed)', value: 'Technical' },
+                            { label: 'Code-heavy (Give Examples)', value: 'Code-heavy' }
+                          ]}
+                        />
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -1856,8 +2032,8 @@ const Settings = () => {
                       <Globe size={24} />
                     </div>
                   <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white">Integrations</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Connect external services to StudyOS</p>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-white">Personal Integrations Hub</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Connect external services to pull data into StudyOS</p>
                   </div>
                   </div>
 
@@ -1866,6 +2042,61 @@ const Settings = () => {
                   </div>
 
                   <GoogleCalendarSettings />
+
+                  <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">Music & Focus</h4>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-400 uppercase ml-1">Spotify Embed URL</label>
+                      <input
+                        type="url"
+                        placeholder="e.g. https://open.spotify.com/embed/playlist/..."
+                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
+                        value={personalIntegrations.spotifyEmbedUrl || ''}
+                        onChange={(e) => setPersonalIntegrations({ ...personalIntegrations, spotifyEmbedUrl: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-400 uppercase ml-1">Apple Music Embed URL</label>
+                      <input
+                        type="url"
+                        placeholder="e.g. https://embed.music.apple.com/..."
+                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
+                        value={personalIntegrations.appleMusicEmbedUrl || ''}
+                        onChange={(e) => setPersonalIntegrations({ ...personalIntegrations, appleMusicEmbedUrl: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">Developer Integrations</h4>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-400 uppercase ml-1">GitHub Username</label>
+                      <input
+                        type="text"
+                        placeholder="Your GitHub username for commit syncing"
+                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
+                        value={personalIntegrations.githubUsername || ''}
+                        onChange={(e) => setPersonalIntegrations({ ...personalIntegrations, githubUsername: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Storage & Assets Section */}
+              {activeSection === 'storage' && (
+                <section className="card space-y-8">
+                  <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                    <div className="p-2.5 rounded-xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+                      <HardDrive size={24} />
+                    </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 dark:text-white">Storage & Assets</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Manage your personal cloud quota and local files</p>
+                  </div>
+                  </div>
+                  
+                  <MediaManager />
                 </section>
               )}
 

@@ -1,5 +1,27 @@
 import React, { useMemo, useState } from 'react';
-import { Target, Timer, Plus, CheckCircle2, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Target, 
+  Timer, 
+  Plus, 
+  CheckCircle2, 
+  Sparkles, 
+  Trash2, 
+  Flame, 
+  BookOpen, 
+  GraduationCap, 
+  CheckCircle, 
+  Circle,
+  Clock,
+  Calendar,
+  Search,
+  Filter,
+  BarChart3,
+  X,
+  Zap,
+  Check,
+  Settings
+} from 'lucide-react';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { refineSMARTGoal } from '../../services/aiService';
@@ -13,44 +35,89 @@ const toDateKey = (date = new Date()) => {
   ).padStart(2, '0')}`;
 };
 
+const CATEGORIES = ['All', 'SMART Goals', 'Academic Targets', 'Study Habits', 'Completed'];
+
 const Goals = () => {
   const [goalsState, setGoalsState] = useStorage(STORAGE_KEYS.GOALS, {
     dailyStudyGoal: 120,
     weeklyMinutesGoal: 600,
     weeklySessionsGoal: 7,
     sessionsByDate: {},
-    smartGoalText: ''
+    smartGoalText: '',
+    activeGoals: [],
+    academicGoals: []
   });
-  const [sessionMinutesInput, setSessionMinutesInput] = useState(45);
+
+  const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
+  const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
+
+  // UI state
   const [vagueGoalInput, setVagueGoalInput] = useState('');
   const [isRefining, setIsRefining] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  
+  // Modals state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [sessionInput, setSessionInput] = useState(30);
+
+  // New goal form state
+  const [newGoalForm, setNewGoalForm] = useState({
+    title: '',
+    category: 'General',
+    priority: 'Medium',
+    targetMinutes: 60,
+  });
 
   const todayKey = toDateKey();
 
+  // Normalize structure & handle legacy data
   const normalized = useMemo(() => {
     const base = goalsState && typeof goalsState === 'object' ? goalsState : {};
+    
+    let activeGoals = Array.isArray(base.activeGoals) ? [...base.activeGoals] : [];
+    if (base.smartGoalText && base.smartGoalText.trim()) {
+      const exists = activeGoals.some(g => g.title === base.smartGoalText);
+      if (!exists) {
+        activeGoals.unshift({
+          id: 'legacy-goal-' + Date.now(),
+          title: base.smartGoalText,
+          category: 'SMART',
+          priority: 'High',
+          completed: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+
     return {
       dailyStudyGoal: Math.max(30, Number(base.dailyStudyGoal) || 120),
       weeklyMinutesGoal: Math.max(120, Number(base.weeklyMinutesGoal) || 600),
       weeklySessionsGoal: Math.max(1, Number(base.weeklySessionsGoal) || 7),
-      sessionsByDate:
-        base.sessionsByDate && typeof base.sessionsByDate === 'object' ? base.sessionsByDate : {}
+      sessionsByDate: base.sessionsByDate && typeof base.sessionsByDate === 'object' ? base.sessionsByDate : {},
+      activeGoals,
+      academicGoals: Array.isArray(base.academicGoals) ? base.academicGoals : []
     };
   }, [goalsState]);
 
+  // 7-day study activity breakdown
   const weekEntries = useMemo(() => {
     const items = [];
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     for (let i = 6; i >= 0; i -= 1) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = toDateKey(d);
       items.push({
+        dayLabel: days[d.getDay()],
         date: key,
-        minutes: Number(normalized.sessionsByDate[key] || 0)
+        minutes: Number(normalized.sessionsByDate[key] || 0),
+        isToday: key === todayKey
       });
     }
     return items;
-  }, [normalized.sessionsByDate]);
+  }, [normalized.sessionsByDate, todayKey]);
 
   const todayMinutes = Number(normalized.sessionsByDate[todayKey] || 0);
   const weeklyMinutes = weekEntries.reduce((acc, item) => acc + item.minutes, 0);
@@ -61,20 +128,19 @@ const Goals = () => {
     100,
     Math.round((weeklyMinutes / normalized.weeklyMinutesGoal) * 100)
   );
-  const weeklySessionsProgress = Math.min(
-    100,
-    Math.round((weeklySessions / normalized.weeklySessionsGoal) * 100)
-  );
 
-  const updateGoal = (key, value) => {
-    setGoalsState((prev) => ({
+  const updateTargets = (daily, weeklyMins, weeklyDays) => {
+    setGoalsState(prev => ({
       ...(prev || {}),
-      [key]: value
+      dailyStudyGoal: daily,
+      weeklyMinutesGoal: weeklyMins,
+      weeklySessionsGoal: weeklyDays
     }));
+    toast.success('Targets updated successfully!');
   };
 
-  const logSession = () => {
-    const minutes = Math.max(1, Number(sessionMinutesInput) || 0);
+  const logSession = (minutes) => {
+    const mins = Math.max(1, Number(minutes) || 0);
     setGoalsState((prev) => {
       const old = prev && typeof prev === 'object' ? prev : {};
       const byDate = old.sessionsByDate && typeof old.sessionsByDate === 'object' ? old.sessionsByDate : {};
@@ -82,10 +148,11 @@ const Goals = () => {
         ...old,
         sessionsByDate: {
           ...byDate,
-          [todayKey]: Number(byDate[todayKey] || 0) + minutes
+          [todayKey]: Number(byDate[todayKey] || 0) + mins
         }
       };
     });
+    toast.success(`Logged ${mins} minutes study focus!`);
   };
 
   const handleSMARTGoal = async () => {
@@ -93,15 +160,30 @@ const Goals = () => {
     setIsRefining(true);
     try {
       const result = await refineSMARTGoal(vagueGoalInput);
-      setGoalsState(prev => ({
-        ...(prev || {}),
-        smartGoalText: result.smartGoal,
-        dailyStudyGoal: result.dailyStudyGoal,
-        weeklyMinutesGoal: result.weeklyMinutesGoal,
-        weeklySessionsGoal: result.weeklySessionsGoal
-      }));
+      
+      const newGoal = {
+        id: Date.now().toString(),
+        title: result.smartGoal,
+        category: 'SMART',
+        priority: 'High',
+        completed: false,
+        createdAt: new Date().toISOString()
+      };
+
+      setGoalsState(prev => {
+        const old = prev && typeof prev === 'object' ? prev : {};
+        const oldActive = Array.isArray(old.activeGoals) ? old.activeGoals : [];
+        return {
+          ...old,
+          smartGoalText: '',
+          activeGoals: [newGoal, ...oldActive],
+          dailyStudyGoal: result.dailyStudyGoal || old.dailyStudyGoal,
+          weeklyMinutesGoal: result.weeklyMinutesGoal || old.weeklyMinutesGoal,
+          weeklySessionsGoal: result.weeklySessionsGoal || old.weeklySessionsGoal
+        };
+      });
       setVagueGoalInput('');
-      toast.success('Goal refined using AI!');
+      toast.success('AI refined SMART goal added!');
     } catch (error) {
       toast.error('Failed to generate SMART goal');
     } finally {
@@ -109,155 +191,596 @@ const Goals = () => {
     }
   };
 
+  const handleCreateManualGoal = (e) => {
+    e.preventDefault();
+    if (!newGoalForm.title.trim()) return;
+
+    const goalObj = {
+      id: Date.now().toString(),
+      title: newGoalForm.title.trim(),
+      category: newGoalForm.category,
+      priority: newGoalForm.priority,
+      targetMinutes: Number(newGoalForm.targetMinutes) || 60,
+      completed: false,
+      createdAt: new Date().toISOString()
+    };
+
+    setGoalsState(prev => {
+      const old = prev && typeof prev === 'object' ? prev : {};
+      const list = Array.isArray(old.activeGoals) ? old.activeGoals : [];
+      return { ...old, activeGoals: [goalObj, ...list] };
+    });
+
+    setNewGoalForm({ title: '', category: 'General', priority: 'Medium', targetMinutes: 60 });
+    setIsAddModalOpen(false);
+    toast.success('Goal created successfully!');
+  };
+
+  const toggleGoalCompletion = (id) => {
+    setGoalsState(prev => {
+      const old = prev && typeof prev === 'object' ? prev : {};
+      const list = Array.isArray(old.activeGoals) ? old.activeGoals : [];
+      return {
+        ...old,
+        activeGoals: list.map(g => g.id === id ? { ...g, completed: !g.completed } : g)
+      };
+    });
+  };
+
+  const deleteGoal = (id) => {
+    setGoalsState(prev => {
+      const old = prev && typeof prev === 'object' ? prev : {};
+      const list = Array.isArray(old.activeGoals) ? old.activeGoals : [];
+      return {
+        ...old,
+        activeGoals: list.filter(g => g.id !== id)
+      };
+    });
+    toast.success('Goal deleted');
+  };
+
+  // Filtered goals combining activeGoals & academicGoals for unified listing
+  const filteredGoals = useMemo(() => {
+    let combined = [];
+
+    // Map Active SMART/Manual Goals
+    normalized.activeGoals.forEach(g => {
+      combined.push({
+        ...g,
+        type: 'custom',
+        displayCategory: g.category || 'General'
+      });
+    });
+
+    // Map Academic Goals from Grade Center
+    normalized.academicGoals.forEach(ag => {
+      const progress = ag.targetValue > 0 ? Math.min(100, Math.round((ag.currentValue / ag.targetValue) * 100)) : 0;
+      combined.push({
+        id: ag.id,
+        title: ag.title,
+        type: 'academic',
+        displayCategory: 'Academic Targets',
+        priority: 'High',
+        completed: progress >= 100,
+        currentValue: ag.currentValue,
+        targetValue: ag.targetValue,
+        progress,
+        createdAt: ag.createdAt
+      });
+    });
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      combined = combined.filter(g => g.title.toLowerCase().includes(q));
+    }
+
+    // Category Filter
+    if (selectedCategory === 'SMART Goals') {
+      combined = combined.filter(g => g.displayCategory === 'SMART');
+    } else if (selectedCategory === 'Academic Targets') {
+      combined = combined.filter(g => g.type === 'academic' || g.displayCategory === 'Academic Targets');
+    } else if (selectedCategory === 'Study Habits') {
+      combined = combined.filter(g => g.displayCategory === 'Habit');
+    } else if (selectedCategory === 'Completed') {
+      combined = combined.filter(g => g.completed);
+    }
+
+    return combined;
+  }, [normalized.activeGoals, normalized.academicGoals, searchQuery, selectedCategory]);
+
+  // Statistics Cards Definitions
+  const statCards = [
+    {
+      label: 'DAILY GOAL',
+      value: `${dailyProgress}%`,
+      detail: `${todayMinutes}/${normalized.dailyStudyGoal} mins`,
+      icon: Target,
+      color: 'text-sky-500',
+      bg: 'bg-sky-50 dark:bg-sky-500/10'
+    },
+    {
+      label: 'WEEKLY TARGET',
+      value: `${weeklyMinutesProgress}%`,
+      detail: `${weeklyMinutes}/${normalized.weeklyMinutesGoal} mins`,
+      icon: Clock,
+      color: 'text-indigo-500',
+      bg: 'bg-indigo-50 dark:bg-indigo-500/10'
+    },
+    {
+      label: 'ACTIVE DAYS',
+      value: `${weeklySessions}/${normalized.weeklySessionsGoal}`,
+      detail: 'Days active this week',
+      icon: Calendar,
+      color: 'text-teal-500',
+      bg: 'bg-teal-50 dark:bg-teal-500/10'
+    },
+    {
+      label: 'STUDY STREAK',
+      value: `${streak?.current || 0} Days`,
+      detail: 'Daily momentum',
+      icon: Flame,
+      color: 'text-amber-500',
+      bg: 'bg-amber-50 dark:bg-amber-500/10'
+    },
+    {
+      label: 'GOALS DONE',
+      value: `${normalized.activeGoals.filter(g => g.completed).length}/${normalized.activeGoals.length}`,
+      detail: 'Completed items',
+      icon: CheckCircle2,
+      color: 'text-emerald-500',
+      bg: 'bg-emerald-50 dark:bg-emerald-500/10'
+    }
+  ];
+
   return (
-    <div className="space-y-8 pb-10">
-      <section className="card">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-              <Target className="text-primary-500" size={24} />
-              Goals
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Set measurable study targets and track completion clearly.
-            </p>
-          </div>
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      
+      {/* 1. Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-1">
+          <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
+            <div className="p-3 rounded-[1.5rem] bg-sky-500 text-white shadow-xl shadow-sky-500/20">
+              <Target size={32} />
+            </div>
+            Study Goals & Focus
+          </h1>
+          <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs">
+            Behavioral targets & AI goal refinement engine
+          </p>
         </div>
 
-        {/* AI SMART Goal Generator */}
-        <div className="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-5 mb-6">
-          <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-300 flex items-center gap-2 mb-3">
-            <Sparkles size={16} />
-            AI SMART Goal Refinement
-          </h3>
-          <div className="flex flex-col md:flex-row gap-3">
+        {/* Top Right Action Bar */}
+        <div className="flex items-center gap-3 self-end md:self-auto flex-wrap">
+          {streak?.current > 0 && (
+            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 rounded-2xl">
+              <Flame className="text-amber-500 fill-amber-500 animate-pulse" size={18} />
+              <span className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                {streak.current} Day Streak
+              </span>
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsSettingsModalOpen(true)}
+            className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 text-slate-700 dark:text-slate-300 rounded-2xl transition-all shadow-sm flex items-center justify-center"
+            title="Configure Target Goals"
+          >
+            <Settings size={20} />
+          </button>
+
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-sky-500/20 active:scale-95"
+          >
+            <Plus size={18} />
+            Add Goal
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Top Statistics Cards Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+        {statCards.map((stat, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06 }}
+            className="bg-white dark:bg-slate-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-sky-500/5 hover:-translate-y-1 transition-all duration-300 group flex items-center gap-5"
+          >
+            <div className={`w-16 h-16 rounded-[1.5rem] ${stat.bg} flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 flex-shrink-0`}>
+              <stat.icon className={stat.color} size={30} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500 mb-1">
+                {stat.label}
+              </p>
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white leading-tight">{stat.value}</h3>
+              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-wider">{stat.detail}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* 3. AI SMART Goal Builder Banner */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-indigo-500/20">
+        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div className="space-y-2 max-w-xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-[10px] font-black uppercase tracking-widest">
+              <Sparkles size={12} className="text-amber-300" />
+              AI SMART Goal Engine
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black">Refine Vague Ideas into SMART Goals</h2>
+            <p className="text-indigo-100 text-xs md:text-sm font-medium">
+              Type what you want to learn. Our AI will automatically construct a Specific, Measurable, and Achievable roadmap.
+            </p>
+          </div>
+
+          <div className="w-full lg:w-auto flex flex-col sm:flex-row gap-3 min-w-[360px]">
             <input 
               type="text" 
-              placeholder="E.g., I want to learn React" 
+              placeholder="E.g., Learn React & build a portfolio site" 
               value={vagueGoalInput}
               onChange={(e) => setVagueGoalInput(e.target.value)}
-              className="flex-1 bg-white dark:bg-slate-900 border-indigo-100 dark:border-indigo-500/30 text-sm"
+              className="flex-1 bg-white/10 backdrop-blur-md border border-white/20 text-white placeholder-indigo-200 text-sm py-3 px-4 rounded-2xl outline-none focus:ring-2 focus:ring-white/40"
               onKeyDown={(e) => { if (e.key === 'Enter') handleSMARTGoal(); }}
             />
             <button 
               onClick={handleSMARTGoal}
               disabled={isRefining || !vagueGoalInput.trim()}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="px-6 py-3 bg-white hover:bg-slate-100 text-indigo-900 font-black rounded-2xl text-xs uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shrink-0"
             >
-              {isRefining ? <Sparkles size={16} className="animate-pulse" /> : <Sparkles size={16} />}
-              Make it SMART
+              {isRefining ? 'Refining...' : 'Make it SMART'}
             </button>
           </div>
-          {goalsState?.smartGoalText && (
-            <div className="mt-4 p-4 bg-white/60 dark:bg-slate-900/40 rounded-xl border border-indigo-100/50 dark:border-indigo-500/10">
-              <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
-                <span className="font-black uppercase tracking-wider text-[10px] block mb-1 opacity-70">Current SMART Goal</span>
-                {goalsState.smartGoalText}
-              </p>
-            </div>
-          )}
+        </div>
+      </div>
+
+      {/* 4. Weekly Study Activity Chart & Quick Log Panel */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-8 shadow-sm space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-3">
+              <BarChart3 size={24} className="text-sky-500" />
+              Weekly Study Activity & Focus Log
+            </h3>
+            <p className="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">
+              Daily minutes studied vs target ({normalized.dailyStudyGoal}m daily target)
+            </p>
+          </div>
+
+          {/* Inline Quick Log Buttons */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400 mr-1 hidden sm:inline">Quick Log:</span>
+            {[15, 30, 60].map(mins => (
+              <button
+                key={mins}
+                onClick={() => logSession(mins)}
+                className="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-800 rounded-xl text-xs font-black text-slate-700 dark:text-slate-300 transition-all active:scale-95"
+              >
+                +{mins}m
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/30">
-            <p className="text-xs uppercase tracking-widest text-slate-400 font-black mb-2">Daily study goal</p>
-            <input
-              type="number"
-              min={30}
-              max={600}
-              value={normalized.dailyStudyGoal}
-              onChange={(e) => updateGoal('dailyStudyGoal', Math.max(30, Number(e.target.value) || 120))}
-              className="w-full"
-            />
+        {/* 7-Day Bar Chart Visualization */}
+        <div className="grid grid-cols-7 gap-3 pt-4 items-end h-44 border-b border-slate-100 dark:border-slate-800/80 pb-4">
+          {weekEntries.map((entry, idx) => {
+            const heightPercent = Math.min(100, Math.round((entry.minutes / normalized.dailyStudyGoal) * 100));
+            return (
+              <div key={idx} className="flex flex-col items-center gap-2 h-full justify-end group">
+                <span className="text-[10px] font-black text-slate-400 group-hover:text-sky-500 transition-colors">
+                  {entry.minutes}m
+                </span>
+                <div className="w-full max-w-[48px] bg-slate-100 dark:bg-slate-950 h-32 rounded-2xl p-1 flex items-end">
+                  <motion.div 
+                    initial={{ height: 0 }}
+                    animate={{ height: `${heightPercent}%` }}
+                    transition={{ duration: 0.5, delay: idx * 0.05 }}
+                    className={`w-full rounded-xl ${
+                      entry.isToday 
+                        ? 'bg-sky-500 shadow-md shadow-sky-500/30' 
+                        : heightPercent >= 100 
+                          ? 'bg-emerald-500' 
+                          : 'bg-indigo-500/70 dark:bg-indigo-500/50'
+                    }`}
+                  />
+                </div>
+                <span className={`text-xs font-black ${entry.isToday ? 'text-sky-500' : 'text-slate-400'}`}>
+                  {entry.dayLabel}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 5. Main Goals Directory (Filter Bar + List) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-8 shadow-sm space-y-6">
+        
+        {/* Search & Tabs Controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-6">
+          
+          {/* Category Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                  selectedCategory === cat
+                    ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
+                    : 'bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
-          <div className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/30">
-            <p className="text-xs uppercase tracking-widest text-slate-400 font-black mb-2">Weekly minutes goal</p>
+
+          {/* Search Box */}
+          <div className="relative w-full lg:w-72">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
-              type="number"
-              min={120}
-              max={3000}
-              value={normalized.weeklyMinutesGoal}
-              onChange={(e) => updateGoal('weeklyMinutesGoal', Math.max(120, Number(e.target.value) || 600))}
-              className="w-full"
-            />
-          </div>
-          <div className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900/30">
-            <p className="text-xs uppercase tracking-widest text-slate-400 font-black mb-2">Weekly active days</p>
-            <input
-              type="number"
-              min={1}
-              max={7}
-              value={normalized.weeklySessionsGoal}
-              onChange={(e) => updateGoal('weeklySessionsGoal', Math.max(1, Math.min(7, Number(e.target.value) || 7)))}
-              className="w-full"
+              type="text"
+              placeholder="Search goals..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold outline-none focus:border-sky-500"
             />
           </div>
         </div>
-      </section>
 
-      <section className="grid grid-cols-1 gap-6">
-        <div className="card">
-          <h3 className="text-lg font-black dark:text-white flex items-center gap-2 mb-4">
-            <Timer size={18} className="text-primary-500" />
-            Log Session
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-            Add focused study minutes to today.
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              min={1}
-              max={600}
-              value={sessionMinutesInput}
-              onChange={(e) => setSessionMinutesInput(Number(e.target.value) || 0)}
+        {/* Goals List Feed */}
+        {filteredGoals.length === 0 ? (
+          <div className="text-center py-16 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl">
+            <Target size={44} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+            <p className="text-slate-600 dark:text-slate-400 text-base font-black">No matching goals found.</p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Click "Add Goal" or use the AI builder to create one.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <AnimatePresence>
+              {filteredGoals.map((goal) => (
+                <motion.div 
+                  key={goal.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between ${
+                    goal.completed 
+                      ? 'bg-slate-50/50 dark:bg-slate-950/20 border-slate-100 dark:border-slate-800 opacity-60' 
+                      : 'bg-white dark:bg-slate-950/40 border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700 hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-start gap-3">
+                      {goal.type === 'custom' ? (
+                        <button 
+                          onClick={() => toggleGoalCompletion(goal.id)}
+                          className="mt-0.5 text-slate-400 hover:text-sky-500 transition-colors"
+                        >
+                          {goal.completed ? (
+                            <CheckCircle className="text-emerald-500 fill-emerald-500/10" size={22} />
+                          ) : (
+                            <Circle size={22} />
+                          )}
+                        </button>
+                      ) : (
+                        <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 flex items-center justify-center shrink-0">
+                          <GraduationCap size={18} />
+                        </div>
+                      )}
+                      
+                      <div>
+                        <h4 className={`font-black text-sm text-slate-800 dark:text-slate-200 leading-snug ${
+                          goal.completed ? 'line-through text-slate-400 dark:text-slate-500' : ''
+                        }`}>
+                          {goal.title}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                            {goal.displayCategory}
+                          </span>
+                          {goal.priority && (
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${
+                              goal.priority === 'High' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30' : 'bg-amber-50 text-amber-600 dark:bg-amber-950/30'
+                            }`}>
+                              {goal.priority}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {goal.type === 'custom' && (
+                      <button 
+                        onClick={() => deleteGoal(goal.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+
+                  {goal.type === 'academic' && (
+                    <div className="space-y-1.5 mt-2 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex justify-between text-xs font-black text-slate-500">
+                        <span>Progress: {goal.currentValue} / {goal.targetValue}</span>
+                        <span>{goal.progress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div className="bg-indigo-500 h-full rounded-full transition-all duration-300" style={{ width: `${goal.progress}%` }} />
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
+
+      {/* 6. Add Goal Modal */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
+              onClick={() => setIsAddModalOpen(false)} 
             />
-            <button
-              type="button"
-              onClick={logSession}
-              className="px-4 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-bold inline-flex items-center gap-1"
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800 p-6 space-y-6"
             >
-              <Plus size={16} />
-              Add
-            </button>
-          </div>
-          <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
-            Today: <span className="font-black">{todayMinutes} min</span>
-          </p>
-        </div>
-      </section>
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                  <Target size={22} className="text-sky-500" />
+                  Add Custom Goal
+                </h3>
+                <button onClick={() => setIsAddModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-xl">
+                  <X size={20} />
+                </button>
+              </div>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[
-          {
-            title: 'Daily Goal',
-            subtitle: `${todayMinutes} / ${normalized.dailyStudyGoal} minutes`,
-            progress: dailyProgress
-          },
-          {
-            title: 'Weekly Minutes',
-            subtitle: `${weeklyMinutes} / ${normalized.weeklyMinutesGoal} minutes`,
-            progress: weeklyMinutesProgress
-          },
-          {
-            title: 'Weekly Active Days',
-            subtitle: `${weeklySessions} / ${normalized.weeklySessionsGoal} days`,
-            progress: weeklySessionsProgress
-          }
-        ].map((card) => (
-          <div key={card.title} className="card">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{card.title}</h4>
-              {card.progress >= 100 && <CheckCircle2 size={18} className="text-emerald-500" />}
-            </div>
-            <p className="text-xl font-black text-slate-800 dark:text-white mb-3">{card.subtitle}</p>
-            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div className="h-full rounded-full bg-primary-500 transition-all duration-500" style={{ width: `${card.progress}%` }} />
-            </div>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{card.progress}% complete</p>
+              <form onSubmit={handleCreateManualGoal} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Goal Title</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="E.g., Complete Physics Chapter 4"
+                    value={newGoalForm.title}
+                    onChange={(e) => setNewGoalForm({ ...newGoalForm, title: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:border-sky-500 text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Category</label>
+                    <select
+                      value={newGoalForm.category}
+                      onChange={(e) => setNewGoalForm({ ...newGoalForm, category: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:border-sky-500 text-sm"
+                    >
+                      <option value="General">General</option>
+                      <option value="Habit">Study Habit</option>
+                      <option value="Exam Prep">Exam Prep</option>
+                      <option value="Project">Project</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Priority</label>
+                    <select
+                      value={newGoalForm.priority}
+                      onChange={(e) => setNewGoalForm({ ...newGoalForm, priority: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:border-sky-500 text-sm"
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 bg-sky-500 hover:bg-sky-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg shadow-sky-500/20 active:scale-95 mt-2"
+                >
+                  Create Goal
+                </button>
+              </form>
+            </motion.div>
           </div>
-        ))}
-      </section>
+        )}
+      </AnimatePresence>
+
+      {/* 7. Settings Modal */}
+      <AnimatePresence>
+        {isSettingsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
+              onClick={() => setIsSettingsModalOpen(false)} 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 dark:border-slate-800 p-6 space-y-6"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                  <Settings size={22} className="text-sky-500" />
+                  Target Settings
+                </h3>
+                <button onClick={() => setIsSettingsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-xl">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Daily Study Target (minutes)</label>
+                  <input
+                    type="number"
+                    min={30}
+                    max={600}
+                    value={normalized.dailyStudyGoal}
+                    onChange={(e) => updateTargets(Math.max(30, Number(e.target.value) || 120), normalized.weeklyMinutesGoal, normalized.weeklySessionsGoal)}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:border-sky-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Weekly Minutes Target</label>
+                  <input
+                    type="number"
+                    min={120}
+                    max={3000}
+                    value={normalized.weeklyMinutesGoal}
+                    onChange={(e) => updateTargets(normalized.dailyStudyGoal, Math.max(120, Number(e.target.value) || 600), normalized.weeklySessionsGoal)}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:border-sky-500 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Weekly Active Days Target</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={7}
+                    value={normalized.weeklySessionsGoal}
+                    onChange={(e) => updateTargets(normalized.dailyStudyGoal, normalized.weeklyMinutesGoal, Math.max(1, Math.min(7, Number(e.target.value) || 7)))}
+                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:border-sky-500 text-sm"
+                  />
+                </div>
+
+                <button
+                  onClick={() => setIsSettingsModalOpen(false)}
+                  className="w-full py-3.5 bg-sky-500 hover:bg-sky-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg shadow-sky-500/20 active:scale-95 mt-2"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };

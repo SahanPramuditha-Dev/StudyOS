@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import {
   Send, X, RefreshCw, Sparkles, Copy, Zap, Check,
   BookOpen, FlaskConical, LayoutList, Map, CalendarClock,
-  MessageCircle
+  MessageCircle, Volume2, VolumeX, Mic
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useOrion, ORION_EMOTIONS, XP_EVENTS } from '../../context/OrionContext';
@@ -12,6 +12,7 @@ import { useLocation } from 'react-router-dom';
 import { useStorage } from '../../hooks/useStorage';
 import toast from 'react-hot-toast';
 import { orionSounds } from '../../utils/orionSounds';
+import { OrionSTT } from '../../utils/orionVoice';
 
 // ─── Slash Commands ────────────────────────────────────────────────────────────
 
@@ -160,9 +161,11 @@ const ThinkingIndicator = () => (
 // ─── Main Chat Panel ──────────────────────────────────────────────────────────
 
 const OrionChatPanel = () => {
+  const dragControls = useDragControls();
   const {
     isChatOpen, setIsChatOpen, emotion, setEmotion,
     isThinking, setIsThinking, addXP, speak, pageContext,
+    voiceEnabled, toggleVoice, startListening, stopListening, isListening, cancelSpeech,
   } = useOrion();
 
   const location = useLocation();
@@ -178,8 +181,9 @@ const OrionChatPanel = () => {
   const [goals]       = useStorage('studyos_goals', []);
   const [notes]       = useStorage('studyos_notes', []);
   const [orionData]   = useStorage('studyos_orion', {});
+  const [orionMemory] = useStorage('studyos_orion_memory', {});
 
-  const studyData = { assignments, courses, goals, orionXP: orionData.xp, orionLevel: orionData.level };
+  const studyData = { assignments, courses, goals, orionXP: orionData.xp, orionLevel: orionData.level, orionMemory };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -191,13 +195,15 @@ const OrionChatPanel = () => {
       if (messages.length === 0) {
         const hour = new Date().getHours();
         const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+        const welcomeText = `${greeting}! I'm **Orion**, your personal AI study mentor. 🦉\n\nI'm currently in **${pageContext.role}** mode for this page. Ask me anything, or use **/** for quick commands!`;
         setMessages([{
           id: 'welcome',
           role: 'assistant',
-          content: `${greeting}! I'm **Orion**, your personal AI study mentor. 🦉\n\nI'm currently in **${pageContext.role}** mode for this page. Ask me anything, or use **/** for quick commands!`,
+          content: welcomeText,
           emotion: ORION_EMOTIONS.HAPPY,
           reward: null,
         }]);
+        speak(welcomeText);
       }
     }
   }, [isChatOpen]); // eslint-disable-line
@@ -306,9 +312,12 @@ Rules:
       orionSounds.messageReceived();
 
       if (response.reward?.xp > 0) addXP('AI_CONVERSATION');
+      
+      let textToSpeak = response.message;
       if (response.action && response.action !== 'none') {
-        speak(`💡 Tip: ${response.action.replace(/_/g, ' ')} might help!`);
+        textToSpeak += ` Tip: ${response.action.replace(/_/g, ' ')} might help!`;
       }
+      speak(textToSpeak);
 
     } catch (err) {
       console.error('Orion chat error:', err);
@@ -328,7 +337,10 @@ Rules:
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-    if (e.key === 'Escape') setIsChatOpen(false);
+    if (e.key === 'Escape') {
+      if (isListening) stopListening();
+      setIsChatOpen(false);
+    }
   };
 
   const clearChat = () => {
@@ -349,11 +361,29 @@ Rules:
     return () => window.removeEventListener('orion-analyze-document', handleDocumentAnalysis);
   }, [sendMessage]);
 
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      setInput('');
+      startListening((res) => {
+        setInput(res.interim || res.final);
+        if (res.isFinal) {
+          sendMessage(res.final);
+        }
+      });
+    }
+  };
+
   return (
     <AnimatePresence>
       {isChatOpen && (
         <motion.div
           key="orion-chat"
+          drag
+          dragControls={dragControls}
+          dragListener={false}
+          dragMomentum={false}
           className="fixed bottom-[165px] right-6 z-[9998] w-[360px] flex flex-col rounded-2xl overflow-hidden"
           style={{
             background: 'rgba(8, 14, 32, 0.92)',
@@ -367,12 +397,16 @@ Rules:
           exit={{    opacity: 0, y: 20, scale: 0.93 }}
           transition={{ type: 'spring', stiffness: 320, damping: 26 }}
         >
-          {/* ── TOP ACCENT LINE ── */}
-          <div className="h-[2px] w-full bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400 shrink-0" />
+          {/* ── TOP ACCENT LINE & DRAG HANDLE ── */}
+          <div className="relative h-[2px] w-full bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400 shrink-0">
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full bg-white/20 opacity-0 group-hover/header:opacity-100 transition-opacity pointer-events-none" />
+          </div>
 
           {/* ── HEADER ── */}
-          <div className="shrink-0 px-4 py-3 flex items-center justify-between"
+          <div 
+            className="shrink-0 px-4 py-3 flex items-center justify-between cursor-grab active:cursor-grabbing group/header"
             style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+            onPointerDown={(e) => dragControls.start(e)}
           >
             <div className="flex items-center gap-3">
               <OwlAvatar size={36} emotion={emotion} />
@@ -386,11 +420,21 @@ Rules:
                     AI Mentor
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-500 capitalize mt-0.5">{pageContext.role}</p>
+                <p className="text-[10px] text-slate-400 capitalize mt-0.5">{pageContext.role}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
               <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={toggleVoice}
+                className={`p-1.5 rounded-lg transition-colors ${voiceEnabled ? 'text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}
+                style={{ background: 'rgba(255,255,255,0.04)' }}
+                title={voiceEnabled ? "Voice output on" : "Voice output off"}
+              >
+                {voiceEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+              </button>
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={clearChat}
                 className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
                 style={{ background: 'rgba(255,255,255,0.04)' }}
@@ -399,6 +443,7 @@ Rules:
                 <RefreshCw size={13} />
               </button>
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => setIsChatOpen(false)}
                 className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 transition-colors"
                 style={{ background: 'rgba(255,255,255,0.04)' }}
@@ -420,10 +465,16 @@ Rules:
                 <button
                   key={cmd.id}
                   onClick={() => sendMessage(cmd.id)}
-                  className={`shrink-0 flex items-center gap-1.5 text-[10.5px] font-semibold px-2.5 py-1 rounded-full border bg-gradient-to-r transition-all ${cmd.grad}`}
+                  className={`group shrink-0 flex items-center text-[10.5px] font-semibold rounded-full border bg-gradient-to-r transition-all duration-300 ease-out ${cmd.grad}`}
                 >
-                  <Icon size={9} />
-                  {cmd.label}
+                  <div className="flex items-center justify-center w-[24px] h-[24px] shrink-0">
+                    <Icon size={11} />
+                  </div>
+                  <div className="max-w-0 opacity-0 group-hover:max-w-[80px] group-hover:opacity-100 overflow-hidden transition-all duration-300 ease-out">
+                    <span className="pr-2.5 whitespace-nowrap block">
+                      {cmd.label}
+                    </span>
+                  </div>
                 </button>
               );
             })}
@@ -481,20 +532,51 @@ Rules:
           >
             <div className="flex items-end gap-2">
               <div
-                className="flex-1 relative rounded-xl overflow-hidden"
-                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+                className="flex-1 relative rounded-xl overflow-hidden transition-all duration-300"
+                style={{ 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid rgba(255,255,255,0.08)' 
+                }}
               >
                 <textarea
                   ref={inputRef}
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask Orion anything... or type /"
+                  disabled={isListening}
+                  placeholder={isListening ? "Listening..." : "Ask Orion anything... or type /"}
                   rows={1}
-                  className="w-full resize-none bg-transparent text-slate-200 text-[13px] px-3.5 py-2.5 outline-none placeholder-slate-600 max-h-24 overflow-y-auto"
+                  className="w-full resize-none bg-transparent text-slate-200 text-[13px] px-3.5 py-2.5 outline-none placeholder-slate-500 max-h-24 overflow-y-auto disabled:opacity-50 focus:bg-white/[0.02]"
                   style={{ lineHeight: '1.45' }}
                 />
               </div>
+              
+              {OrionSTT.isSupported() && (
+                <motion.button
+                  onClick={toggleListening}
+                  disabled={isThinking}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{
+                    background: isListening
+                      ? 'rgba(239,68,68,0.2)'
+                      : 'rgba(255,255,255,0.06)',
+                    border: isListening ? '1px solid rgba(239,68,68,0.4)' : '1px solid transparent'
+                  }}
+                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1.06 }}
+                  title="Voice input"
+                >
+                  <Mic size={14} className={isListening ? 'text-red-400' : 'text-slate-400'} />
+                  {isListening && (
+                    <motion.div
+                      className="absolute inset-0 rounded-xl border border-red-500 pointer-events-none"
+                      animate={{ scale: [1, 1.3], opacity: [0.8, 0] }}
+                      transition={{ duration: 1.2, repeat: Infinity }}
+                    />
+                  )}
+                </motion.button>
+              )}
+
               <motion.button
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || isThinking}

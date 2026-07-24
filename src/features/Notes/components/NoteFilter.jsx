@@ -5,7 +5,8 @@ import {
   LayoutGrid,
   ArrowUpDown,
   Table2,
-  Folder
+  Folder,
+  Sparkles
 } from 'lucide-react';
 import Select from '../../../components/ui/Select';
 
@@ -18,6 +19,7 @@ const NoteFilter = ({
   sortBy,
   setSortBy,
   onAdd,
+  onImport,
   noteCount,
   showArchived,
   setShowArchived,
@@ -42,6 +44,13 @@ const NoteFilter = ({
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={onImport}
+              className="flex-1 md:flex-none flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 dark:text-indigo-300 font-black transition-all active:scale-95"
+            >
+              <Sparkles size={18} />
+              AI Import
+            </button>
             <button
               onClick={onAdd}
               className="flex-1 md:flex-none flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-lg shadow-primary-500/25 active:scale-95"
