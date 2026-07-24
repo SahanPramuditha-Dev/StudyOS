@@ -133,6 +133,10 @@ const App = () => {
   };
 
   useEffect(() => {
+    posthog.capture('$pageview');
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (!('Notification' in window)) return;
 
     if (Notification.permission === 'default') {

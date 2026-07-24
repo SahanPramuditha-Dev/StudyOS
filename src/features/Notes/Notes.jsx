@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import posthog from 'posthog-js';
 import { 
   FileText,
   Clock,
@@ -100,6 +101,7 @@ const Notes = () => {
     };
     setNotes([newNote, ...notes]);
     setSelectedNoteDetail(newNote);
+    posthog.capture('note_created');
     toast.success('Draft created');
   };
 
@@ -220,6 +222,7 @@ const Notes = () => {
       message: 'Permanently delete this note? This cannot be undone.',
       onConfirm: () => {
         setNotes((prev) => hardDeleteByIds(prev, [id]));
+        posthog.capture('note_deleted');
         toast.success('Note deleted permanently');
       }
     });

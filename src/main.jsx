@@ -45,8 +45,10 @@ if (import.meta.env.VITE_POSTHOG_KEY) {
   posthog.init(import.meta.env.VITE_POSTHOG_KEY, {
     api_host: import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com',
     person_profiles: 'identified_only',
-    capture_pageview: false // Manual capture in AuthContext/App
+    capture_pageview: false // Manual pageview capture in App.jsx
   });
+} else if (import.meta.env.DEV) {
+  console.error('VITE_POSTHOG_KEY variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once VITE_POSTHOG_KEY is configured');
 }
 
 createRoot(document.getElementById('root')).render(

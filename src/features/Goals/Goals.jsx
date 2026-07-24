@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import posthog from 'posthog-js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Target, 
@@ -152,6 +153,7 @@ const Goals = () => {
         }
       };
     });
+    posthog.capture('study_session_logged', { duration_minutes: mins });
     toast.success(`Logged ${mins} minutes study focus!`);
   };
 
@@ -182,6 +184,7 @@ const Goals = () => {
           weeklySessionsGoal: result.weeklySessionsGoal || old.weeklySessionsGoal
         };
       });
+      posthog.capture('smart_goal_generated');
       setVagueGoalInput('');
       toast.success('AI refined SMART goal added!');
     } catch (error) {
@@ -211,12 +214,23 @@ const Goals = () => {
       return { ...old, activeGoals: [goalObj, ...list] };
     });
 
+    posthog.capture('goal_created', {
+      category: goalObj.category,
+      priority: goalObj.priority
+    });
     setNewGoalForm({ title: '', category: 'General', priority: 'Medium', targetMinutes: 60 });
     setIsAddModalOpen(false);
     toast.success('Goal created successfully!');
   };
 
   const toggleGoalCompletion = (id) => {
+    const currentGoal = normalized.activeGoals.find(g => g.id === id);
+    if (currentGoal && !currentGoal.completed) {
+      posthog.capture('goal_completed', {
+        category: currentGoal.category || 'General',
+        priority: currentGoal.priority || 'Medium'
+      });
+    }
     setGoalsState(prev => {
       const old = prev && typeof prev === 'object' ? prev : {};
       const list = Array.isArray(old.activeGoals) ? old.activeGoals : [];
