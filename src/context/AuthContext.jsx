@@ -358,6 +358,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await signInWithEmailAndPassword(auth, normalizedInput, password);
       // Profile will be loaded by onAuthStateChanged
+      posthog.capture('user_logged_in', { method: 'email' });
       toast.success(`Welcome back!`);
       return result.user;
     } catch (error) {
@@ -376,6 +377,7 @@ export const AuthProvider = ({ children }) => {
         displayName: normalizedName
       });
       // createUserProfile is called in onAuthStateChanged
+      posthog.capture('user_signed_up', { method: 'email' });
       toast.success(`Account created successfully. You're signed in as ${normalizedName}.`);
       return result.user;
     } catch (error) {
@@ -451,6 +453,7 @@ export const AuthProvider = ({ children }) => {
       console.log('[AuthContext] SUCCESS: Google sign-in completed', result.user.email);
       await applyGoogleProfileAfterSignIn(result);
       console.log('[AuthContext] Google profile applied successfully');
+      posthog.capture('user_logged_in', { method: 'google' });
       toast.success('Signed in with Google successfully.');
     } catch (error) {
       if (isPopupRedirectFallbackError(error)) {
@@ -495,6 +498,7 @@ export const AuthProvider = ({ children }) => {
       });
 
       console.log('[AuthContext] GitHub sign-in completed', githubUserName);
+      posthog.capture('user_logged_in', { method: 'github' });
       toast.success(`Signed in with GitHub as ${githubUserName}.`);
       return result.user;
     } catch (error) {

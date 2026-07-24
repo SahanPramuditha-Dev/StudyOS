@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import posthog from 'posthog-js';
 import {
   Plus,
   Search,
@@ -156,6 +157,11 @@ const Assignments = () => {
         createdAt: new Date().toISOString()
       };
       setAssignments(prev => [newAssignment, ...prev]);
+      posthog.capture('assignment_created', {
+        status: formData.status,
+        has_deadline: Boolean(formData.deadline),
+        has_course: Boolean(formData.courseId)
+      });
       toast.success('Assignment created');
     }
     closeModal();

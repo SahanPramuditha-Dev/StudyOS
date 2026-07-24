@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import posthog from 'posthog-js';
 import {
   Plus,
   ExternalLink,
@@ -628,6 +629,11 @@ const Courses = () => {
       toast.success('Course updated');
 
       if (editingCourse.status !== 'Completed' && next.status === 'Completed') {
+        posthog.capture('course_completed', {
+          platform: next.platform,
+          category: next.category,
+          difficulty: next.difficulty
+        });
         addNotification(courseCompletedNotification(next.title));
       }
     } else {
@@ -636,6 +642,12 @@ const Courses = () => {
         createActivityEntry('created', 'Course created')
       );
       setCourses((prev) => [created, ...prev]);
+      posthog.capture('course_created', {
+        platform: created.platform,
+        category: created.category,
+        difficulty: created.difficulty,
+        tracking_type: created.trackingType
+      });
       toast.success('Course created');
 
       if (created.status === 'Completed') {
@@ -869,6 +881,11 @@ const Courses = () => {
           return appendActivity(next, createActivityEntry('study', `Study session logged (${Math.round(elapsed / 60)} min)`));
         });
 
+        posthog.capture('course_study_session_ended', {
+          duration_minutes: Math.round(elapsed / 60),
+          platform: runningCourse.platform,
+          category: runningCourse.category
+        });
         toast.success(`Added ${Math.round(elapsed / 60)} minutes to ${runningCourse.title}`);
       } else {
         toast.success('Session ended (under 1 min, not saved).');
@@ -883,6 +900,10 @@ const Courses = () => {
       persistCourseMutation(courseToStart.id, (current) =>
         appendActivity(current, createActivityEntry('study', 'Study session started'))
       );
+      posthog.capture('course_study_session_started', {
+        platform: courseToStart.platform,
+        category: courseToStart.category
+      });
       toast.success(`Study session started for ${courseToStart.title}`);
     }
   };
