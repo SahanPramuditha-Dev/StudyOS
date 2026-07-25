@@ -12,6 +12,7 @@
 
 | Feature | Description |
 |---------|-------------|
+| **🎬 Video Lecture Player** | Interactive video player workspace: real-time YouTube API chapter timestamps parser, live YouTube top comments, bookmark CRUD manager (`+ Bookmark Now`, timestamp editor, note editor), formatted rich Markdown notes preview mode, LaTeX math quiz parser (`$f(n)$`), dedicated Table of Contents tab, and bottom glassmorphic learning dock. |
 | **📚 Courses & Assignments** | Create/track assignments with progress trackers, resources, notes, task breakdowns, submissions, activity logs. |
 | **🚀 Projects Hub** | Full project lifecycle: Task manager, bug tracker, code snippets, docs editor, GitHub sync, file manager, submission tracking, notes. |
 | **📝 Smart Notes** | Rich editor, search, previews, lists with toolbar for organized study notes. |
@@ -19,7 +20,7 @@
 | **📊 Analytics** | Learning charts, heatmaps, stats cards for performance insights. |
 | **💻 Workspace** | Multi-panel workspace with project selectors, code/docs/files/tasks/submissions views. |
 | **🔍 Search & Admin** | Global search, admin dashboard, bulk actions, role-based access (Firestore rules). |
-| **🎯 Integrations** | GitHub repos, Google Calendar, Firebase email/notifications, offline support. |
+| **🎯 Integrations** | GitHub repos, Google Calendar, YouTube Data API, Firebase email/notifications, offline support. |
 | **More** | Resources/videos/papers/review, error boundaries, themes, Google Auth. |
 
 ## 🖼️ Screenshots
