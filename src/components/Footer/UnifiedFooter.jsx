@@ -5,6 +5,7 @@ import { useOnline } from '../../hooks/useOnline';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { computeUsageMetrics } from '../../services/usageMetrics';
+import { formatStorage } from '../../services/storageService';
 import { Link } from 'react-router-dom'; // Assuming react-router-dom for navigation
 
 const StatusBadge = ({ children, className = '' }) => (
@@ -15,10 +16,12 @@ const StatusBadge = ({ children, className = '' }) => (
 
 const getRoleBadge = (role) => {
   const badges = {
-    user: { color: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300', label: 'User' },
+    user: { color: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300', label: 'Learner' },
+    educator: { color: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300', label: 'Educator' },
+    team_lead: { color: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300', label: 'Workspace Lead' },
     admin: { color: 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300', label: 'Admin' },
     superadmin: { color: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300', label: 'Super Admin' },
-    restricted: { color: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300', label: 'Restricted' }
+    restricted: { color: 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300', label: 'Auditor' }
   };
   return badges[role] || badges.user;
 };
@@ -94,7 +97,7 @@ const UnifiedFooter = ({ profile, isAdmin, hasPermission, setActiveTab }) => {
             <StatusBadge>
               <HardDrive size={10} className="text-slate-500" />
               <span className="text-slate-600 dark:text-slate-400">
-                {displayFileCount}/{limits.maxFiles} assets • {displayStorageUsedMB.toFixed(1)}MB
+                {displayFileCount}/{limits.maxFiles} assets • {formatStorage(displayStorageUsedMB * 1024 * 1024)}
               </span>
             </StatusBadge>
 

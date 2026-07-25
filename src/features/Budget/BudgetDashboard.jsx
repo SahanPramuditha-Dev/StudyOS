@@ -186,7 +186,7 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
         <motion.div variants={itemVariants} whileHover={{ y: -4 }} className="relative rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-emerald-900/10 p-6 shadow-lg backdrop-blur-xl group overflow-hidden">
           <div className="absolute inset-0 bg-white/5 dark:bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
           <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30">
-             <ResponsiveContainer width="100%" height="100%">
+             <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                <AreaChart data={cashFlowHistory}>
                  <Area type="monotone" dataKey="income" stroke="none" fill="#10b981" />
                </AreaChart>
@@ -205,7 +205,7 @@ const BudgetDashboard = ({ budgetData, setBudgetData }) => {
         <motion.div variants={itemVariants} whileHover={{ y: -4 }} className="relative rounded-3xl border border-rose-500/20 bg-gradient-to-br from-rose-500/5 to-rose-900/10 p-6 shadow-lg backdrop-blur-xl group overflow-hidden">
            <div className="absolute inset-0 bg-white/5 dark:bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
            <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30">
-             <ResponsiveContainer width="100%" height="100%">
+             <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                <AreaChart data={cashFlowHistory}>
                  <Area type="monotone" dataKey="expense" stroke="none" fill="#f43f5e" />
                </AreaChart>

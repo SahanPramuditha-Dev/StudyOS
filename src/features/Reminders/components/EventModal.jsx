@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Calendar, Clock, Zap, Tag, Bell, Repeat, Link as LinkIcon, FileText, AlertCircle, Volume2, Upload, BellOff, Music } from 'lucide-react';
 import Select from '../../../components/ui/Select';
 
-const categoryOptions = ['Study', 'Assignment', 'Exam', 'Project', 'Personal'];
+const categoryOptions = ['Study', 'Assignment', 'Exam', 'Project', 'Personal', 'Budget'];
 const reminderOptions = [5, 15, 60, 120];
 const recurringOptions = ['None', 'Daily', 'Weekly', 'Monthly', 'Custom'];
 

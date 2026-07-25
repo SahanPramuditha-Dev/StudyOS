@@ -194,6 +194,11 @@ service cloud.firestore {
       allow delete: if isOwner(userId) || isAdmin();
     }
 
+    // User active sessions logging & security management
+    match /users/{userId}/sessions/{sessionId} {
+      allow read, write, delete: if isOwner(userId) || isAdmin();
+    }
+
     // Read: owner may load their own synced blobs; module gates apply on writes only.
     match /users/{userId}/data/{document} {
       allow read: if (isOwner(userId) && isActive()) || isAdmin();

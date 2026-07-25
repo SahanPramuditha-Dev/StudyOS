@@ -57,24 +57,22 @@ export const getDeadlineStatus = (deadline) => {
   return { status: `${daysLeft} Days Left`, color: 'text-green-600', bgColor: 'bg-green-100' };
 };
 
+import { formatStorage, validateStorageSize } from '../../../services/storageService.js';
+
 /**
- * Calculate total file storage in MB
+ * Calculate total file storage formatted string
  */
 export const calculateStorageUsage = (files) => {
-  if (!files || files.length === 0) return 0;
-  const totalBytes = files.reduce((acc, file) => acc + (file.size || 0), 0);
-  return (totalBytes / (1024 * 1024)).toFixed(2);
+  if (!files || files.length === 0) return '0 Bytes';
+  const totalBytes = files.reduce((acc, file) => acc + validateStorageSize(file?.sizeBytes ?? file?.size), 0);
+  return formatStorage(totalBytes);
 };
 
 /**
  * Format file size to human readable format
  */
 export const formatFileSize = (bytes) => {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return formatStorage(bytes);
 };
 
 /**

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 
-const LearningHeatmap = ({ videos }) => {
+const LearningHeatmap = ({ videos = [], activeLiveLog = null }) => {
   const data = useMemo(() => {
     // Generate last 30 days
     const days = [];
@@ -32,11 +32,20 @@ const LearningHeatmap = ({ videos }) => {
       }
     });
 
+    // Include real-time active live watch session log
+    if (activeLiveLog && activeLiveLog.startTime && activeLiveLog.duration > 0) {
+      const logDate = new Date(activeLiveLog.startTime).toISOString().split('T')[0];
+      const day = days.find(d => d.dateStr === logDate);
+      if (day) {
+        day.totalWatchTime += activeLiveLog.duration;
+      }
+    }
+
     // Calculate max for scaling
     const max = Math.max(...days.map(d => d.totalWatchTime), 1);
     
     return { days, max };
-  }, [videos]);
+  }, [videos, activeLiveLog]);
 
   const getColor = (watchTime, max) => {
     if (watchTime === 0) return 'bg-slate-100 dark:bg-slate-800';

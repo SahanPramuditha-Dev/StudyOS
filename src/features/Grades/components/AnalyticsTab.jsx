@@ -94,7 +94,7 @@ const AnalyticsTab = ({ gcSettings, selectedYear = 'All' }) => {
                {timelineData.length === 0 ? (
                   <p className="text-sm text-slate-500 italic py-20 text-center">No trend data available. Log grades to see trends.</p>
                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                      <LineChart data={timelineData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} />
@@ -114,7 +114,7 @@ const AnalyticsTab = ({ gcSettings, selectedYear = 'All' }) => {
                {realCourses.length === 0 ? (
                   <p className="text-sm text-slate-500 italic py-20 text-center">No subjects logged. Select the Subjects tab to record grades.</p>
                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                      <BarChart data={realCourses}>
                         <XAxis dataKey="title" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }} />
                         <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} />

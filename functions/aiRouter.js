@@ -6,46 +6,128 @@ const crypto = require("crypto");
 // Define the secret for the Gemini API Key
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// Available Models
+// Available Active Models with granted quota (Rate Limit > 0)
 const MODELS = {
-  advanced: "gemini-3.5-flash", 
-  proFallback: "gemini-3.1-pro",
-  balanced: "gemini-3-flash", 
-  omni: "gemini-omni-flash",
-  fast: "gemini-3.1-flash-lite", 
-  lite: "gemini-2.5-flash-lite",
+  // Ultra Next-Gen & Advanced Reasoning
+  v36Flash: "gemini-3.6-flash",         // 5 RPM / 250K TPM / 20 RPD
+  v35Flash: "gemini-3.5-flash",         // 5 RPM / 250K TPM / 20 RPD
+  v31Pro: "gemini-3.1-pro",             // Deep analysis fallback
+  v3Flash: "gemini-3-flash",             // 5 RPM / 250K TPM / 20 RPD
+  
+  // High Daily Quota Tiers (500 RPD / 15 RPM)
+  v35FlashLite: "gemini-3.5-flash-lite", // 15 RPM / 250K TPM / 500 RPD
+  v31FlashLite: "gemini-3.1-flash-lite", // 15 RPM / 250K TPM / 500 RPD
+
+  // Stable 2.5 Generation
+  v25Flash: "gemini-2.5-flash",         // 5 RPM / 250K TPM / 20 RPD
+  v25FlashLite: "gemini-2.5-flash-lite", // 10 RPM / 250K TPM / 20 RPD
+  
+  // High Capacity Open Weights Models (14,400 RPD / 30 RPM)
+  gemma431b: "gemma-4-31b",             // 30 RPM / 16K TPM / 14,400 RPD
+  gemma426b: "gemma-4-26b",             // 30 RPM / 16K TPM / 14,400 RPD
+
+  // Audio & TTS
+  tts31: "gemini-3.1-flash-tts-preview", // 3 RPM / 10K TPM / 10 RPD
+  tts25: "gemini-2.5-flash-tts-preview", // 3 RPM / 10K TPM / 10 RPD
+
+  // Legacy fallback
   legacy: "gemini-2-flash"
 };
 
 /**
- * Strategy 2, 3, 12, 13: Intelligent Routing Logic
+ * Strategy 2, 3, 12, 13: Intelligent Auto-Selection & Quota-Aware Routing Logic
  * Determines the best model fallback priority based on task, quality preference, and prompt complexity.
  */
 function determineRoutingPriority(task, qualityPreference, prompt) {
   const isComplexPrompt = prompt && prompt.length > 500;
   const isShortPrompt = prompt && prompt.length < 50;
 
-  // 1. Explicit Student Modes (Strategy 13)
-  if (qualityPreference === "Fast") return [MODELS.fast, MODELS.lite, MODELS.legacy, MODELS.balanced];
-  if (qualityPreference === "Advanced") return [MODELS.advanced, MODELS.proFallback, MODELS.omni, MODELS.balanced, MODELS.fast];
+  // 1. Explicit Student Quality Modes
+  if (qualityPreference === "Fast") {
+    return [
+      MODELS.v35FlashLite,
+      MODELS.v31FlashLite,
+      MODELS.gemma426b,
+      MODELS.v25FlashLite,
+      MODELS.v25Flash,
+      MODELS.v3Flash,
+      MODELS.legacy
+    ];
+  }
   
-  // 2. Task-Based Routing (Strategies 2 & 12)
+  if (qualityPreference === "Advanced") {
+    return [
+      MODELS.v36Flash,
+      MODELS.v35Flash,
+      MODELS.v31Pro,
+      MODELS.gemma431b,
+      MODELS.v3Flash,
+      MODELS.v35FlashLite,
+      MODELS.v31FlashLite
+    ];
+  }
+  
+  // 2. Task-Based Auto-Selection
   switch (task) {
     case "chat":
     case "flashcards":
     case "summarize":
     case "quiz":
     case "study_planner":
-      return [MODELS.fast, MODELS.lite, MODELS.legacy, MODELS.balanced];
+      return [
+        MODELS.v35FlashLite,  // High 500 RPD quota first
+        MODELS.v31FlashLite,  // High 500 RPD quota second
+        MODELS.v36Flash,
+        MODELS.v35Flash,
+        MODELS.gemma426b,     // 14,400 RPD backstop
+        MODELS.v25FlashLite,
+        MODELS.v3Flash
+      ];
+
     case "code":
     case "assignment":
     case "debugging":
-      return [MODELS.advanced, MODELS.proFallback, MODELS.omni, MODELS.balanced, MODELS.fast];
+      return [
+        MODELS.v36Flash,      // Cutting-edge reasoning
+        MODELS.v35Flash,
+        MODELS.v31Pro,
+        MODELS.gemma431b,     // High performance 14,400 RPD backstop
+        MODELS.v3Flash,
+        MODELS.v35FlashLite,
+        MODELS.v31FlashLite
+      ];
+
     default:
-      // 3. Prompt Complexity Detection (Strategy 3)
-      if (isShortPrompt) return [MODELS.lite, MODELS.fast, MODELS.legacy];
-      if (isComplexPrompt) return [MODELS.advanced, MODELS.proFallback, MODELS.omni, MODELS.balanced];
-      return [MODELS.balanced, MODELS.omni, MODELS.fast, MODELS.lite]; // Balanced default
+      // 3. Prompt Complexity Detection
+      if (isShortPrompt) {
+        return [
+          MODELS.v35FlashLite,
+          MODELS.v31FlashLite,
+          MODELS.v25FlashLite,
+          MODELS.gemma426b,
+          MODELS.v3Flash
+        ];
+      }
+      if (isComplexPrompt) {
+        return [
+          MODELS.v36Flash,
+          MODELS.v35Flash,
+          MODELS.v31Pro,
+          MODELS.gemma431b,
+          MODELS.v35FlashLite
+        ];
+      }
+      // Balanced Default fallback chain
+      return [
+        MODELS.v36Flash,
+        MODELS.v35FlashLite,
+        MODELS.v31FlashLite,
+        MODELS.v35Flash,
+        MODELS.gemma431b,
+        MODELS.v3Flash,
+        MODELS.v25Flash,
+        MODELS.gemma426b
+      ];
   }
 }
 
@@ -104,7 +186,7 @@ exports.aiGateway = onCall(
     // Determine Model Priority for this specific request
     let modelPriority = determineRoutingPriority(task, qualityPreference, prompt);
     if (forceLite) {
-      modelPriority = [MODELS.lite];
+      modelPriority = [MODELS.v35FlashLite, MODELS.v31FlashLite, MODELS.gemma426b, MODELS.v25FlashLite];
     }
 
     // Phase 2: Caching & Deduplication (Strategies 4, 9)
@@ -193,24 +275,34 @@ exports.aiGateway = onCall(
             console.error("[AI Gateway] Failed to save to cache:", err);
           }
 
-          // Strategy 14 & 10: Log Analytics and Update Budget
+          // Strategy 14 & 10: Cost-Optimized Telemetry (Single Doc Rolling Buffer)
+          // Reduces write operations to 1 atomic update per call & eliminates collection bloat
           const logAnalytics = async () => {
             try {
-              await db.collection("ai_analytics").add({
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                userId: request.auth.uid,
+              const userName = request.auth.token?.name || request.auth.token?.email || request.auth.uid?.slice(0, 8) || 'Student';
+              const logEntry = {
+                id: crypto.randomBytes(6).toString('hex'),
+                user: userName,
                 task: task || 'general',
                 modelUsed: currentModel,
                 cached: false,
-                attempts: attempts + 1
-              });
+                attempts: attempts + 1,
+                timeIso: new Date().toISOString()
+              };
 
-              await budgetRef.set({
-                requests: admin.firestore.FieldValue.increment(1),
+              const liveDashRef = db.collection("ai_telemetry").doc("live_dashboard");
+              const snap = await liveDashRef.get();
+              let logs = snap.exists && Array.isArray(snap.data()?.recentLogs) ? snap.data().recentLogs : [];
+              logs.unshift(logEntry);
+              if (logs.length > 15) logs = logs.slice(0, 15);
+
+              await liveDashRef.set({
+                requestsToday: admin.firestore.FieldValue.increment(1),
+                recentLogs: logs,
                 lastUpdated: admin.firestore.FieldValue.serverTimestamp()
               }, { merge: true });
             } catch (err) {
-              console.error("[AI Gateway] Analytics logging failed:", err);
+              console.error("[AI Gateway] Optimized telemetry update failed:", err);
             }
           };
           logAnalytics(); // fire and forget
@@ -283,41 +375,47 @@ exports.orionTTSGateway = onCall(
       throw new HttpsError("invalid-argument", "Missing text for TTS.");
     }
 
-    try {
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
-      
-      const config = {
-        responseModalities: ['audio'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Kore' // Natural, warm voice
-            }
+    const ttsModels = [MODELS.tts31, MODELS.tts25];
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+    
+    const config = {
+      responseModalities: ['audio'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName: 'Kore' // Natural, warm voice
           }
         }
-      };
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-tts-preview',
-        contents: text,
-        config: config,
-      });
-
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      const inlineData = parts.find(p => p.inlineData)?.inlineData;
-
-      if (!inlineData || !inlineData.data) {
-        throw new Error('No audio data returned from Gemini TTS API.');
       }
+    };
 
-      return {
-        mimeType: inlineData.mimeType || 'audio/wav',
-        data: inlineData.data // base64 string
-      };
+    let lastTtsError = null;
+    for (const ttsModel of ttsModels) {
+      try {
+        console.log(`[TTS Gateway] Requesting speech with model ${ttsModel}...`);
+        const response = await ai.models.generateContent({
+          model: ttsModel,
+          contents: text,
+          config: config,
+        });
 
-    } catch (error) {
-      console.error("[TTS Gateway] Error generating speech:", error);
-      throw new HttpsError("internal", "Failed to generate speech audio.");
+        const parts = response.candidates?.[0]?.content?.parts || [];
+        const inlineData = parts.find(p => p.inlineData)?.inlineData;
+
+        if (inlineData && inlineData.data) {
+          return {
+            mimeType: inlineData.mimeType || 'audio/wav',
+            data: inlineData.data, // base64 string
+            modelUsed: ttsModel
+          };
+        }
+      } catch (err) {
+        console.warn(`[TTS Gateway] Failed with ${ttsModel}:`, err.message);
+        lastTtsError = err;
+      }
     }
+
+    console.error("[TTS Gateway] All TTS models failed:", lastTtsError);
+    throw new HttpsError("internal", "Failed to generate speech audio.");
   }
 );

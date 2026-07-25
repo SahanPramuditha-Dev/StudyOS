@@ -289,7 +289,7 @@ const GradesOverview = ({ gcSettings, selectedYear = 'All' }) => {
            </h3>
            <div className="flex-1 min-h-[250px] w-full mt-2 flex items-center justify-center">
              {displayChartData.length > 0 ? (
-               <ResponsiveContainer width="100%" height="100%">
+               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                  <LineChart data={displayChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-slate-200 dark:text-slate-800" />
                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} dy={10} />

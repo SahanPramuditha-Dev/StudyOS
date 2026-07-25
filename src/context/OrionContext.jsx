@@ -4,6 +4,7 @@ import { useStorage } from '../hooks/useStorage';
 import { orionSounds, setOrionMuted } from '../utils/orionSounds';
 import { getOrionContextMessage } from '../services/orionBrain';
 import { OrionTTS, OrionSTT } from '../utils/orionVoice';
+import { useAuth } from './AuthContext';
 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -647,11 +648,28 @@ export const OrionProvider = ({ children }) => {
   }, [setOrionData, speak]);
 
   // ─── Computed Values ─────────────────────────────────────────────────────────
+  const { profile } = useAuth() || {};
 
   const currentLevel = getCurrentLevel(orionData.xp || 0);
   const nextLevel = getNextLevel(orionData.xp || 0);
   const xpProgress = getXpProgress(orionData.xp || 0);
-  const pageContext = PAGE_CONTEXTS[location.pathname] || PAGE_CONTEXTS['/dashboard'];
+  
+  const baseContext = PAGE_CONTEXTS[location.pathname] || PAGE_CONTEXTS['/dashboard'];
+  const userRole = profile?.role || 'user';
+  
+  const roleContextMap = {
+    educator: 'mentor & curriculum assistant',
+    team_lead: 'workspace coordinator',
+    admin: 'system & platform analyst',
+    superadmin: 'platform owner consultant',
+    restricted: 'read-only study guide'
+  };
+
+  const pageContext = {
+    ...baseContext,
+    role: roleContextMap[userRole] ? `${roleContextMap[userRole]} (${baseContext.role})` : baseContext.role,
+    userRole
+  };
 
   // ─── Context Value ───────────────────────────────────────────────────────────
 

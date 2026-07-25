@@ -346,7 +346,7 @@ const SubjectsTab = ({ gcSettings, selectedYear = 'All' }) => {
                             Add at least 2 graded assessments to unlock trend analytics.
                          </div>
                       ) : (
-                         <ResponsiveContainer width="100%" height="100%">
+                         <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                             <LineChart data={[...selectedCourse.assessments].sort((a,b) => new Date(a.date) - new Date(b.date)).map((a, i) => ({
                                name: a.title,
                                score: a.score.includes('/') ? (Number(a.score.split('/')[0]) / Number(a.score.split('/')[1])) * 100 : Number(a.score)

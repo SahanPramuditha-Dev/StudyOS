@@ -68,9 +68,7 @@ export const ReminderProvider = ({ children }) => {
   
   // 1. State Management (Synced with useStorage)
   const [reminders, setReminders] = useStorage(STORAGE_KEYS.REMINDERS, []);
-  const [notifications, setNotifications] = useStorage(STORAGE_KEYS.NOTIFICATIONS, [
-    { id: 1, title: 'Welcome to StudyOs!', message: 'Start by adding your first course.', time: 'Just now', type: 'info', read: false, timestamp: new Date().toISOString(), route: '/courses' },
-  ]);
+  const [notifications, setNotifications] = useStorage(STORAGE_KEYS.NOTIFICATIONS, []);
   const [notificationSettings] = useStorage(STORAGE_KEYS.NOTIF_SETTINGS, {
     enabled: true,
     reminders: true,

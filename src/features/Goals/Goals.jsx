@@ -15,13 +15,21 @@ import {
   Clock,
   Calendar,
   Search,
-  Filter,
   BarChart3,
   X,
-  Zap,
-  Check,
   Settings
 } from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  ReferenceLine, 
+  Cell 
+} from 'recharts';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { refineSMARTGoal } from '../../services/aiService';
@@ -48,7 +56,6 @@ const Goals = () => {
     academicGoals: []
   });
 
-  const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
 
   // UI state
@@ -60,7 +67,6 @@ const Goals = () => {
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [sessionInput, setSessionInput] = useState(30);
 
   // New goal form state
   const [newGoalForm, setNewGoalForm] = useState({
@@ -101,7 +107,7 @@ const Goals = () => {
     };
   }, [goalsState]);
 
-  // 7-day study activity breakdown
+  // 7-day study activity breakdown for Recharts
   const weekEntries = useMemo(() => {
     const items = [];
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -110,7 +116,7 @@ const Goals = () => {
       d.setDate(d.getDate() - i);
       const key = toDateKey(d);
       items.push({
-        dayLabel: days[d.getDay()],
+        name: days[d.getDay()],
         date: key,
         minutes: Number(normalized.sessionsByDate[key] || 0),
         isToday: key === todayKey
@@ -122,6 +128,7 @@ const Goals = () => {
   const todayMinutes = Number(normalized.sessionsByDate[todayKey] || 0);
   const weeklyMinutes = weekEntries.reduce((acc, item) => acc + item.minutes, 0);
   const weeklySessions = weekEntries.filter((item) => item.minutes > 0).length;
+  const avgDailyMinutes = Math.round(weeklyMinutes / 7);
 
   const dailyProgress = Math.min(100, Math.round((todayMinutes / normalized.dailyStudyGoal) * 100));
   const weeklyMinutesProgress = Math.min(
@@ -152,7 +159,7 @@ const Goals = () => {
         }
       };
     });
-    toast.success(`Logged ${mins} minutes study focus!`);
+    toast.success(`Logged ${mins} minutes focus time!`);
   };
 
   const handleSMARTGoal = async () => {
@@ -239,11 +246,10 @@ const Goals = () => {
     toast.success('Goal deleted');
   };
 
-  // Filtered goals combining activeGoals & academicGoals for unified listing
+  // Filtered goals array
   const filteredGoals = useMemo(() => {
     let combined = [];
 
-    // Map Active SMART/Manual Goals
     normalized.activeGoals.forEach(g => {
       combined.push({
         ...g,
@@ -252,7 +258,6 @@ const Goals = () => {
       });
     });
 
-    // Map Academic Goals from Grade Center
     normalized.academicGoals.forEach(ag => {
       const progress = ag.targetValue > 0 ? Math.min(100, Math.round((ag.currentValue / ag.targetValue) * 100)) : 0;
       combined.push({
@@ -269,13 +274,11 @@ const Goals = () => {
       });
     });
 
-    // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       combined = combined.filter(g => g.title.toLowerCase().includes(q));
     }
 
-    // Category Filter
     if (selectedCategory === 'SMART Goals') {
       combined = combined.filter(g => g.displayCategory === 'SMART');
     } else if (selectedCategory === 'Academic Targets') {
@@ -289,7 +292,6 @@ const Goals = () => {
     return combined;
   }, [normalized.activeGoals, normalized.academicGoals, searchQuery, selectedCategory]);
 
-  // Statistics Cards Definitions
   const statCards = [
     {
       label: 'DAILY GOAL',
@@ -350,7 +352,7 @@ const Goals = () => {
           </p>
         </div>
 
-        {/* Top Right Action Bar */}
+        {/* Action Bar */}
         <div className="flex items-center gap-3 self-end md:self-auto flex-wrap">
           {streak?.current > 0 && (
             <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 rounded-2xl">
@@ -437,7 +439,7 @@ const Goals = () => {
         </div>
       </div>
 
-      {/* 4. Weekly Study Activity Chart & Quick Log Panel */}
+      {/* 4. Weekly Study Activity Chart & Quick Log Panel (Recharts Upgrade) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-8 shadow-sm space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -445,19 +447,29 @@ const Goals = () => {
               <BarChart3 size={24} className="text-sky-500" />
               Weekly Study Activity & Focus Log
             </h3>
-            <p className="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wider">
-              Daily minutes studied vs target ({normalized.dailyStudyGoal}m daily target)
-            </p>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                Target: {normalized.dailyStudyGoal}m / day
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-xs font-bold text-sky-500 uppercase tracking-wider">
+                Weekly Total: {weeklyMinutes}m
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider">
+                Daily Avg: {avgDailyMinutes}m
+              </span>
+            </div>
           </div>
 
-          {/* Inline Quick Log Buttons */}
+          {/* Quick Log Buttons */}
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-400 mr-1 hidden sm:inline">Quick Log:</span>
             {[15, 30, 60].map(mins => (
               <button
                 key={mins}
                 onClick={() => logSession(mins)}
-                className="px-3.5 py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-800 rounded-xl text-xs font-black text-slate-700 dark:text-slate-300 transition-all active:scale-95"
+                className="px-3.5 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-500 border border-sky-500/20 rounded-xl text-xs font-black transition-all active:scale-95"
               >
                 +{mins}m
               </button>
@@ -465,35 +477,87 @@ const Goals = () => {
           </div>
         </div>
 
-        {/* 7-Day Bar Chart Visualization */}
-        <div className="grid grid-cols-7 gap-3 pt-4 items-end h-44 border-b border-slate-100 dark:border-slate-800/80 pb-4">
-          {weekEntries.map((entry, idx) => {
-            const heightPercent = Math.min(100, Math.round((entry.minutes / normalized.dailyStudyGoal) * 100));
-            return (
-              <div key={idx} className="flex flex-col items-center gap-2 h-full justify-end group">
-                <span className="text-[10px] font-black text-slate-400 group-hover:text-sky-500 transition-colors">
-                  {entry.minutes}m
-                </span>
-                <div className="w-full max-w-[48px] bg-slate-100 dark:bg-slate-950 h-32 rounded-2xl p-1 flex items-end">
-                  <motion.div 
-                    initial={{ height: 0 }}
-                    animate={{ height: `${heightPercent}%` }}
-                    transition={{ duration: 0.5, delay: idx * 0.05 }}
-                    className={`w-full rounded-xl ${
-                      entry.isToday 
-                        ? 'bg-sky-500 shadow-md shadow-sky-500/30' 
-                        : heightPercent >= 100 
-                          ? 'bg-emerald-500' 
-                          : 'bg-indigo-500/70 dark:bg-indigo-500/50'
-                    }`}
+        {/* Premium Recharts Visualization */}
+        <div className="h-60 w-full pt-4">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <BarChart data={weekEntries} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="goalBarGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0ea5e9" stopOpacity={1}/>
+                  <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.6}/>
+                </linearGradient>
+                <linearGradient id="goalBarCompleted" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={1}/>
+                  <stop offset="100%" stopColor="#34d399" stopOpacity={0.6}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.15)" />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={({ x, y, payload }) => {
+                  const item = weekEntries[payload.index];
+                  return (
+                    <text x={x} y={y + 15} textAnchor="middle" fill={item?.isToday ? '#0ea5e9' : '#94a3b8'} fontSize={12} fontWeight={800}>
+                      {payload.value}
+                    </text>
+                  );
+                }}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }}
+                unit="m"
+              />
+              <Tooltip 
+                cursor={{ fill: 'rgba(14, 165, 233, 0.06)', radius: 12 }}
+                content={({ active, payload }) => {
+                  if (!active || !payload || !payload.length) return null;
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-xl space-y-1">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">{data.date} ({data.name})</p>
+                      <p className="text-sm font-black text-sky-500">{data.minutes} Minutes Studied</p>
+                      {data.minutes >= normalized.dailyStudyGoal && (
+                        <span className="inline-block text-[9px] font-black text-emerald-500 uppercase bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                          Target Reached! 🎉
+                        </span>
+                      )}
+                    </div>
+                  );
+                }}
+              />
+              <ReferenceLine 
+                y={normalized.dailyStudyGoal} 
+                stroke="#0ea5e9" 
+                strokeDasharray="5 5" 
+                strokeWidth={2}
+                label={{ 
+                  value: `Daily Target: ${normalized.dailyStudyGoal}m`, 
+                  fill: '#0ea5e9', 
+                  fontSize: 11, 
+                  fontWeight: 800,
+                  position: 'top' 
+                }} 
+              />
+              <Bar 
+                dataKey="minutes" 
+                radius={[12, 12, 4, 4]} 
+                barSize={36}
+                minPointSize={6}
+                animationDuration={1000}
+              >
+                {weekEntries.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={entry.minutes >= normalized.dailyStudyGoal ? 'url(#goalBarCompleted)' : 'url(#goalBarGradient)'} 
                   />
-                </div>
-                <span className={`text-xs font-black ${entry.isToday ? 'text-sky-500' : 'text-slate-400'}`}>
-                  {entry.dayLabel}
-                </span>
-              </div>
-            );
-          })}
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

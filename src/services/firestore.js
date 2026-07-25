@@ -23,11 +23,14 @@ import { db, auth, functions } from './firebase';
 import { computeUsageMetrics } from './usageMetrics';
 import { StorageService, STORAGE_KEYS } from './storage';
 
+import { PREDEFINED_ROLES } from '../constants/predefinedRoles';
+
 const userDataCache = new Map();
 const userProfileCache = new Map();
 const userDataReadPromises = new Map();
 const chatRoomReadCache = new Map();
 const usersByEmailsCache = new Map();
+let customRolesCache = null;
 
 const serializeValue = (value) => {
   try {
@@ -339,10 +342,12 @@ class FirestoreService {
             });
             if (
               existingData.usage?.fileCount !== usage.displayFileCount ||
-              Number(existingData.usage?.storageUsedMB || 0) !== Number(usage.displayStorageUsedMB || 0)
+              Number(existingData.usage?.totalBytes || 0) !== Number(usage.totalBytes || 0)
             ) {
               await updateDoc(userRef, {
                 'usage.fileCount': usage.displayFileCount,
+                'usage.assetCount': usage.displayFileCount,
+                'usage.totalBytes': usage.totalBytes,
                 'usage.storageUsedMB': Number(usage.displayStorageUsedMB.toFixed(3)),
                 'usage.updatedAt': new Date().toISOString()
               });
@@ -351,6 +356,8 @@ class FirestoreService {
                 usage: {
                   ...(existingData.usage || {}),
                   fileCount: usage.displayFileCount,
+                  assetCount: usage.displayFileCount,
+                  totalBytes: usage.totalBytes,
                   storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
                   updatedAt: new Date().toISOString()
                 }
@@ -602,17 +609,20 @@ class FirestoreService {
             cloudUsage
           });
           const nextUsage = {
+            totalBytes: usage.totalBytes,
+            assetCount: usage.displayFileCount,
             storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
             fileCount: usage.displayFileCount,
             updatedAt: now
           };
           const currentUsage = {
+            totalBytes: Number(profileEntry?.data?.usage?.totalBytes || 0),
             storageUsedMB: Number(profileEntry?.data?.usage?.storageUsedMB || 0),
             fileCount: Number(profileEntry?.data?.usage?.fileCount || 0)
           };
 
           if (
-            currentUsage.storageUsedMB !== nextUsage.storageUsedMB ||
+            currentUsage.totalBytes !== nextUsage.totalBytes ||
             currentUsage.fileCount !== nextUsage.fileCount
           ) {
             usageUpdate = { userRef, nextUsage };
@@ -717,16 +727,26 @@ class FirestoreService {
 
     try {
       if (uniqueKeys.length === 0) {
-        const dataCol = collection(db, 'users', userId, 'data');
-        const snap = await getDocs(dataCol);
-        uniqueKeys = snap.docs.map(d => d.id);
+        try {
+          const dataCol = collection(db, 'users', userId, 'data');
+          const snap = await getDocs(dataCol);
+          uniqueKeys = snap.docs.map(d => d.id);
+        } catch (e) {
+          console.warn('[FirestoreService] Subcollection list failed during deleteUserData:', e);
+        }
       }
 
-      await Promise.all(
-        uniqueKeys.map(async (key) => {
-          await deleteDoc(doc(db, 'users', userId, 'data', key));
-        })
-      );
+      if (uniqueKeys.length > 0) {
+        await Promise.allSettled(
+          uniqueKeys.map(async (key) => {
+            try {
+              await deleteDoc(doc(db, 'users', userId, 'data', key));
+            } catch (e) {
+              console.warn(`[FirestoreService] Could not delete subcollection doc ${key}:`, e);
+            }
+          })
+        );
+      }
 
       await deleteDoc(doc(db, 'users', userId));
       userProfileCache.delete(userId);
@@ -945,6 +965,21 @@ class FirestoreService {
     });
   }
 
+  static async updateChatRoomSettings(roomId, updates = {}) {
+    if (!roomId) return;
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    await updateDoc(roomRef, {
+      ...updates,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  static async deleteChatRoom(roomId) {
+    if (!roomId) return;
+    const roomRef = doc(db, 'chat_rooms', roomId);
+    await deleteDoc(roomRef);
+  }
+
   static async removeChatRoomMember(roomId, memberEmail = '') {
     const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
     if (!roomId || !normalizedEmail) return;
@@ -1105,6 +1140,8 @@ class FirestoreService {
           lastMessageAt: new Date().toISOString(),
           lastMessageSenderEmail: normalizedEmail,
           lastMessageSenderUid: senderUid,
+          lastMessageSenderName: senderName || 'StudyOs User',
+          lastMessageSenderAvatar: senderAvatar || '',
           lastMessageHasAttachments: hasAttachments,
           lastMessageAttachmentCount: hasAttachments ? attachments.length : 0,
           lastMessageMentionEmails: mentionEmails,
@@ -1146,6 +1183,34 @@ class FirestoreService {
     });
   }
 
+  static async updateChatMessage(roomId, messageId, newText) {
+    if (!roomId || !messageId) return;
+    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
+    await updateDoc(messageRef, {
+      text: String(newText || '').trim(),
+      edited: true,
+      editedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  static async deleteChatMessage(roomId, messageId) {
+    if (!roomId || !messageId) return;
+    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
+    await deleteDoc(messageRef);
+  }
+
+  static async togglePinChatMessage(roomId, messageId, isPinned) {
+    if (!roomId || !messageId) return;
+    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
+    await updateDoc(messageRef, {
+      pinned: !isPinned,
+      pinnedAt: !isPinned ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+
   static async markChatRoomRead(roomId, userEmail) {
     const normalizedEmail = FirestoreService.normalizeChatEmail(userEmail);
     if (!roomId || !normalizedEmail) return;
@@ -1182,31 +1247,54 @@ class FirestoreService {
       console.error('[FirestoreService] Error syncing gamification state:', error);
     }
   }
-  static async logUserSession(userId, deviceInfo) {
-    if (!userId) return;
+  static async logUserSession(userId, deviceInfo = {}) {
+    if (!userId) return null;
+    if (!auth.currentUser || auth.currentUser.uid !== userId) {
+      return null;
+    }
     try {
-      const docRef = collection(db, 'users', userId, 'sessions');
+      let sessionId = sessionStorage.getItem('studyos_session_id');
+      if (!sessionId) {
+        sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        sessionStorage.setItem('studyos_session_id', sessionId);
+      }
+      
+      const sessionRef = doc(db, 'users', userId, 'sessions', sessionId);
       const now = new Date().toISOString();
-      await addDoc(docRef, {
-        ...deviceInfo,
+      const deviceName = deviceInfo.device || (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser');
+      
+      await setDoc(sessionRef, {
+        id: sessionId,
+        device: deviceName,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        ip: deviceInfo.ip || 'Active Client',
         createdAt: now,
         lastActive: now,
         isActive: true
-      });
+      }, { merge: true });
+      
+      return sessionId;
     } catch (e) {
-      console.warn('Failed to log user session:', e);
+      if (e?.code !== 'permission-denied') {
+        console.warn('Failed to log user session:', e);
+      }
+      return null;
     }
   }
 
   static async getActiveSessions(userId) {
-    if (!userId) return [];
+    if (!userId || !auth.currentUser) return [];
     try {
       const sessionsRef = collection(db, 'users', userId, 'sessions');
-      const q = query(sessionsRef, where('isActive', '==', true), orderBy('lastActive', 'desc'), limit(10));
+      const q = query(sessionsRef, where('isActive', '==', true));
       const snap = await getDocs(q);
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      docs.sort((a, b) => new Date(b.lastActive || b.createdAt || 0) - new Date(a.lastActive || a.createdAt || 0));
+      return docs;
     } catch (e) {
-      console.warn('Failed to get active sessions:', e);
+      if (e?.code !== 'permission-denied') {
+        console.warn('Failed to get active sessions:', e);
+      }
       return [];
     }
   }
@@ -1245,9 +1333,14 @@ class FirestoreService {
 
   static async getCustomRoles() {
     try {
+      if (customRolesCache && (Date.now() - customRolesCache.updatedAt < 60 * 60 * 1000)) {
+        return customRolesCache.data;
+      }
       const q = query(collection(db, 'roles'));
       const snap = await getDocs(q);
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const roles = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      customRolesCache = { data: roles, updatedAt: Date.now() };
+      return roles;
     } catch (e) {
       console.warn('Failed to get custom roles:', e);
       return [];
@@ -1260,6 +1353,7 @@ class FirestoreService {
         ...roleData,
         createdAt: new Date().toISOString()
       });
+      customRolesCache = null;
       return docRef.id;
     } catch (e) {
       console.warn('Failed to create custom role:', e);
@@ -1274,6 +1368,7 @@ class FirestoreService {
         ...updates,
         updatedAt: new Date().toISOString()
       });
+      customRolesCache = null;
     } catch (e) {
       console.warn('Failed to update custom role:', e);
       throw e;
@@ -1284,8 +1379,34 @@ class FirestoreService {
     if (!roleId) return;
     try {
       await deleteDoc(doc(db, 'roles', roleId));
+      customRolesCache = null;
     } catch (e) {
       console.warn('Failed to delete custom role:', e);
+      throw e;
+    }
+  }
+
+  static async seedDefaultRoles() {
+    try {
+      const batch = writeBatch(db);
+      for (const tpl of PREDEFINED_ROLES) {
+        const roleRef = doc(collection(db, 'roles'));
+        batch.set(roleRef, {
+          name: tpl.name,
+          role: tpl.role,
+          description: tpl.description,
+          isSystem: true,
+          badgeColor: tpl.badgeColor,
+          modules: tpl.modules,
+          actions: tpl.actions,
+          createdAt: new Date().toISOString()
+        });
+      }
+      await batch.commit();
+      customRolesCache = null;
+      return true;
+    } catch (e) {
+      console.warn('Failed to seed default roles:', e);
       throw e;
     }
   }
@@ -1305,9 +1426,24 @@ class FirestoreService {
 
   static async getAuditLogs(limitCount = 50) {
     try {
-      const q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(limitCount));
-      const snap = await getDocs(q);
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const logsRef = collection(db, 'audit_logs');
+      try {
+        const q = query(logsRef, orderBy('performedAt', 'desc'), limit(limitCount));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        }
+      } catch (_) {
+        // Fallback if index on performedAt is pending or field missing
+      }
+      const fallbackQuery = query(logsRef, limit(limitCount));
+      const snap = await getDocs(fallbackQuery);
+      const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      return docs.sort((a, b) => {
+        const tA = new Date(a.performedAt || a.timestamp || a.createdAt || 0).getTime();
+        const tB = new Date(b.performedAt || b.timestamp || b.createdAt || 0).getTime();
+        return tB - tA;
+      });
     } catch (e) {
       console.warn('Failed to get audit logs:', e);
       return [];
@@ -1341,14 +1477,61 @@ class FirestoreService {
     }
   }
 
-  static async updatePermissionRequest(requestId, status, reviewerId) {
+  static async requestRoleUpgrade({ userId, userEmail, userName, currentRole, targetRole, reason }) {
+    if (!userId) return;
+    try {
+      await addDoc(collection(db, 'permission_requests'), {
+        userId,
+        userEmail: userEmail || '',
+        userName: userName || '',
+        currentRole: currentRole || 'user',
+        targetRole,
+        requestedResource: `Role: ${targetRole}`,
+        reason,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      });
+      await this.logAdminAction('ROLE_REQUESTED', userId, {
+        userEmail,
+        currentRole,
+        targetRole,
+        reason
+      });
+      return true;
+    } catch (e) {
+      console.warn('Failed to request role upgrade:', e);
+      throw e;
+    }
+  }
+
+  static async updatePermissionRequest(requestId, status, reviewerId, requestData = null) {
     if (!requestId) return;
     try {
       await updateDoc(doc(db, 'permission_requests', requestId), {
         status,
-        reviewedBy: reviewerId,
+        reviewedBy: reviewerId || auth.currentUser?.uid || 'admin',
         reviewedAt: new Date().toISOString()
       });
+
+      // If approved and contains targetRole and userId, update user profile automatically!
+      if (status === 'approved' && requestData?.userId && requestData?.targetRole) {
+        const userRef = doc(db, 'users', requestData.userId);
+        await updateDoc(userRef, {
+          role: requestData.targetRole,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      await this.logAdminAction(
+        status === 'approved' ? 'ROLE_REQUEST_APPROVED' : 'ROLE_REQUEST_REJECTED',
+        reviewerId || auth.currentUser?.uid || 'admin',
+        {
+          requestId,
+          status,
+          targetUserId: requestData?.userId,
+          targetRole: requestData?.targetRole
+        }
+      );
     } catch (e) {
       console.warn('Failed to update permission request:', e);
       throw e;

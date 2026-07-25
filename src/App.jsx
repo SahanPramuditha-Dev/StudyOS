@@ -8,6 +8,7 @@ import { Bell, Menu, Moon, Search, Shield, Sun, XCircle, Circle } from 'lucide-r
 import Sidebar from './components/Sidebar';
 import RealtimePresence from './components/RealtimePresence';
 import { OrionCompanion } from './components/Orion';
+import { NavbarRoleSelector, RoleSimulationBanner } from './components/common/RolePreviewBar';
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './context/ThemeContext';
 import { useReminders } from './context/ReminderContext';
@@ -526,7 +527,7 @@ const App = () => {
         />
         <div className="flex flex-1 flex-col h-screen overflow-hidden min-h-0 print:h-auto print:overflow-visible">
           {/* Header */}
-          <header className="print:hidden relative z-[10002] flex-shrink-0 flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <header className="print:hidden relative z-30 flex-shrink-0 flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             <div className="flex items-center gap-4">
               <button
                 className="lg:hidden text-slate-600 dark:text-slate-400"
@@ -568,7 +569,7 @@ const App = () => {
                       return newValue;
                     });
                   }}
-                  className="relative z-[10003] pointer-events-auto p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  className="relative z-30 pointer-events-auto p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                   aria-label="Notifications"
                   title={`Notifications (${unreadCount})`}
                 >
@@ -754,11 +755,14 @@ const App = () => {
                   )}
                 {/* </AnimatePresence> */}
               </div>
-              <button onClick={logout} className="px-4 py-2 rounded-full bg-primary-500 text-white font-semibold">
+              <NavbarRoleSelector />
+              <button onClick={logout} className="px-4 py-2 rounded-full bg-primary-500 text-white font-semibold text-xs sm:text-sm">
                 Logout
               </button>
             </div>
           </header>
+
+          <RoleSimulationBanner />
 
           {platformSettings.globalAnnouncement && (
             <div className="w-full bg-primary-500 text-white text-center py-2 px-4 text-sm font-bold z-10 shadow-sm shrink-0">

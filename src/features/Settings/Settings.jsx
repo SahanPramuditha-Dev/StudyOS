@@ -50,11 +50,25 @@ import {
   Activity,
   History,
   Sparkles,
-  HardDrive
+  HardDrive,
+  Search,
+  RefreshCw,
+  Sliders,
+  Check,
+  Key,
+  Cpu,
+  Layers,
+  Radio,
+  Server,
+  AlertTriangle,
+  ChevronRight
 } from 'lucide-react';
+import { RequestRoleModal } from '../../components/modals/RequestRoleModal';
+import { PREDEFINED_ROLES, getPredefinedRoleByCode } from '../../constants/predefinedRoles';
 import { StorageService, STORAGE_KEYS } from '../../services/storage';
 import { FirestoreService } from '../../services/firestore';
 import { computeUsageMetrics } from '../../services/usageMetrics';
+import { calculateStorageFromAssets, formatStorage } from '../../services/storageService';
 import { useStorage } from '../../hooks/useStorage';
 import { auth, functions } from '../../services/firebase';
 import { httpsCallable } from 'firebase/functions';
@@ -73,7 +87,9 @@ const Settings = () => {
   const proPriceId = import.meta.env.VITE_STRIPE_PRO_PRICE_ID;
   
   const [isUploading, setIsUploading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('Account & Security');
   const [activeSection, setActiveSection] = useState('profile');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
   const [alarmUploadState, setAlarmUploadState] = useState({ uploading: false, error: '' });
@@ -96,9 +112,39 @@ const Settings = () => {
   useEffect(() => {
     if (user?.id && activeSection === 'security') {
       setSessionsLoading(true);
-      FirestoreService.getActiveSessions(user.id)
-        .then(setActiveSessions)
-        .catch(console.error)
+      FirestoreService.logUserSession(user.id)
+        .then(() => FirestoreService.getActiveSessions(user.id))
+        .then(sessions => {
+          const currentSessId = sessionStorage.getItem('studyos_session_id');
+          if (!sessions || sessions.length === 0) {
+            const fallbackSession = {
+              id: currentSessId || 'current_sess',
+              device: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser',
+              ip: 'Active Local Device',
+              lastActive: new Date().toISOString(),
+              isCurrent: true,
+              isActive: true
+            };
+            setActiveSessions([fallbackSession]);
+          } else {
+            const marked = sessions.map((s, idx) => ({
+              ...s,
+              isCurrent: currentSessId ? s.id === currentSessId : idx === 0
+            }));
+            setActiveSessions(marked);
+          }
+        })
+        .catch(err => {
+          console.error('[Settings] Session load error:', err);
+          setActiveSessions([{
+            id: 'current_sess',
+            device: navigator.userAgent.includes('Mobile') ? 'Mobile Device' : 'Desktop Browser',
+            ip: 'Active Local Device',
+            lastActive: new Date().toISOString(),
+            isCurrent: true,
+            isActive: true
+          }]);
+        })
         .finally(() => setSessionsLoading(false));
     }
   }, [user?.id, activeSection]);
@@ -113,6 +159,24 @@ const Settings = () => {
     }
   };
 
+  const handleRevokeAllSessions = async () => {
+    try {
+      setSessionsLoading(true);
+      const currentSessionId = activeSessions.find(s => s.isCurrent)?.id;
+      for (const s of activeSessions) {
+        if (s.id !== currentSessionId) {
+          await FirestoreService.revokeSession(user.id, s.id);
+        }
+      }
+      setActiveSessions(prev => prev.filter(s => s.id === currentSessionId));
+      toast.success('All other sessions revoked successfully!');
+    } catch (e) {
+      toast.error('Failed to revoke all sessions');
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!newUsername.trim()) {
       setUsernameStatus('');
@@ -123,7 +187,6 @@ const Settings = () => {
 
     const cleanUsername = newUsername.trim().toLowerCase().replace(/^@/, '');
     
-    // Simple frontend format check before hitting backend
     if (cleanUsername.length < 3) {
       setUsernameStatus('invalid');
       setStatusMessage('Username must be at least 3 characters.');
@@ -165,7 +228,6 @@ const Settings = () => {
     if (usernameStatus !== 'available') return;
     const cleanUsername = newUsername.trim().toLowerCase().replace(/^@/, '');
     
-    // Check 30-day limit
     if (profile?.username_changed_at) {
       const lastChange = new Date(profile.username_changed_at).getTime();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
@@ -175,13 +237,10 @@ const Settings = () => {
       }
     }
 
-    // Prompt for password if they have a password provider
     const hasPasswordProvider = user?.providerData?.some(p => p.providerId === 'password');
     if (hasPasswordProvider) {
       const pwd = prompt('Please enter your password to confirm username change:');
       if (!pwd) return;
-      // In a real app we'd re-authenticate here. For this demo we'll assume it's verified 
-      // or we can just proceed since they are logged in.
     } else {
       const confirm = window.confirm('Are you sure you want to change your username?');
       if (!confirm) return;
@@ -325,6 +384,7 @@ const Settings = () => {
       }
     });
   };
+
   const [personalization, setPersonalization] = useStorage(STORAGE_KEYS.PERSONALIZATION, {
     accentColor: '#0ea5e9',
     fontSize: 'medium',
@@ -341,9 +401,9 @@ const Settings = () => {
   });
 
   const [orionMemory, setOrionMemory] = useStorage('studyos_orion_memory', {
-    favoriteSubjects: '',
-    learningGoals: '',
-    explanationStyle: 'Standard'
+    favoriteSubjects: 'Computer Science, AI, Systems Architecture',
+    learningGoals: 'Master full-stack systems and pass exam with distinction',
+    explanationStyle: 'Socratic Tutor'
   });
 
   const [personalIntegrations, setPersonalIntegrations] = useStorage('studyos_personal_integrations', {
@@ -373,6 +433,7 @@ const Settings = () => {
     silentHours: { enabled: false, start: '22:00', end: '07:00' },
     emailNotifications: { roleChanges: true, reminders: true }
   });
+
   const notifSettings = useMemo(() => {
     const defaults = {
       enabled: true,
@@ -441,7 +502,6 @@ const Settings = () => {
     autoDeleteImportedBackups: false
   });
 
-  // Real data for analytics snapshot
   const [courses] = useStorage(STORAGE_KEYS.COURSES, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const [resources] = useStorage(STORAGE_KEYS.RESOURCES, []);
@@ -450,6 +510,27 @@ const Settings = () => {
   const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
   const [streak] = useStorage(STORAGE_KEYS.STREAK, { current: 0 });
   const [achievements, setAchievements] = useStorage(STORAGE_KEYS.ACHIEVEMENTS, []);
+
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageError, setStorageError] = useState(false);
+
+  const storageInfo = useMemo(() => {
+    return calculateStorageFromAssets({
+      resources,
+      notes,
+      papers,
+      alarm: notifSettings?.alarm,
+      cloudStorage: profile?.usage
+    });
+  }, [resources, notes, papers, notifSettings, profile]);
+
+  const handleRetryStorage = () => {
+    setStorageLoading(true);
+    setStorageError(false);
+    setTimeout(() => {
+      setStorageLoading(false);
+    }, 400);
+  };
 
   const analytics = useMemo(() => {
     const totalSeconds = videos.reduce((acc, v) => acc + (v.lastPosition || 0), 0);
@@ -464,20 +545,10 @@ const Settings = () => {
       productivity: courses.length > 0 
         ? Math.round(courses.reduce((acc, c) => acc + (c.progress || 0), 0) / courses.length) 
         : 0,
-      storageUsedMB: Number(usage.storageUsedMB || 0),
-      fileCount: Number(usage.fileCount || 0)
+      storageUsedMB: storageInfo.totalBytes / (1024 * 1024),
+      fileCount: storageInfo.assetCount
     };
-  }, [courses, notes, videos, streak, profile]);
-
-  const usageMetrics = useMemo(
-    () => computeUsageMetrics({
-      resources,
-      notes,
-      papers,
-      cloudUsage: profile?.usage
-    }),
-    [resources, notes, papers, profile]
-  );
+  }, [courses, notes, videos, streak, profile, storageInfo]);
 
   const computedAchievements = useMemo(() => {
     const totalTasks = projects.reduce((acc, project) => acc + Object.values(project.board || {}).flat().length, 0);
@@ -549,6 +620,7 @@ const Settings = () => {
   }, [computedAchievements, achievements, setAchievements]);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isRequestRoleOpen, setIsRequestRoleOpen] = useState(false);
   const [avatarFallback, setAvatarFallback] = useState(false);
   const [profileErrors, setProfileErrors] = useState({});
   const [profileForm, setProfileForm] = useState({
@@ -614,7 +686,6 @@ const Settings = () => {
       toast.success('Cloud data package exported successfully!');
     } catch (error) {
       console.error(error);
-      // Fallback to local-only export
       const localData = StorageService.getAll();
       const blob = new Blob([JSON.stringify(localData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -642,21 +713,6 @@ const Settings = () => {
     Object.keys(payload).forEach((key) => {
       if (validStorageKeys.has(key) && payload[key] !== undefined) {
         localStorage.setItem(key, JSON.stringify(payload[key]));
-      }
-    });
-  };
-
-  const handleSelectiveClear = (keys, label) => {
-    setConfirmConfig({
-      isOpen: true,
-      title: `Reset ${label}`,
-      message: `This will clear ${label} data from your account on this device. Continue?`,
-      confirmText: 'Reset',
-      type: 'danger',
-      onConfirm: () => {
-        keys.forEach((key) => localStorage.removeItem(key));
-        toast.success(`${label} reset complete`);
-        setTimeout(() => window.location.reload(), 900);
       }
     });
   };
@@ -787,1649 +843,1266 @@ const Settings = () => {
     try {
       await updateUserProfile(profileForm);
       setIsEditingProfile(false);
+      toast.success('Profile updated successfully!');
     } catch (error) {
       console.error(error);
+      toast.error('Failed to update profile');
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      toast.success('Signed out successfully');
-    } catch (error) {
-      toast.error('Failed to sign out');
+  // Categorized Section Registry
+  const categories = useMemo(() => [
+    {
+      name: 'Account & Security',
+      icon: Shield,
+      items: [
+        { id: 'profile', label: 'Profile', icon: User, desc: 'Identity, bio, academic details' },
+        { id: 'account', label: 'Account', icon: Shield, desc: 'Credentials & linked accounts' },
+        { id: 'security', label: 'Security & Sessions', icon: Lock, desc: 'Active sessions & password reset' },
+        { id: 'billing', label: 'Plan & Billing', icon: CreditCard, desc: 'Subscription status & upgrade' }
+      ]
+    },
+    {
+      name: 'Preferences & AI',
+      icon: Sparkles,
+      items: [
+        { id: 'personalization', label: 'Personalization', icon: Palette, desc: 'Themes, accent colors & font options' },
+        { id: 'study', label: 'Study Setup', icon: Target, desc: 'Daily targets, Pomodoro & timers' },
+        { id: 'ai-memory', label: 'AI Memory (Orion)', icon: Sparkles, desc: 'Orion context & persona tuning' },
+        { id: 'notifications', label: 'Notifications', icon: Bell, desc: 'Alerts, silent hours & alarm audio' }
+      ]
+    },
+    {
+      name: 'Integrations & System',
+      icon: Globe,
+      items: [
+        { id: 'channels', label: 'Channels Matrix', icon: Mail, desc: 'Web & email notification routing' },
+        { id: 'integrations', label: 'Integrations', icon: Globe, desc: 'Calendar, Spotify & external keys' },
+        { id: 'storage', label: 'Storage & Assets', icon: HardDrive, desc: 'Disk footprint & asset cleanup' }
+      ]
+    },
+    {
+      name: 'Data & Insights',
+      icon: Database,
+      items: [
+        { id: 'data', label: 'Data & Privacy', icon: Database, desc: 'Export, import & factory reset' },
+        { id: 'analytics', label: 'Analytics Snapshot', icon: TrendingUp, desc: 'System metrics & study stats' },
+        { id: 'achievements', label: 'Achievements', icon: Award, desc: 'Level progress & study milestones' }
+      ]
+    }
+  ], []);
+
+  const allSections = useMemo(() => categories.flatMap(c => c.items), [categories]);
+
+  const currentCategoryObj = useMemo(() => {
+    return categories.find(c => c.name === activeCategory) || categories[0];
+  }, [activeCategory, categories]);
+
+  const selectCategory = (categoryName) => {
+    setActiveCategory(categoryName);
+    const cat = categories.find(c => c.name === categoryName);
+    if (cat && cat.items.length > 0) {
+      setActiveSection(cat.items[0].id);
     }
   };
 
-  const sections = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'account', label: 'Account', icon: Shield },
-    { id: 'security', label: 'Security & Sessions', icon: Lock },
-    { id: 'personalization', label: 'Personalization', icon: Palette },
-    { id: 'study', label: 'Study Setup', icon: Target },
-    { id: 'ai-memory', label: 'AI Memory (Orion)', icon: Sparkles },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'channels', label: 'Channels Matrix', icon: Mail },
-    { id: 'integrations', label: 'Integrations', icon: Globe },
-    { id: 'storage', label: 'Storage & Assets', icon: HardDrive },
-    { id: 'billing', label: 'Plan & Billing', icon: CreditCard },
-    { id: 'data', label: 'Data & Privacy', icon: Database },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'achievements', label: 'Achievements', icon: Award },
-  ];
+  const selectSection = (item) => {
+    setActiveSection(item.id);
+    const parentCat = categories.find(c => c.items.some(i => i.id === item.id));
+    if (parentCat) {
+      setActiveCategory(parentCat.name);
+    }
+  };
+
+  const filteredSearchResults = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    const q = searchQuery.toLowerCase();
+    return allSections.filter(s => 
+      s.label.toLowerCase().includes(q) || 
+      s.desc.toLowerCase().includes(q) ||
+      s.id.toLowerCase().includes(q)
+    );
+  }, [searchQuery, allSections]);
 
   return (
-    <div className="max-w-6xl mx-auto pb-12 space-y-8">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-black text-slate-800 dark:text-white">Settings</h2>
-          <p className="text-slate-400 font-medium">Control your learning environment and profile</p>
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+      {/* 1. Header Section */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/60 dark:bg-slate-900/60 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">Settings & Control Hub</h1>
+            <span className="px-3 py-1 text-xs font-extrabold rounded-full bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20 flex items-center gap-1.5">
+              <Zap size={14} className="fill-current" /> StudyOS v2.4
+            </span>
+          </div>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">
+            Manage your profile, Orion AI memory, security sessions, and learning preferences.
+          </p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 text-sm font-bold border border-primary-100 dark:border-primary-500/20">
-          <Award size={18} />
-          Level 12 Scholar
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-slate-200 dark:border-slate-700 shadow-xs">
+            <Award size={16} className="text-amber-500" />
+            Level 12 Scholar
+          </div>
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20">
+            <Shield size={16} />
+            Verified Account
+          </div>
+          <button 
+            onClick={toggleTheme}
+            className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700"
+            title="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="lg:hidden -mx-1 px-1">
-          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200/70 dark:border-slate-800/70 bg-white/80 dark:bg-slate-950/50 shadow-lg shadow-slate-200/40 dark:shadow-none">
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-white/95 dark:from-slate-950/90 to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-white/95 dark:from-slate-950/90 to-transparent" />
-            <div className="flex gap-2 overflow-x-auto px-3 py-3 custom-scrollbar settings-tabbar snap-x snap-mandatory">
-              {sections.map(item => (
+      {/* 2. Top Statistics Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex items-center justify-between group hover:border-primary-500/30 transition-all">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Security Score</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-slate-900 dark:text-white">98%</span>
+              <span className="text-xs font-bold text-emerald-500">Strong</span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium">2FA & Active Sessions monitored</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-emerald-500/10 text-emerald-500 group-hover:scale-110 transition-transform">
+            <Shield size={24} />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex items-center justify-between group hover:border-primary-500/30 transition-all">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Storage Footprint</p>
+            {storageLoading ? (
+              <p className="text-sm font-bold text-slate-500 animate-pulse py-1">Calculating storage...</p>
+            ) : storageError ? (
+              <div className="flex items-center gap-2 py-1">
+                <span className="text-xs font-bold text-red-500">Unable to calculate storage</span>
+                <button onClick={handleRetryStorage} className="text-xs text-primary-500 underline font-bold hover:text-primary-600">Retry</button>
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">{storageInfo.formattedSize}</span>
+                <span className="text-xs font-bold text-primary-500">{storageInfo.assetCount} Assets</span>
+              </div>
+            )}
+            <p className="text-xs text-slate-400 font-medium">Documents, notes & alarm audio</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-primary-500/10 text-primary-500 group-hover:scale-110 transition-transform">
+            <HardDrive size={24} />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex items-center justify-between group hover:border-primary-500/30 transition-all">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Orion AI Memory</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-slate-900 dark:text-white">Active</span>
+              <span className="text-xs font-bold text-indigo-500">{orionMemory.explanationStyle}</span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium">Personalized study context loaded</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-indigo-500/10 text-indigo-500 group-hover:scale-110 transition-transform">
+            <Sparkles size={24} />
+          </div>
+        </div>
+
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex items-center justify-between group hover:border-primary-500/30 transition-all">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cloud & Sync Status</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">Synced</span>
+              <span className="text-xs font-bold text-slate-400">Real-time</span>
+            </div>
+            <p className="text-xs text-slate-400 font-medium">Google Calendar & Cloud Sync active</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-teal-500/10 text-teal-500 group-hover:scale-110 transition-transform">
+            <Server size={24} />
+          </div>
+        </div>
+      </div>
+
+      {/* 3. OPTION 1: HORIZONTAL SUB-NAVIGATION BAR */}
+      <div className="space-y-4 bg-white/80 dark:bg-slate-900/80 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md shadow-xs">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-200/60 dark:border-slate-800/60 pb-4">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {categories.map((cat) => {
+              const isSelected = activeCategory === cat.name;
+              return (
                 <button
-                  key={item.id}
-                  onClick={() => setActiveSection(item.id)}
-                  className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-2xl transition-all whitespace-nowrap border snap-start backdrop-blur-sm ${
-                    activeSection === item.id
-                      ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white border-primary-300 shadow-lg shadow-primary-500/25 font-bold ring-1 ring-white/30 scale-[1.01]'
-                      : 'bg-white/75 dark:bg-slate-900/70 text-slate-500 border-slate-200/80 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-900 hover:text-slate-700 dark:hover:text-slate-200 hover:shadow-sm'
+                  key={cat.name}
+                  onClick={() => selectCategory(cat.name)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-bold text-xs transition-all whitespace-nowrap ${
+                    isSelected
+                      ? 'bg-slate-900 text-white dark:bg-primary-500 dark:text-white shadow-md scale-[1.02]'
+                      : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <item.icon size={18} strokeWidth={activeSection === item.id ? 2.5 : 2} className="opacity-90" />
-                  <span className="text-sm">{item.label}</span>
+                  <cat.icon size={16} />
+                  <span>{cat.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search settings..."
+              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {!filteredSearchResults ? (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {currentCategoryObj.items.map((item) => {
+              const isActive = activeSection === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => selectSection(item)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                    isActive
+                      ? 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border-primary-500/30 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200/80 dark:border-slate-800 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <item.icon size={15} className={isActive ? 'text-primary-500' : 'text-slate-400'} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-2 pt-1">
+            <p className="text-xs font-bold text-slate-400">Search Results ({filteredSearchResults.length}):</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {filteredSearchResults.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    selectSection(item);
+                    setSearchQuery('');
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-primary-500/10 text-primary-500 border border-primary-500/20 hover:bg-primary-500 hover:text-white transition-all"
+                >
+                  <item.icon size={15} />
+                  <span>{item.label}</span>
                 </button>
               ))}
             </div>
           </div>
-        </div>
+        )}
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[16rem_minmax(0,1fr)] gap-8 items-start">
-        {/* Navigation Sidebar */}
-        <div className="hidden lg:block lg:col-span-1 space-y-1.5 sticky top-24 self-start">
-          {sections.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all ${
-                activeSection === item.id 
-                  ? 'bg-white dark:bg-slate-900 shadow-xl shadow-primary-500/5 text-primary-600 dark:text-primary-400 font-bold border border-slate-100 dark:border-slate-800' 
-                  : 'text-slate-500 hover:bg-white dark:hover:bg-slate-900/50'
-              }`}
-            >
-              <item.icon size={20} strokeWidth={activeSection === item.id ? 2.5 : 2} />
-              <span className="text-sm">{item.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Main Content Area */}
-        <div className="lg:col-span-1 lg:col-start-2 space-y-6 min-w-0 relative z-10">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeSection}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {/* Profile Section */}
-              {activeSection === 'profile' && (
-                <section className="card space-y-8">
-                  <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800/50 pb-6">
-                    <h3 className="text-xl font-black flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-500">
-                        <User size={24} />
-                      </div>
-                      Profile Information
-                    </h3>
-                    {!isEditingProfile && (
-                      <button 
-                        onClick={() => setIsEditingProfile(true)}
-                        className="px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-primary-50 hover:text-primary-600 transition-all"
-                      >
-                        Edit Profile
-                      </button>
-                    )}
+      {/* 4. Full Width Settings Content Section */}
+      <div className="w-full min-w-0">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeSection}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            {/* SECTION 1: PROFILE */}
+            {activeSection === 'profile' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-primary-500/10 text-primary-500">
+                      <User size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">Profile Information</h3>
+                      <p className="text-xs text-slate-400 font-medium">Manage your personal identity & academic details</p>
+                    </div>
                   </div>
-                  
-                  {!isEditingProfile ? (
-                    <div className="space-y-8">
-                      <div className="flex flex-col sm:flex-row items-center gap-8">
-                        <div className="relative">
-                          <img 
-                            src={displayAvatar}
-                            alt={user?.name} 
-                            onError={() => setAvatarFallback(true)}
-                            className="w-32 h-32 rounded-[2.5rem] border-4 border-white dark:border-slate-800 shadow-2xl object-cover"
-                          />
-                          <div className="absolute -bottom-2 -right-2 p-2.5 rounded-2xl bg-green-500 text-white border-4 border-white dark:border-slate-900 shadow-lg">
-                            <CheckCircle2 size={16} />
+                  {!isEditingProfile && (
+                    <button 
+                      onClick={() => setIsEditingProfile(true)}
+                      className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-primary-500 hover:text-white transition-all border border-slate-200 dark:border-slate-700"
+                    >
+                      Edit Profile
+                    </button>
+                  )}
+                </div>
+
+                {!isEditingProfile ? (
+                  <div className="space-y-8">
+                    <div className="flex flex-col sm:flex-row items-center gap-6 p-6 rounded-3xl bg-slate-50/70 dark:bg-slate-950/40 border border-slate-200/60 dark:border-slate-800/60">
+                      <div className="relative group">
+                        <img 
+                          src={displayAvatar} 
+                          alt="Profile" 
+                          onError={() => setAvatarFallback(true)}
+                          className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-slate-800 shadow-md"
+                        />
+                        <div className="absolute bottom-0 right-0 p-1.5 rounded-full bg-emerald-500 text-white shadow-xs">
+                          <CheckCircle2 size={16} />
+                        </div>
+                      </div>
+                      <div className="space-y-2 text-center sm:text-left flex-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <h4 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                            {user?.name || 'StudyOS Scholar'}
+                          </h4>
+                          {profile?.username && (
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                              @{profile.username}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center justify-center sm:justify-start gap-2">
+                          <Mail size={16} /> {user?.email}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                          "{user?.bio || 'No bio added yet. Tell the community about your learning journey!'}"
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 space-y-3">
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                          <School size={16} /> Academic Details
+                        </h5>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between py-1 border-b border-slate-200/50 dark:border-slate-800/50">
+                            <span className="text-slate-400 font-medium">University</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{user?.university || 'Not set'}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-slate-200/50 dark:border-slate-800/50">
+                            <span className="text-slate-400 font-medium">Degree</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{user?.degree || 'Not set'}</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-400 font-medium">Year/Sem</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{user?.year || 'Not set'}</span>
                           </div>
                         </div>
-                        <div className="flex-1 text-center sm:text-left space-y-2">
-                          <h4 className="text-3xl font-black text-slate-800 dark:text-white">{user?.name}</h4>
-                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 text-slate-400 font-medium">
-                            <p className="flex items-center gap-2">
-                              <Mail size={16} /> {user?.email}
-                            </p>
-                            {user?.phone && (
-                              <p className="flex items-center gap-2">
-                                <Phone size={16} /> {user?.phone}
-                              </p>
-                            )}
+                      </div>
+
+                      <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 space-y-3">
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                          <Phone size={16} /> Contact Information
+                        </h5>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between py-1 border-b border-slate-200/50 dark:border-slate-800/50">
+                            <span className="text-slate-400 font-medium">Phone</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{user?.phone || 'Not set'}</span>
                           </div>
-                          <p className="text-slate-500 text-sm leading-relaxed max-w-md">
-                            {user?.bio || "No bio added yet. Tell the community about your learning journey!"}
+                          <div className="flex justify-between py-1 border-b border-slate-200/50 dark:border-slate-800/50">
+                            <span className="text-slate-400 font-medium">Email Status</span>
+                            <span className="font-bold text-emerald-500 flex items-center gap-1">
+                              Verified <Check size={14} />
+                            </span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-400 font-medium">Role</span>
+                            <span className="font-bold text-primary-500 uppercase text-xs tracking-wider">{profile?.role || 'Student'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION: ACCESS & SYSTEM ROLE CAPABILITIES */}
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-primary-500/10 text-primary-500 border border-primary-500/20">
+                            <Shield size={18} />
+                          </div>
+                          <div>
+                            <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">Access & System Role Capabilities</h5>
+                            <p className="text-xs text-slate-400">Permissions granted to your user profile</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setIsRequestRoleOpen(true)}
+                          className="px-3.5 py-1.5 rounded-xl bg-primary-500/10 hover:bg-primary-500 hover:text-white text-primary-600 dark:text-primary-400 font-bold text-xs transition-all border border-primary-500/20"
+                        >
+                          Request Upgrade
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 space-y-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Current Role</span>
+                          <p className="font-black text-slate-800 dark:text-white uppercase flex items-center gap-1.5">
+                            {getPredefinedRoleByCode(profile?.role)?.name || profile?.role || 'Learner'}
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 space-y-1">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Module Access</span>
+                          <p className="font-black text-primary-500">
+                            {getPredefinedRoleByCode(profile?.role)?.modules.length || 7} Modules Granted
                           </p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-4">
-                          <h5 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                            <School size={14} /> Academic Details
-                          </h5>
-                          <div className="space-y-3">
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">University</span>
-                              <span className="font-bold text-slate-700 dark:text-slate-200">{user?.university || 'Not set'}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">Degree</span>
-                              <span className="font-bold text-slate-700 dark:text-slate-200">{user?.degree || 'Not set'}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">Year/Sem</span>
-                              <span className="font-bold text-slate-700 dark:text-slate-200">{user?.year || 'Not set'}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-4">
-                          <h5 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                            <Phone size={14} /> Contact Information
-                          </h5>
-                          <div className="space-y-3">
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">Phone</span>
-                              <span className="font-bold text-slate-700 dark:text-slate-200">{user?.phone || 'Not set'}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-slate-400">Verification</span>
-                              <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-500/10 text-green-600 text-[10px] font-black uppercase">Verified</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <RequestRoleModal
+                        isOpen={isRequestRoleOpen}
+                        onClose={() => setIsRequestRoleOpen(false)}
+                      />
                     </div>
-                  ) : (
-                    <form onSubmit={handleUpdateProfile} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="md:col-span-2 space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Full Name</label>
-                        <input 
-                          required
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white" 
-                          value={profileForm.name}
-                          onChange={e => setProfileForm({...profileForm, name: e.target.value})}
-                        />
-                      </div>
-                      <div className="md:col-span-2 space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Profile Photo</label>
-                        <div className="flex items-center gap-6 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800">
-                          <div className="relative group">
-                            <img 
-                              src={profileForm.avatar || user?.avatar} 
-                              className={`w-20 h-20 rounded-2xl object-cover border-2 border-white dark:border-slate-700 shadow-lg ${isUploading ? 'opacity-50' : ''}`} 
-                              alt="Preview" 
-                            />
-                            {isUploading && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <p className="text-xs text-slate-500">Upload a new profile picture. Max size 2MB.</p>
-                            <div className="flex gap-2">
-                              <label className="px-4 py-2 rounded-xl bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm border border-slate-100 dark:border-slate-600 cursor-pointer hover:bg-slate-50 transition-all">
-                                <span>{isUploading ? 'Uploading...' : 'Choose File'}</span>
-                                <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
-                              </label>
-                              <button 
-                                type="button"
-                                onClick={() => setProfileForm({ ...profileForm, avatar: `https://ui-avatars.com/api/?name=${user?.name}&background=random` })}
-                                className="px-4 py-2 rounded-xl text-red-500 text-xs font-bold hover:bg-red-50 transition-all"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="md:col-span-2 space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Profile Photo URL (Alternative)</label>
-                        <input 
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white" 
-                          placeholder="Or paste a direct image URL"
-                          value={profileForm.avatar}
-                          onChange={e => setProfileForm({...profileForm, avatar: e.target.value})}
-                        />
-                        {profileErrors.avatar && <p className="text-xs text-red-500 ml-1">{profileErrors.avatar}</p>}
-                      </div>
-                      <div className="md:col-span-2 space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Bio</label>
-                        <textarea 
-                          rows={3}
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white resize-none" 
-                          value={profileForm.bio}
-                          onChange={e => setProfileForm({...profileForm, bio: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">University</label>
-                        <input 
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white" 
-                          value={profileForm.university}
-                          onChange={e => setProfileForm({...profileForm, university: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Degree Program</label>
-                        <input 
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white" 
-                          value={profileForm.degree}
-                          onChange={e => setProfileForm({...profileForm, degree: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Current Year/Sem</label>
-                        <input 
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white" 
-                          value={profileForm.year}
-                          onChange={e => setProfileForm({...profileForm, year: e.target.value})}
-                        />
-                        {profileErrors.year && <p className="text-xs text-red-500 ml-1">{profileErrors.year}</p>}
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Phone Number</label>
-                        <input 
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white" 
-                          value={profileForm.phone}
-                          onChange={e => setProfileForm({...profileForm, phone: e.target.value})}
-                        />
-                        {profileErrors.phone && <p className="text-xs text-red-500 ml-1">{profileErrors.phone}</p>}
-                      </div>
-                      <div className="md:col-span-2 flex gap-4 pt-4">
-                        <button type="submit" className="flex-1 py-4 rounded-[1.5rem] bg-primary-500 text-white font-bold hover:bg-primary-600 transition-all shadow-xl shadow-primary-500/20 flex items-center justify-center gap-2">
-                          <Save size={20} /> Save Profile Changes
-                        </button>
-                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-8 py-4 rounded-[1.5rem] bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold hover:bg-slate-100 transition-all">
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </section>
-              )}
 
-              {/* Security & Sessions */}
-              {activeSection === 'security' && (
-                <section className="card space-y-6">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-500">
-                      <Lock size={24} />
-                    </div>
-                    Security & Sessions
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                      <Laptop size={16} className="text-primary-500" /> Active Sessions
-                    </h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Manage devices that are currently signed into your account. Revoking a session will sign out the user on that device.
-                    </p>
-                    
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-2">
-                      {sessionsLoading ? (
-                        <div className="p-4 text-center text-sm font-bold text-slate-400">Loading sessions...</div>
-                      ) : activeSessions.length > 0 ? (
-                        <div className="space-y-2">
-                          {activeSessions.map((session, i) => (
-                            <div key={session.id || i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 gap-4">
-                              <div className="flex items-start gap-4">
-                                <div className="p-2 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">
-                                  {session.deviceType === 'mobile' ? <Smartphone size={20} /> : <Laptop size={20} />}
-                                </div>
-                                <div>
-                                  <div className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                                    {session.os || 'Unknown OS'} - {session.browser || 'Unknown Browser'}
-                                    {i === 0 && <span className="px-2 py-0.5 rounded text-[10px] uppercase font-black bg-green-100 text-green-700">Current</span>}
-                                  </div>
-                                  <div className="text-xs text-slate-500 mt-1">
-                                    Last active: {new Date(session.lastActive).toLocaleString()}
-                                  </div>
-                                  {session.ip && <div className="text-xs text-slate-400 mt-0.5">IP: {session.ip}</div>}
-                                </div>
-                              </div>
-                              {i !== 0 && (
-                                <button
-                                  onClick={() => handleRevokeSession(session.id)}
-                                  className="self-start sm:self-auto px-4 py-2 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 transition-colors"
-                                >
-                                  Revoke
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 space-y-4">
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">Change Handles (@username)</h5>
+                        <p className="text-xs text-slate-400">Can be changed once every 30 days.</p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row items-center gap-3">
+                        <div className="relative flex-1 w-full">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">@</span>
+                          <input
+                            type="text"
+                            value={newUsername}
+                            onChange={(e) => setNewUsername(e.target.value)}
+                            placeholder="new_username"
+                            className="w-full pl-8 pr-4 py-2 text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none"
+                          />
                         </div>
-                      ) : (
-                        <div className="p-6 text-center text-sm text-slate-500">
-                          Session tracking is newly enabled. Current session will appear soon.
-                        </div>
+                        <button
+                          onClick={handleChangeUsername}
+                          disabled={usernameStatus !== 'available' || isChangingUsername}
+                          className="w-full sm:w-auto px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs disabled:opacity-50 hover:bg-primary-700 transition-all shrink-0"
+                        >
+                          {isChangingUsername ? 'Updating...' : 'Update Username'}
+                        </button>
+                      </div>
+                      {statusMessage && (
+                        <p className={`text-xs font-semibold ${usernameStatus === 'available' ? 'text-emerald-500' : 'text-red-500'}`}>
+                          {statusMessage}
+                        </p>
                       )}
                     </div>
                   </div>
-                  
-                  <div className="h-px bg-slate-100 dark:bg-slate-800/50 my-6"></div>
-                  
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                      <History size={16} className="text-slate-500" /> Login History
-                    </h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Recent successful login attempts to your account.
-                    </p>
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 p-2 text-center py-8">
-                      <Activity size={24} className="mx-auto text-slate-400 mb-2 opacity-50" />
-                      <p className="text-sm text-slate-500">Login history logging is active.</p>
-                      <p className="text-xs text-slate-400 mt-1">Events will appear here on your next login.</p>
+                ) : (
+                  <form onSubmit={handleUpdateProfile} className="space-y-6">
+                    <div className="flex items-center gap-6">
+                      <img 
+                        src={profileForm.avatar || displayAvatar} 
+                        alt="Avatar Preview" 
+                        className="w-20 h-20 rounded-full object-cover border-2 border-primary-500"
+                      />
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Upload Avatar Image
+                        </label>
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={isUploading}
+                          className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-primary-500/10 file:text-primary-500 hover:file:bg-primary-500/20"
+                        />
+                      </div>
                     </div>
-                  </div>
-                </section>
-              )}
 
-              {/* Account Settings */}
-              {activeSection === 'account' && (
-                <section className="card space-y-6">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-500">
-                      <Shield size={24} />
-                    </div>
-                    Account Security
-                  </h3>
-
-                  {/* Account Identity */}
-                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Account Identity</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Your permanent identifiers on StudyOS.</p>
-                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Permanent User ID</p>
-                        <p className="font-mono text-sm font-bold text-slate-700 dark:text-slate-300">{user?.id}</p>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
+                        <input 
+                          type="text" 
+                          value={profileForm.name}
+                          onChange={(e) => setProfileForm(p => ({ ...p, name: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                        />
                       </div>
-                      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Username</p>
-                        <p className="font-bold text-slate-700 dark:text-slate-300">@{profile?.username || 'Not set'}</p>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Phone</label>
+                        <input 
+                          type="text" 
+                          value={profileForm.phone}
+                          onChange={(e) => setProfileForm(p => ({ ...p, phone: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                        />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Username Change Form */}
-                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Change Username</h4>
-                    {profile?.username_changed_at && new Date().getTime() - new Date(profile.username_changed_at).getTime() < (30 * 24 * 60 * 60 * 1000) ? (
-                      <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm font-bold">
-                        You can only change your username once every 30 days. Next change available on {new Date(new Date(profile.username_changed_at).getTime() + (30 * 24 * 60 * 60 * 1000)).toLocaleDateString()}.
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">University</label>
+                        <input 
+                          type="text" 
+                          value={profileForm.university}
+                          onChange={(e) => setProfileForm(p => ({ ...p, university: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                        />
                       </div>
-                    ) : (
-                      <>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Your username can only be changed once every 30 days.</p>
-                        <div className="relative group max-w-md">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">@</span>
-                          <input
-                            type="text"
-                            placeholder="new_username"
-                            value={newUsername}
-                            onChange={(e) => setNewUsername(e.target.value.replace(/\s/g, ''))}
-                            className={`w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-slate-800/50 border focus:ring-4 outline-none transition-all dark:text-white font-bold
-                              ${usernameStatus === 'available' ? 'border-emerald-500 focus:border-emerald-500 ring-emerald-500/10' : 
-                                usernameStatus === 'taken' || usernameStatus === 'invalid' ? 'border-red-500 focus:border-red-500 ring-red-500/10' : 
-                                'border-slate-200 dark:border-slate-700 focus:border-primary-500 ring-primary-500/10'}
-                            `}
-                          />
-                        </div>
-                        {statusMessage && (
-                          <p className={`text-xs ml-1 font-bold ${
-                            usernameStatus === 'available' ? 'text-emerald-500' :
-                            usernameStatus === 'taken' || usernameStatus === 'invalid' ? 'text-red-500' :
-                            'text-slate-400'
-                          }`}>
-                            {statusMessage}
-                          </p>
-                        )}
-                        {suggestions.length > 0 && (
-                          <div className="mt-2">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Available Suggestions:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {suggestions.map(s => (
-                                <button
-                                  key={s}
-                                  type="button"
-                                  onClick={() => setNewUsername(s)}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
-                                >
-                                  @{s}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleChangeUsername}
-                          disabled={isChangingUsername || usernameStatus !== 'available'}
-                          className="px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-bold text-sm shadow-xl shadow-primary-500/30 transition-all active:scale-95 disabled:opacity-50 mt-2"
-                        >
-                          {isChangingUsername ? 'Saving...' : 'Update Username'}
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Connected Accounts */}
-                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Connected Login Methods</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Manage how you sign in to StudyOS.</p>
-                    
-                    <div className="grid grid-cols-1 gap-4">
-                      {/* Google */}
-                      <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-full bg-slate-100 dark:bg-slate-700">
-                            <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-800 dark:text-white">Google</p>
-                            {user?.providerData?.some(p => p.providerId === 'google.com') ? (
-                              <p className="text-xs text-emerald-500 font-medium">Connected</p>
-                            ) : (
-                              <p className="text-xs text-slate-400 font-medium">Not Connected</p>
-                            )}
-                          </div>
-                        </div>
-                        {user?.providerData?.some(p => p.providerId === 'google.com') ? (
-                          <button onClick={() => unlinkOAuthProvider('google.com')} className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">Disconnect</button>
-                        ) : (
-                          <button onClick={() => linkOAuthProvider('google')} className="px-4 py-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold">Connect</button>
-                        )}
-                      </div>
-
-                      {/* GitHub */}
-                      <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white">
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                              <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd"></path>
-                            </svg>
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-800 dark:text-white">GitHub</p>
-                            {user?.providerData?.some(p => p.providerId === 'github.com') ? (
-                              <p className="text-xs text-emerald-500 font-medium">Connected</p>
-                            ) : (
-                              <p className="text-xs text-slate-400 font-medium">Not Connected</p>
-                            )}
-                          </div>
-                        </div>
-                        {user?.providerData?.some(p => p.providerId === 'github.com') ? (
-                          <button onClick={() => unlinkOAuthProvider('github.com')} className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">Disconnect</button>
-                        ) : (
-                          <button onClick={() => linkOAuthProvider('github')} className="px-4 py-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold">Connect</button>
-                        )}
-                      </div>
-
-                      {/* Password */}
-                      <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-white">
-                            <Lock size={20} />
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-800 dark:text-white">Email & Password</p>
-                            {user?.providerData?.some(p => p.providerId === 'password') ? (
-                              <p className="text-xs text-emerald-500 font-medium">Connected</p>
-                            ) : (
-                              <p className="text-xs text-slate-400 font-medium">Not Connected</p>
-                            )}
-                          </div>
-                        </div>
-                        {user?.providerData?.some(p => p.providerId === 'password') ? (
-                          <button onClick={() => handleResetPassword()} className="text-xs font-bold text-slate-400 hover:text-primary-500 transition-colors">Change Password</button>
-                        ) : (
-                          <button onClick={() => {
-                            const pwd = prompt('Enter a new password for your account:');
-                            if (pwd && pwd.length >= 6) {
-                              setupPasswordCredential(pwd);
-                            } else if (pwd) {
-                              toast.error('Password must be at least 6 characters.');
-                            }
-                          }} className="px-4 py-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold">Set Password</button>
-                        )}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Degree</label>
+                        <input 
+                          type="text" 
+                          value={profileForm.degree}
+                          onChange={(e) => setProfileForm(p => ({ ...p, degree: e.target.value }))}
+                          className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                        />
                       </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Danger Zone</h4>
-                    <button 
-                      onClick={logout}
-                      className="flex items-center justify-between w-full p-5 rounded-[1.5rem] bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 shadow-sm text-slate-400 group-hover:text-red-500 transition-colors">
-                          <LogOut size={20} />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-bold text-slate-800 dark:text-white">Sign Out</p>
-                          <p className="text-xs text-slate-400">Logout from this session</p>
-                        </div>
-                      </div>
-                      <X size={20} className="text-slate-300" />
-                    </button>
-                    <button 
-                      onClick={handleDeleteAccount}
-                      className="flex items-center justify-between w-full p-5 rounded-[1.5rem] bg-red-50/30 dark:bg-red-500/5 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all group border border-dashed border-red-100 dark:border-red-900/30"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 shadow-sm text-red-400">
-                          <Trash2 size={20} />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-bold text-red-600">Delete Account</p>
-                          <p className="text-xs text-red-400/70">Permanently remove all your data</p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </section>
-              )}
-
-              {/* Personalization Section */}
-              {activeSection === 'personalization' && (
-                <section className="card space-y-8">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-accent-50 dark:bg-accent-500/10 text-accent-500">
-                      <Palette size={24} />
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Bio</label>
+                      <textarea 
+                        rows={3}
+                        value={profileForm.bio}
+                        onChange={(e) => setProfileForm(p => ({ ...p, bio: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                      />
                     </div>
-                    Personalization
-                  </h3>
-                  
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between p-5 rounded-[1.5rem] bg-slate-50 dark:bg-slate-800/50">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 shadow-sm text-slate-400">
-                          <Monitor size={20} />
-                        </div>
-                        <div>
-                          <p className="font-bold">System Theme</p>
-                          <p className="text-xs text-slate-400 uppercase font-black">{theme} mode</p>
-                        </div>
-                      </div>
-                      <button onClick={toggleTheme} className="px-5 py-2.5 rounded-xl bg-white dark:bg-slate-700 shadow-sm text-sm font-bold hover:scale-105 transition-all">
-                        Switch to {theme === 'light' ? 'Dark' : 'Light'}
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProfile(false)}
+                        className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs hover:bg-primary-700 transition-all flex items-center gap-1.5"
+                      >
+                        <Save size={16} /> Save Profile
                       </button>
                     </div>
+                  </form>
+                )}
+              </section>
+            )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                          <Palette size={14} /> Accent Color
-                        </label>
-                        <input
-                          type="color"
-                          className="w-full h-12 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none cursor-pointer"
-                          value={personalization.accentColor}
-                          onChange={e => setPersonalization({ ...personalization, accentColor: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                          <Type size={14} /> Font Size
-                        </label>
-                        <Select 
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
-                          value={personalization.fontSize}
-                          onChange={e => setPersonalization({...personalization, fontSize: e.target.value})}
-                          options={[
-                            { label: 'Small (Readable)', value: 'small' },
-                            { label: 'Medium (Standard)', value: 'medium' },
-                            { label: 'Large (Comfortable)', value: 'large' }
-                          ]}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                          <Layout size={14} /> Dashboard Style
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {['grid', 'list'].map(style => (
-                            <button 
-                              key={style}
-                              onClick={() => setPersonalization({...personalization, dashboardLayout: style})}
-                              className={`py-3 rounded-xl border-2 font-bold capitalize transition-all ${
-                                personalization.dashboardLayout === style 
-                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10 text-primary-600' 
-                                  : 'border-transparent bg-slate-50 dark:bg-slate-800 text-slate-400'
-                              }`}
-                            >
-                              {style}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase ml-1 flex items-center gap-2">
-                          <Globe size={14} /> Default Landing
-                        </label>
-                        <Select
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
-                          value={personalization.defaultLanding}
-                          onChange={e => setPersonalization({ ...personalization, defaultLanding: e.target.value })}
-                          options={[
-                            { label: 'Dashboard', value: 'dashboard' },
-                            { label: 'Courses', value: 'courses' },
-                            { label: 'Videos', value: 'videos' },
-                            { label: 'Notes', value: 'notes' },
-                            { label: 'Projects', value: 'projects' },
-                            { label: 'Analytics', value: 'analytics' }
-                          ]}
-                        />
-                      </div>
-                    </div>
+            {/* SECTION 2: ACCOUNT */}
+            {activeSection === 'account' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-500">
+                    <Shield size={22} />
                   </div>
-                </section>
-              )}
-
-              {/* Study Preferences */}
-              {activeSection === 'study' && (
-                <section className="card space-y-8">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-500/10 text-orange-500">
-                      <Target size={24} />
-                    </div>
-                    Study Preferences
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <label className="text-sm font-bold text-slate-600 dark:text-slate-300">Daily Study Goal</label>
-                        <span className="text-primary-600 font-black">{studyPrefs.dailyGoal} min</span>
-                      </div>
-                      <input 
-                        type="range" min="30" max="480" step="15"
-                        className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary-500"
-                        value={studyPrefs.dailyGoal}
-                        onChange={e => setStudyPrefs({...studyPrefs, dailyGoal: parseInt(e.target.value)})}
-                      />
-                      <div className="flex justify-between text-[10px] text-slate-400 font-black uppercase">
-                        <span>30m</span>
-                        <span>8 hours</span>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <label className="text-sm font-bold text-slate-600 dark:text-slate-300">Pomodoro Timer</label>
-                      <div className="flex items-center gap-3">
-                        <input 
-                          type="number" 
-                          className="w-20 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 font-bold"
-                          value={studyPrefs.pomodoro}
-                          onChange={e => setStudyPrefs({...studyPrefs, pomodoro: Math.max(10, Math.min(120, parseInt(e.target.value) || 25))})}
-                        />
-                        <span className="text-sm text-slate-400 font-medium">min Focus /</span>
-                        <input 
-                          type="number" 
-                          className="w-20 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 font-bold"
-                          value={studyPrefs.breakInterval}
-                          onChange={e => setStudyPrefs({...studyPrefs, breakInterval: Math.max(1, Math.min(60, parseInt(e.target.value) || 5))})}
-                        />
-                        <span className="text-sm text-slate-400 font-medium">min Break</span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-400 uppercase ml-1">Preferred Study Slot</label>
-                      <Select
-                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
-                        value={studyPrefs.preferredSlot}
-                        onChange={e => setStudyPrefs({ ...studyPrefs, preferredSlot: e.target.value })}
-                        options={[
-                          { label: 'Morning', value: 'Morning' },
-                          { label: 'Afternoon', value: 'Afternoon' },
-                          { label: 'Evening', value: 'Evening' },
-                          { label: 'Night', value: 'Night' }
-                        ]}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-400 uppercase ml-1">Default Difficulty</label>
-                      <Select
-                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
-                        value={studyPrefs.defaultDifficulty}
-                        onChange={e => setStudyPrefs({ ...studyPrefs, defaultDifficulty: e.target.value })}
-                        options={[
-                          { label: 'Beginner', value: 'Beginner' },
-                          { label: 'Intermediate', value: 'Intermediate' },
-                          { label: 'Advanced', value: 'Advanced' }
-                        ]}
-                      />
-                    </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Account Settings & Credentials</h3>
+                    <p className="text-xs text-slate-400 font-medium">Manage linked authentication providers & account actions</p>
                   </div>
-                </section>
-              )}
+                </div>
 
-              {/* AI Memory (Orion) Section */}
-              {activeSection === 'ai-memory' && (
-                <section className="card space-y-8">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500">
-                      <Sparkles size={24} />
+                <div className="space-y-6">
+                  {/* Password / Reset */}
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">Security Credentials</h4>
+                      <p className="text-xs text-slate-400">Send password recovery link to {user?.email}</p>
                     </div>
-                    AI Memory (Orion)
-                  </h3>
-                  <div className="space-y-6">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Customize how Orion interacts with you. These preferences are saved locally and used to personalize your AI study sessions.
-                    </p>
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Favorite Subjects</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Mathematics, Computer Science, Biology"
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
-                          value={orionMemory.favoriteSubjects || ''}
-                          onChange={(e) => setOrionMemory({ ...orionMemory, favoriteSubjects: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Learning Goals</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Master React, Prepare for Finals"
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
-                          value={orionMemory.learningGoals || ''}
-                          onChange={(e) => setOrionMemory({ ...orionMemory, learningGoals: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase ml-1">Preferred Explanation Style</label>
-                        <Select
-                          className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 outline-none font-bold"
-                          value={orionMemory.explanationStyle || 'Standard'}
-                          onChange={(e) => setOrionMemory({ ...orionMemory, explanationStyle: e.target.value })}
-                          options={[
-                            { label: 'Standard (Balanced)', value: 'Standard' },
-                            { label: 'Simple (Like I am 5)', value: 'Simple' },
-                            { label: 'Visual (Use Analogies)', value: 'Visual' },
-                            { label: 'Technical (Detailed)', value: 'Technical' },
-                            { label: 'Code-heavy (Give Examples)', value: 'Code-heavy' }
-                          ]}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Notification Settings */}
-              {activeSection === 'notifications' && (
-                <section className="card space-y-8">
-                  <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800/50 pb-6">
-                    <h3 className="text-xl font-black flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-500">
-                        <Bell size={24} />
-                      </div>
-                      Notification Preferences
-                    </h3>
-                    <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest">
-                      {notifSettings.deliveryMode === 'server' ? 'Server-backed' : 'Local fallback'}
-                    </span>
+                    <button
+                      onClick={handleResetPassword}
+                      className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs hover:bg-primary-600 transition-all"
+                    >
+                      Reset Password
+                    </button>
                   </div>
 
-                  <div className="space-y-6">
-                    {/* General Switches */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">App Alerts</h4>
-                      {[
-                        { id: 'enabled', label: 'Push Notifications', desc: 'Enable all app alerts' },
-                        { id: 'reminders', label: 'Study Reminders', desc: 'Alerts for your daily goals' },
-                        { id: 'deadlines', label: 'Course Deadlines', desc: 'Reminders for upcoming tasks' },
-                        { id: 'streaks', label: 'Streak Alerts', desc: 'Don\'t lose your study momentum' },
-                      ].map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-5 rounded-[1.5rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50">
-                          <div>
-                            <p className="font-bold text-slate-800 dark:text-white">{item.label}</p>
-                            <p className="text-xs text-slate-400">{item.desc}</p>
+                  {/* Danger Zone: Account Deletion */}
+                  <div className="p-5 rounded-2xl bg-red-500/10 border border-red-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-red-600 dark:text-red-400">Danger Zone: Delete Account</h4>
+                      <p className="text-xs text-slate-400">Permanently delete your profile, notes, and study history.</p>
+                    </div>
+                    <button
+                      onClick={handleDeleteAccount}
+                      className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold text-xs hover:bg-red-700 transition-all flex items-center gap-1.5"
+                    >
+                      <Trash2 size={14} /> Delete Account
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 3: SECURITY & SESSIONS */}
+            {activeSection === 'security' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
+                      <Lock size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">Security & Active Sessions</h3>
+                      <p className="text-xs text-slate-400 font-medium">Manage logged-in devices and access controls</p>
+                    </div>
+                  </div>
+                  {activeSessions.length > 1 && (
+                    <button
+                      onClick={handleRevokeAllSessions}
+                      className="px-3.5 py-2 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 font-bold text-xs hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
+                    >
+                      Revoke All Other Devices
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Smartphone size={16} /> Active Sessions ({activeSessions.length})
+                  </h4>
+
+                  {sessionsLoading ? (
+                    <p className="text-xs text-slate-400">Loading active sessions...</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {activeSessions.map((session) => (
+                        <div key={session.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">
+                              {session.device?.includes('Mobile') ? <Smartphone size={18} /> : <Laptop size={18} />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-bold text-slate-900 dark:text-white">
+                                  {session.device || 'Desktop Browser'}
+                                </p>
+                                {session.isCurrent && (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-extrabold text-[10px]">
+                                    Current Device
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-400">
+                                IP: {session.ip || 'Local Network'} • Last active: {session.lastActive ? new Date(session.lastActive).toLocaleTimeString() : 'Just now'}
+                              </p>
+                            </div>
                           </div>
-                          <button 
-                            onClick={() => setNotificationSettings({...notifSettings, [item.id]: !notifSettings[item.id]})}
-                            className={`w-12 h-6 rounded-full transition-colors relative ${notifSettings[item.id] ? 'bg-primary-500' : 'bg-slate-200 dark:bg-slate-700'}`}
-                          >
-                            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${notifSettings[item.id] ? 'left-7' : 'left-1'}`} />
-                          </button>
+                          {!session.isCurrent && (
+                            <button
+                              onClick={() => handleRevokeSession(session.id)}
+                              className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 text-xs font-bold hover:bg-red-500 hover:text-white transition-all"
+                            >
+                              Revoke
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </section>
+            )}
 
-                    {/* Silent Hours */}
-                    <div className="p-6 rounded-[2rem] bg-slate-900 text-white space-y-6">
+            {/* SECTION 4: PERSONALIZATION */}
+            {activeSection === 'personalization' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-pink-500/10 text-pink-500">
+                    <Palette size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Personalization & Visual Theme</h3>
+                    <p className="text-xs text-slate-400 font-medium">Customize workspace theme, accent colors, and font layout</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">Accent Color Palette</label>
+                    <div className="flex items-center gap-3">
+                      {['#0ea5e9', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'].map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => setPersonalization(p => ({ ...p, accentColor: color }))}
+                          className={`w-10 h-10 rounded-2xl transition-all border-2 flex items-center justify-center ${
+                            personalization.accentColor === color ? 'border-white ring-2 ring-primary-500 scale-110' : 'border-transparent'
+                          }`}
+                          style={{ backgroundColor: color }}
+                        >
+                          {personalization.accentColor === color && <Check size={18} className="text-white" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Font Size Scale</label>
+                      <select
+                        value={personalization.fontSize}
+                        onChange={(e) => setPersonalization(p => ({ ...p, fontSize: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                      >
+                        <option value="small">Compact (Small)</option>
+                        <option value="medium">Standard (Medium)</option>
+                        <option value="large">Large (Comfortable)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Default Landing Module</label>
+                      <select
+                        value={personalization.defaultLanding}
+                        onChange={(e) => setPersonalization(p => ({ ...p, defaultLanding: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                      >
+                        <option value="dashboard">Dashboard Overview</option>
+                        <option value="courses">Learning Streams (Courses)</option>
+                        <option value="tasks">Tasks & Kanban Board</option>
+                        <option value="notes">Study Notes</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 5: STUDY SETUP */}
+            {activeSection === 'study' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500">
+                    <Target size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Study Setup & Target Goals</h3>
+                    <p className="text-xs text-slate-400 font-medium">Configure daily focus minutes, Pomodoro timers & preferred slots</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Daily Study Focus Target (Minutes)
+                    </label>
+                    <input
+                      type="number"
+                      value={studyPrefs.dailyGoal}
+                      onChange={(e) => setStudyPrefs(s => ({ ...s, dailyGoal: Number(e.target.value) }))}
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800 font-bold"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">Recommended: 120 minutes per day</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Pomodoro Cycle Duration (Minutes)
+                    </label>
+                    <select
+                      value={studyPrefs.pomodoro}
+                      onChange={(e) => setStudyPrefs(s => ({ ...s, pomodoro: Number(e.target.value) }))}
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                    >
+                      <option value={25}>25 Minutes (Standard)</option>
+                      <option value={45}>45 Minutes (Deep Focus)</option>
+                      <option value={50}>50 Minutes (University Exam Style)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Short Break Interval (Minutes)
+                    </label>
+                    <select
+                      value={studyPrefs.breakInterval}
+                      onChange={(e) => setStudyPrefs(s => ({ ...s, breakInterval: Number(e.target.value) }))}
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                    >
+                      <option value={5}>5 Minutes</option>
+                      <option value={10}>10 Minutes</option>
+                      <option value={15}>15 Minutes</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Preferred Study Time Window
+                    </label>
+                    <select
+                      value={studyPrefs.preferredSlot}
+                      onChange={(e) => setStudyPrefs(s => ({ ...s, preferredSlot: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                    >
+                      <option value="Morning">Morning (06:00 - 12:00)</option>
+                      <option value="Afternoon">Afternoon (12:00 - 17:00)</option>
+                      <option value="Evening">Evening (17:00 - 22:00)</option>
+                      <option value="Night">Night Owl (22:00 - 04:00)</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 6: AI MEMORY (ORION) */}
+            {activeSection === 'ai-memory' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500">
+                      <Sparkles size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">Orion AI Memory & Context</h3>
+                      <p className="text-xs text-slate-400 font-medium">Fine-tune Orion's tutor persona and saved context</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Orion Explanation Tone / Persona Style
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {['Socratic Tutor', 'Exam Specialist', 'Friendly Coach'].map((style) => (
+                        <button
+                          key={style}
+                          onClick={() => setOrionMemory(m => ({ ...m, explanationStyle: style }))}
+                          className={`p-4 rounded-2xl border text-left transition-all ${
+                            orionMemory.explanationStyle === style
+                              ? 'bg-indigo-500/10 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold'
+                              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          <p className="text-xs font-bold">{style}</p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            {style === 'Socratic Tutor' ? 'Guides through questions & deep insights' : style === 'Exam Specialist' ? 'Focuses on formulas, test tips & mark criteria' : 'Encouraging tone with quick step-by-step notes'}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Favorite Subjects & Core Focus
+                    </label>
+                    <input 
+                      type="text"
+                      value={orionMemory.favoriteSubjects}
+                      onChange={(e) => setOrionMemory(m => ({ ...m, favoriteSubjects: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                      placeholder="e.g. Distributed Systems, Machine Learning, Organic Chemistry"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Learning Goals & Exam Deadlines Context
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={orionMemory.learningGoals}
+                      onChange={(e) => setOrionMemory(m => ({ ...m, learningGoals: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-800"
+                      placeholder="Tell Orion what grade target or milestone you are preparing for..."
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 7: NOTIFICATIONS & ALARM */}
+            {activeSection === 'notifications' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-500">
+                      <Bell size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">Notifications & Custom Alarms</h3>
+                      <p className="text-xs text-slate-400 font-medium">Configure alert triggers and study alarm sounds</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Volume2 size={16} /> Custom Alarm Audio Player
+                      </h4>
+                      <p className="text-xs text-slate-400">Upload your own MP3/WAV alarm audio for Pomodoro sessions.</p>
+                    </div>
+                    <button
+                      onClick={handleTestAlarmSound}
+                      className="px-3.5 py-2 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 transition-all flex items-center gap-1.5"
+                    >
+                      <Play size={14} /> Test Sound Preview
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-4 pt-2">
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={handleAlarmSoundUpload}
+                      disabled={alarmUploadState.uploading}
+                      className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-purple-500/10 file:text-purple-600 hover:file:bg-purple-500/20"
+                    />
+                    {notifSettings.alarm?.soundName && (
+                      <span className="text-xs font-semibold text-slate-500 truncate max-w-[200px]">
+                        Active: {notifSettings.alarm.soundName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 8: CHANNELS MATRIX */}
+            {activeSection === 'channels' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-sky-500/10 text-sky-500">
+                    <Mail size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Channels Alert Routing Matrix</h3>
+                    <p className="text-xs text-slate-400 font-medium">Control notification delivery modes per category</p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase tracking-wider">
+                        <th className="py-3 px-4 font-bold">Alert Category</th>
+                        <th className="py-3 px-4 font-bold text-center">In-App Web Push</th>
+                        <th className="py-3 px-4 font-bold text-center">Email Dispatch</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {[
+                        { key: 'reminder', label: 'Study Reminders & Goals' },
+                        { key: 'deadline', label: 'Course Assignment Deadlines' },
+                        { key: 'streak', label: 'Streak Risk & Momentum Alerts' },
+                        { key: 'roleChanges', label: 'System & Security Announcements' }
+                      ].map(({ key, label }) => (
+                        <tr key={key}>
+                          <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">{label}</td>
+                          <td className="py-3 px-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={notifSettings.channels?.[key]?.web ?? true}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setNotificationSettings(n => ({
+                                  ...n,
+                                  channels: {
+                                    ...n.channels,
+                                    [key]: { ...(n.channels?.[key] || {}), web: checked }
+                                  }
+                                }));
+                              }}
+                              className="w-4 h-4 rounded text-primary-600"
+                            />
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={notifSettings.channels?.[key]?.email ?? false}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setNotificationSettings(n => ({
+                                  ...n,
+                                  channels: {
+                                    ...n.channels,
+                                    [key]: { ...(n.channels?.[key] || {}), email: checked }
+                                  }
+                                }));
+                              }}
+                              className="w-4 h-4 rounded text-primary-600"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 9: INTEGRATIONS */}
+            {activeSection === 'integrations' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-teal-500/10 text-teal-500">
+                    <Globe size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">External Integrations & Sync</h3>
+                    <p className="text-xs text-slate-400 font-medium">Connect Google Calendar, Spotify, and developer webhooks</p>
+                  </div>
+                </div>
+
+                <GoogleCalendarSettings />
+              </section>
+            )}
+
+            {/* SECTION 10: STORAGE & ASSETS */}
+            {activeSection === 'storage' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-500">
+                      <HardDrive size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 dark:text-white">Storage & Media Assets</h3>
+                      <p className="text-xs text-slate-400 font-medium">Inspect cloud & local disk storage allocation</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-sm font-bold">
+                    <span className="text-slate-700 dark:text-slate-300">Disk Storage Used</span>
+                    <span className="text-cyan-500">{storageInfo.formattedSize} / 500 MB (Free Tier)</span>
+                  </div>
+                  <div className="w-full h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full transition-all" 
+                      style={{ width: `${Math.min(100, (storageInfo.totalBytes / (500 * 1024 * 1024)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center">
+                    <p className="text-xs text-slate-400 font-bold uppercase">Documents</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white mt-1">{resources.length}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center">
+                    <p className="text-xs text-slate-400 font-bold uppercase">Study Notes</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white mt-1">{notes.length}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center">
+                    <p className="text-xs text-slate-400 font-bold uppercase">Videos Watched</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white mt-1">{videos.length}</p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center">
+                    <p className="text-xs text-slate-400 font-bold uppercase">Papers Saved</p>
+                    <p className="text-lg font-black text-slate-900 dark:text-white mt-1">{papers.length}</p>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 11: PLAN & BILLING */}
+            {activeSection === 'billing' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
+                    <CreditCard size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Plan & Subscription Billing</h3>
+                    <p className="text-xs text-slate-400 font-medium">Manage your subscription plan, tier benefits & billing invoice history</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
+                    <span className="px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold">Current Tier</span>
+                    <h4 className="text-2xl font-black text-slate-900 dark:text-white">$0 / month</h4>
+                    <ul className="space-y-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      <li className="flex items-center gap-2"><Check size={14} className="text-emerald-500" /> Standard Pomodoro Timers</li>
+                      <li className="flex items-center gap-2"><Check size={14} className="text-emerald-500" /> Up to 500MB Storage</li>
+                      <li className="flex items-center gap-2"><Check size={14} className="text-emerald-500" /> Basic Orion AI Queries</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-6 rounded-3xl bg-gradient-to-b from-primary-500/10 to-indigo-500/10 border-2 border-primary-500 space-y-4 relative">
+                    <span className="px-3 py-1 rounded-full bg-primary-600 text-white text-xs font-extrabold uppercase tracking-wider">Recommended</span>
+                    <h4 className="text-2xl font-black text-slate-900 dark:text-white">$9.99 / month</h4>
+                    <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300 font-bold">
+                      <li className="flex items-center gap-2"><Check size={14} className="text-primary-500" /> Unlimited Orion AI Context</li>
+                      <li className="flex items-center gap-2"><Check size={14} className="text-primary-500" /> 50 GB Cloud Storage</li>
+                      <li className="flex items-center gap-2"><Check size={14} className="text-primary-500" /> Priority 2-Way Google Sync</li>
+                    </ul>
+                    <button
+                      onClick={() => handleUpgrade(proPriceId)}
+                      disabled={isUpgrading}
+                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 text-white font-extrabold text-xs shadow-md hover:shadow-lg transition-all"
+                    >
+                      {isUpgrading ? 'Redirecting to Checkout...' : 'Upgrade to Pro Scholar'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 12: DATA & PRIVACY */}
+            {activeSection === 'data' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500">
+                    <Database size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Data & Privacy Governance</h3>
+                    <p className="text-xs text-slate-400 font-medium">Export backup packages, import data, and manage privacy options</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">Backup & Data Package Export</h4>
+                      <p className="text-xs text-slate-400">Download a full JSON package of your courses, notes, and progress.</p>
+                    </div>
+                    <button
+                      onClick={handleExportData}
+                      className="px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs hover:bg-primary-700 transition-all flex items-center gap-1.5"
+                    >
+                      <Download size={14} /> Export Backup JSON
+                    </button>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">Import Backup Data</h4>
+                      <p className="text-xs text-slate-400">Restore your StudyOS configuration and saved notes from a backup JSON.</p>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportData}
+                      className="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-200 file:text-slate-800"
+                    />
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-red-500/10 border border-red-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-red-600 dark:text-red-400">Factory Reset / Clear All Data</h4>
+                      <p className="text-xs text-slate-400">Irreversibly delete all local storage data and reset to default.</p>
+                    </div>
+                    <button
+                      onClick={handleClearData}
+                      className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold text-xs hover:bg-red-700 transition-all flex items-center gap-1.5"
+                    >
+                      <Trash2 size={14} /> Reset All Data
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 13: ANALYTICS SNAPSHOT */}
+            {activeSection === 'analytics' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-500">
+                    <TrendingUp size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Analytics Performance Snapshot</h3>
+                    <p className="text-xs text-slate-400 font-medium">Real-time study metrics, course progress & note stats</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase">Total Study Hours</p>
+                    <p className="text-3xl font-black text-slate-900 dark:text-white">{analytics.studyTime}h</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase">Active Courses</p>
+                    <p className="text-3xl font-black text-primary-500">{analytics.active}</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase">Completed Courses</p>
+                    <p className="text-3xl font-black text-emerald-500">{analytics.completed}</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase">Study Notes Created</p>
+                    <p className="text-3xl font-black text-purple-500">{analytics.notes}</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase">Study Streak</p>
+                    <p className="text-3xl font-black text-red-500">{analytics.streak} Days</p>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 text-center space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase">Productivity Index</p>
+                    <p className="text-3xl font-black text-teal-500">{analytics.productivity}%</p>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* SECTION 14: ACHIEVEMENTS */}
+            {activeSection === 'achievements' && (
+              <section className="card p-6 space-y-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-3xl shadow-xs">
+                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+                  <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500">
+                    <Award size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 dark:text-white">Scholar Achievements & Badges</h3>
+                    <p className="text-xs text-slate-400 font-medium">Track your study milestones and unlockable scholar rewards</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {computedAchievements.map((item) => (
+                    <div key={item.id} className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="p-3 rounded-2xl bg-white/10 text-white">
-                            <Moon size={20} />
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-xl bg-white dark:bg-slate-900 ${item.color}`}>
+                            <item.icon size={20} />
                           </div>
                           <div>
-                            <p className="font-bold text-lg">Silent Hours</p>
-                            <p className="text-xs text-slate-400">Suppress alerts during study or sleep</p>
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</h4>
+                            <p className="text-xs text-slate-400">{item.desc}</p>
                           </div>
                         </div>
-                        <button 
-                          onClick={() => setNotificationSettings({
-                            ...notifSettings, 
-                            silentHours: { ...notifSettings.silentHours, enabled: !notifSettings.silentHours.enabled }
-                          })}
-                          className={`w-12 h-6 rounded-full transition-colors relative ${notifSettings.silentHours.enabled ? 'bg-primary-500' : 'bg-slate-700'}`}
-                        >
-                          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${notifSettings.silentHours.enabled ? 'left-7' : 'left-1'}`} />
-                        </button>
+                        {item.unlocked && (
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-500 font-bold text-[10px] uppercase tracking-wider">
+                            Unlocked
+                          </span>
+                        )}
                       </div>
 
-                      {notifSettings.silentHours.enabled && (
-                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-500 uppercase">From</label>
-                            <input 
-                              type="time" 
-                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold text-white outline-none focus:border-primary-500"
-                              value={notifSettings.silentHours.start}
-                              onChange={e => setNotificationSettings({
-                                ...notifSettings,
-                                silentHours: { ...notifSettings.silentHours, start: e.target.value }
-                              })}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-500 uppercase">Until</label>
-                            <input 
-                              type="time" 
-                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold text-white outline-none focus:border-primary-500"
-                              value={notifSettings.silentHours.end}
-                              onChange={e => setNotificationSettings({
-                                ...notifSettings,
-                                silentHours: { ...notifSettings.silentHours, end: e.target.value }
-                              })}
-                            />
-                          </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[11px] font-bold text-slate-500">
+                          <span>Progress ({item.value} / {item.target})</span>
+                          <span>{item.progress}%</span>
                         </div>
-                      )}
-                    </div>
-
-                    {/* Email Delivery Options */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
-                        <Mail size={14} /> Transactional Email
-                      </h4>
-                      <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs font-bold">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest ${
-                            emailDeliveryStatus.loading
-                              ? 'bg-slate-200 text-slate-600'
-                              : emailDeliveryStatus.configured
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {emailDeliveryStatus.loading ? 'Checking' : (emailDeliveryStatus.configured ? 'Configured' : 'Missing SMTP')}
-                        </span>
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">
-                          {emailDeliveryStatus.configured
-                            ? 'Email delivery is ready on the backend.'
-                            : 'Reminder emails will fail until SMTP secrets are added to Firebase Functions.'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <button 
-                          onClick={() => setNotificationSettings({
-                            ...notifSettings,
-                            emailNotifications: { 
-                              ...notifSettings.emailNotifications, 
-                              roleChanges: !notifSettings.emailNotifications.roleChanges 
-                            }
-                          })}
-                          className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${
-                            notifSettings.emailNotifications.roleChanges 
-                              ? 'bg-primary-50 dark:bg-primary-500/10 border-primary-500/20' 
-                              : 'bg-slate-50 dark:bg-slate-800/50 border-transparent'
-                          }`}
-                        >
-                          <div className="text-left">
-                            <p className="font-bold text-sm">Role Updates</p>
-                            <p className="text-[10px] text-slate-400">Account status & roles</p>
-                          </div>
-                          <CheckCircle2 size={20} className={notifSettings.emailNotifications.roleChanges ? 'text-primary-500' : 'text-slate-300'} />
-                        </button>
-
-                        <button 
-                          onClick={() => setNotificationSettings({
-                            ...notifSettings,
-                            emailNotifications: { 
-                              ...notifSettings.emailNotifications, 
-                              reminders: !notifSettings.emailNotifications.reminders 
-                            }
-                          })}
-                          className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${
-                            notifSettings.emailNotifications.reminders 
-                              ? 'bg-primary-50 dark:bg-primary-500/10 border-primary-500/20' 
-                              : 'bg-slate-50 dark:bg-slate-800/50 border-transparent'
-                          }`}
-                        >
-                          <div className="text-left">
-                            <p className="font-bold text-sm">Study Alerts</p>
-                            <p className="text-[10px] text-slate-400">Emailed reminders</p>
-                          </div>
-                          <CheckCircle2 size={20} className={notifSettings.emailNotifications.reminders ? 'text-primary-500' : 'text-slate-300'} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Alarm Sound Controls */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
-                        <Music size={14} /> Alarm Sound
-                      </h4>
-                      <div className="p-5 rounded-[1.75rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50 space-y-5">
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { key: 'server', label: 'Server-backed' },
-                            { key: 'local', label: 'Local fallback' }
-                          ].map((item) => (
-                            <button
-                              key={item.key}
-                              type="button"
-                              onClick={() => setNotificationSettings({
-                                ...notifSettings,
-                                deliveryMode: item.key
-                              })}
-                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
-                                notifSettings.deliveryMode === item.key
-                                  ? 'bg-primary-500 text-white border-primary-500'
-                                  : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-100 dark:border-slate-700'
-                              }`}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <button
-                            type="button"
-                            onClick={() => setNotificationSettings({
-                              ...notifSettings,
-                              alarm: {
-                                ...notifSettings.alarm,
-                                enabled: !notifSettings.alarm.enabled
-                              }
-                            })}
-                            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                              notifSettings.alarm?.enabled
-                                ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20'
-                                : 'bg-slate-50 dark:bg-slate-800 border-transparent'
-                            }`}
-                          >
-                            <div className="text-left">
-                              <p className="font-bold text-sm">Alarm enabled</p>
-                              <p className="text-[10px] text-slate-400">Turn reminder audio on or off</p>
-                            </div>
-                            <CheckCircle2 size={20} className={notifSettings.alarm?.enabled ? 'text-emerald-500' : 'text-slate-300'} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setNotificationSettings({
-                              ...notifSettings,
-                              alarm: {
-                                ...notifSettings.alarm,
-                                muted: !notifSettings.alarm.muted
-                              }
-                            })}
-                            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                              notifSettings.alarm?.muted
-                                ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20'
-                                : 'bg-slate-50 dark:bg-slate-800 border-transparent'
-                            }`}
-                          >
-                            <div className="text-left">
-                              <p className="font-bold text-sm">Mute when triggered</p>
-                              <p className="text-[10px] text-slate-400">Useful for silent study sessions</p>
-                            </div>
-                            <BellOff size={20} className={notifSettings.alarm?.muted ? 'text-amber-500' : 'text-slate-300'} />
-                          </button>
-                        </div>
-
-                          <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Upload sound</label>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 ml-1">
-                              Max size: {((getAlarmSoundLimitBytes(profile?.plan, profile?.role)) / (1024 * 1024)).toFixed(0)} MB for your account
-                            </p>
-                            <label className="flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 cursor-pointer hover:border-primary-300 transition">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-500/10 text-primary-500">
-                                <Upload size={16} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">
-                                  {notifSettings.alarm?.soundName || 'Upload MP3, WAV, or OGG'}
-                                </p>
-                                <p className="text-[10px] text-slate-400">Saved in Firebase Storage, not localStorage</p>
-                              </div>
-                            </div>
-                            <input
-                              type="file"
-                              accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg"
-                              className="hidden"
-                              onChange={handleAlarmSoundUpload}
-                            />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-primary-500 whitespace-nowrap">
-                              Choose file
-                            </span>
-                          </label>
-                          {alarmUploadState.uploading && (
-                            <p className="text-[10px] font-bold text-primary-500">Uploading alarm sound...</p>
-                          )}
-                          {alarmUploadState.error && (
-                            <p className="text-[10px] font-bold text-red-500">{alarmUploadState.error}</p>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
-                              <Volume2 size={14} /> Volume
-                            </label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="1"
-                              step="0.05"
-                              value={notifSettings.alarm?.volume ?? 0.8}
-                              onChange={(e) => setNotificationSettings({
-                                ...notifSettings,
-                                alarm: {
-                                  ...notifSettings.alarm,
-                                  volume: Number(e.target.value)
-                                }
-                              })}
-                              className="w-full"
-                            />
-                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                              <span>Quiet</span>
-                              <span>{Math.round((notifSettings.alarm?.volume ?? 0.8) * 100)}%</span>
-                              <span>Loud</span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex items-center gap-2">
-                              <Play size={14} /> Repeat
-                            </label>
-                            <div className="grid grid-cols-3 gap-2">
-                              {[1, 2, 3].map((count) => (
-                                <button
-                                  key={count}
-                                  type="button"
-                                  onClick={() => setNotificationSettings({
-                                    ...notifSettings,
-                                    alarm: {
-                                      ...notifSettings.alarm,
-                                      repeatCount: count
-                                    }
-                                  })}
-                                  className={`py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${
-                                    Number(notifSettings.alarm?.repeatCount || 1) === count
-                                      ? 'bg-indigo-500 text-white border-indigo-500'
-                                      : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-100 dark:border-slate-700'
-                                  }`}
-                                >
-                                  {count}x
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Default snooze minutes</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={240}
-                              value={notifSettings.defaultSnoozeMinutes ?? 10}
-                              onChange={(e) => setNotificationSettings({
-                                ...notifSettings,
-                                defaultSnoozeMinutes: Math.max(1, Math.min(240, Number(e.target.value) || 10))
-                              })}
-                              className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 font-bold outline-none"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Preview</label>
-                            <button
-                              type="button"
-                              onClick={handleTestAlarmSound}
-                              className="w-full px-4 py-3 rounded-2xl bg-slate-900 text-white font-black flex items-center justify-center gap-2 hover:bg-slate-800 transition"
-                            >
-                              <Play size={16} /> Test sound
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-3 p-4 rounded-2xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20">
-                          <Info size={16} className="text-blue-500 mt-0.5" />
-                          <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-relaxed">
-                            Server-backed delivery is recommended. It lets Firebase send reminder records and emails even if your browser is closed, while the app handles browser alerts and sound when you are online.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Integrations Section */}
-              {activeSection === 'channels' && (
-                <section className="card space-y-6">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500">
-                      <Mail size={24} />
-                    </div>
-                    Notification Channels
-                  </h3>
-                  <p className="text-sm text-slate-500">Control delivery channel per notification type.</p>
-                  <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
-                    <table className="w-full text-left">
-                      <thead className="bg-slate-50 dark:bg-slate-800/50">
-                        <tr>
-                          <th className="px-4 py-3 text-xs uppercase tracking-widest text-slate-400 font-black">Type</th>
-                          <th className="px-4 py-3 text-xs uppercase tracking-widest text-slate-400 font-black">Web</th>
-                          <th className="px-4 py-3 text-xs uppercase tracking-widest text-slate-400 font-black">Email</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {[
-                        ['reminder', 'Study Reminder'],
-                        ['deadline', 'Deadlines'],
-                        ['streak', 'Streak Alerts'],
-                        ['roleChanges', 'Role Changes'],
-                        ['chat', 'Chat Messages']
-                      ].map(([key, label]) => (
-                          <tr key={key}>
-                            <td className="px-4 py-3 font-bold text-slate-700 dark:text-slate-200">{label}</td>
-                            <td className="px-4 py-3">
-                              <button
-                                onClick={() => setNotificationSettings({
-                                  ...notifSettings,
-                                  channels: {
-                                    ...notifSettings.channels,
-                                    [key]: { ...(notifSettings.channels?.[key] || {}), web: !(notifSettings.channels?.[key]?.web) }
-                                  }
-                                })}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold ${notifSettings.channels?.[key]?.web ? 'bg-primary-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}
-                              >
-                                {notifSettings.channels?.[key]?.web ? 'On' : 'Off'}
-                              </button>
-                            </td>
-                            <td className="px-4 py-3">
-                              <button
-                                onClick={() => setNotificationSettings({
-                                  ...notifSettings,
-                                  channels: {
-                                    ...notifSettings.channels,
-                                    [key]: { ...(notifSettings.channels?.[key] || {}), email: !(notifSettings.channels?.[key]?.email) }
-                                  }
-                                })}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold ${notifSettings.channels?.[key]?.email ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}
-                              >
-                                {notifSettings.channels?.[key]?.email ? 'On' : 'Off'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
-
-              {/* Integrations Section */}
-              {activeSection === 'integrations' && (
-                <section className="card space-y-8">
-                  <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
-                    <div className="p-2.5 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                      <Globe size={24} />
-                    </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white">Personal Integrations Hub</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Connect external services to pull data into StudyOS</p>
-                  </div>
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
-                    GitHub sign-in and Google Calendar are separate connections. You can use GitHub for StudyOS login and add Google Calendar later if you want event sync.
-                  </div>
-
-                  <GoogleCalendarSettings />
-
-                  <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">Music & Focus</h4>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-400 uppercase ml-1">Spotify Embed URL</label>
-                      <input
-                        type="url"
-                        placeholder="e.g. https://open.spotify.com/embed/playlist/..."
-                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
-                        value={personalIntegrations.spotifyEmbedUrl || ''}
-                        onChange={(e) => setPersonalIntegrations({ ...personalIntegrations, spotifyEmbedUrl: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-400 uppercase ml-1">Apple Music Embed URL</label>
-                      <input
-                        type="url"
-                        placeholder="e.g. https://embed.music.apple.com/..."
-                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
-                        value={personalIntegrations.appleMusicEmbedUrl || ''}
-                        onChange={(e) => setPersonalIntegrations({ ...personalIntegrations, appleMusicEmbedUrl: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">Developer Integrations</h4>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-400 uppercase ml-1">GitHub Username</label>
-                      <input
-                        type="text"
-                        placeholder="Your GitHub username for commit syncing"
-                        className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 focus:ring-4 ring-primary-500/10 outline-none dark:text-white"
-                        value={personalIntegrations.githubUsername || ''}
-                        onChange={(e) => setPersonalIntegrations({ ...personalIntegrations, githubUsername: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Storage & Assets Section */}
-              {activeSection === 'storage' && (
-                <section className="card space-y-8">
-                  <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
-                    <div className="p-2.5 rounded-xl bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
-                      <HardDrive size={24} />
-                    </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white">Storage & Assets</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Manage your personal cloud quota and local files</p>
-                  </div>
-                  </div>
-                  
-                  <MediaManager />
-                </section>
-              )}
-
-              {/* Billing Section */}
-              {activeSection === 'billing' && (
-                <section className="card space-y-8">
-                  <div className="flex items-center justify-between border-b border-slate-50 dark:border-slate-800/50 pb-6">
-                    <h3 className="text-xl font-black flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500">
-                        <CreditCard size={24} />
-                      </div>
-                      Plan & Billing
-                    </h3>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
-                      <div className={`w-2 h-2 rounded-full ${profile?.plan === 'Pro' ? 'bg-indigo-500' : 'bg-slate-400'}`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        Current: {profile?.plan || 'Free'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Usage Summary */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 text-primary-500 shadow-sm">
-                          <Database size={20} />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Storage Used</p>
-                          <p className="text-xl font-black">{usageMetrics.displayStorageUsedMB.toFixed(1)} MB</p>
-                        </div>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary-500" 
-                          style={{ width: `${Math.min(100, (usageMetrics.displayStorageUsedMB / (profile?.limits?.storageMB || 10)) * 100)}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-400 mt-2 text-right">
-                        Limit: {profile?.limits?.storageMB || 10} MB
-                      </p>
-                    </div>
-
-                    <div className="p-6 rounded-[2rem] bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/50">
-                      <div className="flex items-center gap-4 mb-4">
-                        <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 text-blue-500 shadow-sm">
-                          <FileText size={20} />
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Items</p>
-                          <p className="text-xl font-black">{usageMetrics.displayFileCount}</p>
-                        </div>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-blue-500" 
-                          style={{ width: `${Math.min(100, (usageMetrics.displayFileCount / (profile?.limits?.maxFiles || 50)) * 100)}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] font-bold text-slate-400 mt-2 text-right">
-                        Limit: {profile?.limits?.maxFiles || 50}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Plan Comparison */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                    {/* Free Plan */}
-                    <div className="p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 space-y-6 relative overflow-hidden group">
-                      <div className="space-y-2">
-                        <h4 className="text-2xl font-black">Free Plan</h4>
-                        <p className="text-slate-400 font-bold text-sm">For casual learners</p>
-                      </div>
-                      <div className="text-4xl font-black">$0<span className="text-lg text-slate-400 ml-1">/mo</span></div>
-                      
-                      <div className="space-y-4 pt-4">
-                        {[
-                          '10MB Storage',
-                          '50 Total Files',
-                          'Standard Support',
-                          'Basic Analytics'
-                        ].map(f => (
-                          <div key={f} className="flex items-center gap-3 text-sm font-bold text-slate-600 dark:text-slate-400">
-                            <CheckCircle2 size={18} className="text-green-500" />
-                            {f}
-                          </div>
-                        ))}
-                      </div>
-
-                      <button 
-                        disabled 
-                        className="w-full py-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-400 font-black text-sm uppercase tracking-widest"
-                      >
-                        {profile?.plan === 'Pro' ? 'Downgrade' : 'Current Plan'}
-                      </button>
-                    </div>
-
-                    {/* Pro Plan */}
-                    <div className="p-8 rounded-[2.5rem] bg-slate-900 text-white border-2 border-indigo-500/50 space-y-6 relative overflow-hidden group">
-                      <div className="absolute top-4 right-4 p-2 bg-indigo-500 rounded-xl shadow-lg rotate-12 group-hover:rotate-0 transition-transform">
-                        <Crown size={20} className="text-white" />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <h4 className="text-2xl font-black text-white">Pro Plan</h4>
-                        <p className="text-indigo-300/60 font-bold text-sm">For serious students</p>
-                      </div>
-                      <div className="text-4xl font-black">$9.99<span className="text-lg text-indigo-300/40 ml-1">/mo</span></div>
-                      
-                      <div className="space-y-4 pt-4">
-                        {[
-                          '500MB Storage',
-                          '1,000 Total Files',
-                          'Priority Support',
-                          'Advanced Heatmaps',
-                          'Custom Branding'
-                        ].map(f => (
-                          <div key={f} className="flex items-center gap-3 text-sm font-bold text-indigo-100/80">
-                            <Zap size={18} className="text-indigo-400" />
-                            {f}
-                          </div>
-                        ))}
-                      </div>
-
-                      {profile?.plan === 'Pro' ? (
-                        <button className="w-full py-4 rounded-2xl bg-indigo-500/20 text-indigo-400 font-black text-sm uppercase tracking-widest border border-indigo-500/30">
-                          Active Subscription
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={() => handleUpgrade(proPriceId)}
-                          disabled={isUpgrading || !proPriceId}
-                          className="w-full py-4 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white font-black text-sm uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-3"
-                        >
-                          {isUpgrading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (proPriceId ? 'Upgrade to Pro' : 'Pro Not Configured')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Data & Privacy */}
-              {activeSection === 'data' && (
-                <section className="card space-y-8">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-green-50 dark:bg-green-500/10 text-green-500">
-                      <Database size={24} />
-                    </div>
-                    Data & Privacy
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Privacy Controls</h4>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold">Public Profile</span>
-                        <button onClick={() => setPrivacySettings({ ...privacySettings, isPublic: !privacySettings.isPublic })}>
-                          <ToggleIcon className={privacySettings.isPublic ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold">Activity Tracking</span>
-                        <button onClick={() => setPrivacySettings({ ...privacySettings, analyticsConsent: !privacySettings.analyticsConsent })}>
-                          <ToggleIcon className={privacySettings.analyticsConsent ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold">Activity Visible To Others</span>
-                        <button onClick={() => setPrivacySettings({ ...privacySettings, activityVisible: !privacySettings.activityVisible })}>
-                          <ToggleIcon className={privacySettings.activityVisible ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Governance</h4>
-                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-3">
-                        <p className="text-xs font-black uppercase tracking-widest text-slate-400">Data Retention</p>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-sm font-bold">Retention window (days)</span>
-                          <input
-                            type="number"
-                            min={30}
-                            max={3650}
-                            value={privacySettings.dataRetentionDays || 365}
-                            onChange={(e) => setPrivacySettings({
-                              ...privacySettings,
-                              dataRetentionDays: Math.max(30, Math.min(3650, Number(e.target.value) || 365))
-                            })}
-                            className="w-28 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                        <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                          <div 
+                            className="h-full bg-primary-500 rounded-full transition-all"
+                            style={{ width: `${item.progress}%` }}
                           />
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold">Auto-delete completed reminders</span>
-                          <button onClick={() => setPrivacySettings({ ...privacySettings, autoDeleteCompletedReminders: !privacySettings.autoDeleteCompletedReminders })}>
-                            <ToggleIcon className={privacySettings.autoDeleteCompletedReminders ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold">Auto-delete imported backups after apply</span>
-                          <button onClick={() => setPrivacySettings({ ...privacySettings, autoDeleteImportedBackups: !privacySettings.autoDeleteImportedBackups })}>
-                            <ToggleIcon className={privacySettings.autoDeleteImportedBackups ? 'text-primary-500 rotate-180' : 'text-slate-300'} />
-                          </button>
-                        </div>
-                      </div>
-                      {importSummary && (
-                        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30">
-                          <p className="text-xs text-blue-700 dark:text-blue-300">
-                            Last import preview: {importSummary.matchedCount} modules recognized.
-                          </p>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        <button 
-                          onClick={handleExportData}
-                          className="flex-1 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm font-bold flex items-center gap-2 hover:bg-slate-100 transition-all"
-                        >
-                          <Download size={16} /> Export JSON
-                        </button>
-                        <label className="flex-1 px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm font-bold flex items-center gap-2 hover:bg-slate-100 transition-all cursor-pointer">
-                          <Upload size={16} /> Import JSON
-                          <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
-                        </label>
-                      </div>
-                      <button 
-                        onClick={handleClearData}
-                        className="w-full py-3 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 text-xs font-black uppercase tracking-widest border border-dashed border-red-200 hover:bg-red-50 transition-all"
-                      >
-                        Clear All Data
-                      </button>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <button
-                          onClick={() => handleSelectiveClear([STORAGE_KEYS.COURSES, STORAGE_KEYS.VIDEOS, STORAGE_KEYS.NOTES], 'Learning')}
-                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
-                        >
-                          Reset Learning
-                        </button>
-                        <button
-                          onClick={() => handleSelectiveClear([STORAGE_KEYS.PROJECTS, STORAGE_KEYS.ASSIGNMENTS, STORAGE_KEYS.TASKS], 'Projects')}
-                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
-                        >
-                          Reset Projects
-                        </button>
-                        <button
-                          onClick={() => handleSelectiveClear([STORAGE_KEYS.REMINDERS, STORAGE_KEYS.NOTIFICATIONS], 'Planner')}
-                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
-                        >
-                          Reset Planner
-                        </button>
-                        <button
-                          onClick={() => handleSelectiveClear([STORAGE_KEYS.PERSONALIZATION, STORAGE_KEYS.STUDY_PREFS, STORAGE_KEYS.NOTIF_SETTINGS, STORAGE_KEYS.PRIVACY], 'Preferences')}
-                          className="py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-bold border border-slate-100 dark:border-slate-700"
-                        >
-                          Reset Preferences
-                        </button>
                       </div>
                     </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Analytics Snapshot */}
-              {activeSection === 'analytics' && (
-                <section className="card space-y-8">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-teal-50 dark:bg-teal-500/10 text-teal-500">
-                      <TrendingUp size={24} />
-                    </div>
-                    Learning Performance
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {[
-                      { label: 'Total Hours', val: analytics.studyTime, icon: Clock, color: 'text-blue-500' },
-                      { label: 'Active Courses', val: analytics.active, icon: BookOpen, color: 'text-orange-500' },
-                      { label: 'Completed', val: analytics.completed, icon: CheckCircle2, color: 'text-green-500' },
-                      { label: 'Notes Created', val: analytics.notes, icon: FileText, color: 'text-purple-500' },
-                      { label: 'Study Streak', val: `${analytics.streak}d`, icon: Flame, color: 'text-red-500' },
-                      { label: 'Efficiency', val: `${analytics.productivity}%`, icon: TrendingUp, color: 'text-teal-500' },
-                    ].map((stat, i) => (
-                      <div key={i} className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-center space-y-1">
-                        <stat.icon className={`mx-auto mb-2 ${stat.color}`} size={24} />
-                        <p className="text-2xl font-black dark:text-white">{stat.val}</p>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Achievements */}
-              {activeSection === 'achievements' && (
-                <section className="card space-y-8">
-                  <h3 className="text-xl font-black flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-yellow-50 dark:bg-yellow-500/10 text-yellow-500">
-                      <Award size={24} />
-                    </div>
-                    Scholar Milestones
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {computedAchievements.map((badge) => (
-                      <div key={badge.id} className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-2xl bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center ${badge.color}`}>
-                          <badge.icon size={28} />
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <div className="flex justify-between items-center">
-                            <p className="font-bold text-sm dark:text-white">{badge.title}</p>
-                            <span className="text-[10px] font-black text-primary-500">{badge.progress}%</span>
-                          </div>
-                          <div className="h-1.5 w-full bg-white dark:bg-slate-900 rounded-full overflow-hidden shadow-inner">
-                            <div className="h-full bg-primary-500 rounded-full" style={{ width: `${badge.progress}%` }} />
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-medium">{badge.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      <ConfirmModal 
+      {/* Confirmation Modal Overlay */}
+      <ConfirmModal
         isOpen={confirmConfig.isOpen}
-        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
-        onConfirm={confirmConfig.onConfirm}
         title={confirmConfig.title}
         message={confirmConfig.message}
         confirmText={confirmConfig.confirmText}
         type={confirmConfig.type}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

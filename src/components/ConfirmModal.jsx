@@ -1,12 +1,33 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
 
-const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'danger' }) => {
-  return (
+const ConfirmModal = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  title, 
+  message, 
+  confirmText = 'Confirm', 
+  cancelText = 'Cancel', 
+  type = 'danger',
+  confirmMatchText
+}) => {
+  const [inputValue, setInputValue] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setInputValue('');
+    }
+  }, [isOpen]);
+
+  const isMatchValid = !confirmMatchText || inputValue.trim() === confirmMatchText.trim();
+
+  const content = (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -37,20 +58,42 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText 
                 {message || 'Are you sure you want to proceed with this action? This might be irreversible.'}
               </p>
 
+              {confirmMatchText && (
+                <div className="space-y-2 pt-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">
+                    Type <span className="text-red-500 dark:text-red-400 font-mono select-all bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">{confirmMatchText}</span> to confirm:
+                  </label>
+                  <input 
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder={`Type ${confirmMatchText}`}
+                    className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-sm font-medium text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/40 focus:border-red-500 transition-all font-mono"
+                    autoFocus
+                  />
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button 
                   onClick={onClose}
-                  className="flex-1 py-3.5 rounded-2xl border-2 border-slate-100 dark:border-slate-800 font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95"
+                  className="flex-1 py-3.5 rounded-2xl border-2 border-slate-100 dark:border-slate-800 font-black text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95 text-sm"
                 >
                   {cancelText}
                 </button>
                 <button 
+                  disabled={!isMatchValid}
                   onClick={() => {
+                    if (!isMatchValid) return;
                     onConfirm();
                     onClose();
                   }}
-                  className={`flex-1 py-3.5 rounded-2xl text-white font-black shadow-xl transition-all active:scale-95 ${
-                    type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-primary-500 hover:bg-primary-600 shadow-primary-500/20'
+                  className={`flex-1 py-3.5 rounded-2xl text-white font-black shadow-xl transition-all active:scale-95 text-sm ${
+                    !isMatchValid 
+                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed shadow-none active:scale-100'
+                      : type === 'danger' 
+                        ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' 
+                        : 'bg-primary-500 hover:bg-primary-600 shadow-primary-500/20'
                   }`}
                 >
                   {confirmText}
@@ -69,6 +112,9 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText 
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(content, document.body);
 };
 
 export default ConfirmModal;

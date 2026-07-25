@@ -484,84 +484,6 @@ const Tasks = () => {
   return (
     <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8 animate-in fade-in duration-500">
       
-      {/* Welcome Dashboard Banner */}
-      <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-primary-950 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 text-white border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 bottom-0 w-96 h-96 bg-primary-500/10 rounded-full filter blur-3xl -z-10 pointer-events-none" />
-        
-        <div className="space-y-3">
-          <p className="text-xs font-black uppercase tracking-[0.25em] text-primary-400">Welcome Back</p>
-          <h2 className="text-3xl font-black tracking-tight leading-tight sm:text-4xl">
-            Good Evening, Sahan 👋
-          </h2>
-          <p className="text-sm font-semibold text-slate-400 max-w-md">
-            You have <span className="text-primary-400 font-bold">{stats.pending + stats.active} active tasks</span> today. Let's finish them up!
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-center gap-6 shrink-0 bg-white/5 backdrop-blur-md p-5 rounded-[2rem] border border-white/10">
-          <div className="text-center sm:text-left">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Today's Progress</p>
-            <p className="text-2xl font-black text-white">{stats.completed} / {stats.total} Completed</p>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="h-2 w-32 bg-white/10 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-primary-500 rounded-full transition-all duration-1000" 
-                  style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }} 
-                />
-              </div>
-              <span className="text-xs font-bold text-slate-300">
-                {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Gamification Header Section */}
-      <div className="p-6 rounded-[2rem] bg-gradient-to-r from-primary-500/20 via-accent-500/10 to-purple-500/5 border border-primary-500/10 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary-500/10 flex items-center justify-center text-primary-500 border border-primary-500/20 shadow-inner">
-            <Trophy size={28} />
-          </div>
-          <div>
-            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-              StudyOS Rank: Level {level}
-            </h3>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="h-2 w-48 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-primary-500 rounded-full" style={{ width: `${(xp / (level * 200)) * 100}%` }} />
-              </div>
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                {xp}/{level * 200} XP
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6 divide-x divide-slate-200 dark:divide-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-amber-500/10 text-amber-500 rounded-xl">
-              <Flame size={22} className="animate-pulse" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Completion Streak</p>
-              <p className="text-lg font-black text-slate-800 dark:text-white">{streak} Days Consistent</p>
-            </div>
-          </div>
-          <div className="pl-6 flex items-center gap-3">
-            <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-xl">
-              <CheckCircle2 size={22} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">XP Goal Progress</p>
-              <p className="text-lg font-black text-slate-800 dark:text-white">
-                {Math.round((xp / (level * 200)) * 100)}% to Next Rank
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <PageHeader 
         title="Task Manager" 
         description="Track your academic work, resume exactly where you stopped."
@@ -576,32 +498,6 @@ const Tasks = () => {
           </button>
         }
       />
-
-      {/* Navigation tab views switcher */}
-      <div className="flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl w-fit shadow-sm">
-        {[
-          { id: 'tasks', label: 'My Tasks', icon: ListTodo },
-          { id: 'kanban', label: 'Kanban Board', icon: KanbanIcon },
-          { id: 'calendar', label: 'Calendar View', icon: CalendarIcon },
-          { id: 'timeline', label: 'Timeline View', icon: Clock }
-        ].map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setPageTab(tab.id)}
-              className={`relative px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-1.5 transition-all ${
-                pageTab === tab.id
-                  ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 shadow-sm border border-primary-100 dark:border-primary-500/20'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              <Icon size={14} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
 
       {/* Statistics Cards grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -628,6 +524,32 @@ const Tasks = () => {
                 <p className="text-2xl font-black text-slate-800 dark:text-white leading-none mt-1">{item.value}</p>
               </div>
             </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Navigation tab views switcher */}
+      <div className="flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl w-fit shadow-sm">
+        {[
+          { id: 'tasks', label: 'My Tasks', icon: ListTodo },
+          { id: 'kanban', label: 'Kanban Board', icon: KanbanIcon },
+          { id: 'calendar', label: 'Calendar View', icon: CalendarIcon },
+          { id: 'timeline', label: 'Timeline View', icon: Clock }
+        ].map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setPageTab(tab.id)}
+              className={`relative px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-1.5 transition-all ${
+                pageTab === tab.id
+                  ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 shadow-sm border border-primary-100 dark:border-primary-500/20'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              <Icon size={14} />
+              {tab.label}
+            </button>
           );
         })}
       </div>

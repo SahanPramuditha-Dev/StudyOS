@@ -18,6 +18,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { nanoid } from 'nanoid';
 import toast from 'react-hot-toast';
 import { generateGeminiResponse } from '../../../../services/aiService';
+import Select from '../../../../components/ui/Select';
+import { formatStorage } from '../../../../services/storageService.js';
 
 const STATUSES = ['Submitted', 'Needs Revision', 'Graded', 'Approved'];
 
@@ -123,11 +125,7 @@ Give a short, friendly 1-2 sentence response validating if this looks like a com
   };
 
   const formatFileSize = (bytes) => {
-    if (!bytes || bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return formatStorage(bytes);
   };
 
   const getStatusColor = (status) => {

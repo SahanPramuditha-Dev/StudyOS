@@ -247,11 +247,27 @@ Keep it concise and highly actionable. Return ONLY the markdown text.`;
 };
 
 export const fetchYoutubeTranscriptText = async (url) => {
+  if (!url) return null;
+  const m = url.match(/(?:youtu\.be\/|v=|embed\/|watch\?v=)([a-zA-Z0-9_-]{11})/);
+  const videoId = m ? m[1] : null;
+
+  if (videoId) {
+    try {
+      const { fetchTranscript } = await import('../features/Videos/utils/transcriptFetcher');
+      const transcriptData = await fetchTranscript(videoId);
+      if (transcriptData && transcriptData.length > 0) {
+        return transcriptData.map(t => t.text).join(' ').substring(0, 15000);
+      }
+    } catch (corsFetchErr) {
+      console.warn('CORS proxy transcript fetch failed, trying fallback:', corsFetchErr);
+    }
+  }
+
   try {
     const { YoutubeTranscript } = await import('youtube-transcript');
     const transcript = await YoutubeTranscript.fetchTranscript(url);
     if (!transcript || transcript.length === 0) return null;
-    return transcript.map(t => t.text).join(' ').substring(0, 15000); // limit chars for tokens
+    return transcript.map(t => t.text).join(' ').substring(0, 15000);
   } catch (err) {
     console.warn('Could not fetch transcript (might be CORS or missing captions):', err);
     return null;
@@ -306,13 +322,13 @@ export const generateVideoSummary = async (videoTitle, videoUrl) => {
 Here is the transcript:
 ${transcript}
 
-Provide a concise, easy-to-read summary with key takeaways formatted in markdown.`;
+Provide a concise, easy-to-read summary with key takeaways formatted in clean, standard markdown. Do not use LaTeX math delimiters (e.g. use f(n) instead of $f(n)$) or malformed asterisks.`;
   } else {
-    prompt = `Provide a comprehensive summary and key takeaways for the educational topic covered in a video titled "${videoTitle}". Format the output in clean markdown.`;
+    prompt = `Provide a comprehensive summary and key takeaways for the educational topic covered in a video titled "${videoTitle}". Format the output in clean, standard markdown without LaTeX math delimiters or malformed asterisks.`;
   }
 
   try {
-    return await generateGeminiResponse(prompt);
+    return await generateGeminiResponse(prompt, null, 'summarize');
   } catch (error) {
     console.error('Failed to generate video summary', error);
     throw error;
@@ -328,13 +344,13 @@ export const generateVideoQuiz = async (videoTitle, videoUrl) => {
 Here is the transcript:
 ${transcript}
 
-Provide the output in markdown format. Put the answers at the very bottom under a "Spoilers/Answers" section.`;
+Provide the output in clean, standard markdown format. Use clear Question and Answer sections. Put the answers at the very bottom under an "Answers" section. Do not use LaTeX math delimiters (e.g. use f(n) instead of $f(n)$) or malformed asterisks.`;
   } else {
-    prompt = `Create a 3-question active recall quiz based on the general topic of the video titled "${videoTitle}". Provide the output in markdown format. Put the answers at the very bottom under an "Answers" section.`;
+    prompt = `Create a 3-question active recall quiz based on the general topic of the video titled "${videoTitle}". Provide the output in clean, standard markdown format with an "Answers" section at the bottom. Do not use LaTeX math delimiters or malformed asterisks.`;
   }
 
   try {
-    return await generateGeminiResponse(prompt);
+    return await generateGeminiResponse(prompt, null, 'quiz');
   } catch (error) {
     console.error('Failed to generate video quiz', error);
     throw error;

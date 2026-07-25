@@ -168,6 +168,7 @@ const Videos = () => {
   // Player (DO NOT TOUCH PLAYER LOGIC)
   const [isPlaying,    setIsPlaying]    = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [liveSeconds,  setLiveSeconds]  = useState(0);
 
   // Add video modal
   const [modalForm,      setModalForm]      = useState({ url: '', title: '', courseId: '', projectId: '' });
@@ -221,12 +222,15 @@ const Videos = () => {
     const active = videos.filter(v => !v.archived);
     const completed  = active.filter(v => v.completed).length;
     const inProgress = active.filter(v => !v.completed && v.progress > 0).length;
-    const totalWatchTime = active.reduce((a, v) => a + (v.totalWatchTime || 0), 0);
+    const totalWatchTime = active.reduce((a, v) => a + (v.totalWatchTime || 0), 0) + liveSeconds;
 
     const daySet = new Set();
     active.forEach(v => (v.playbackLogs || []).forEach(l => {
       if (l.startTime) daySet.add(l.startTime.split('T')[0]);
     }));
+    if (liveSeconds > 0 && sessionStartRef.current?.startTime) {
+      daySet.add(sessionStartRef.current.startTime.split('T')[0]);
+    }
 
     let streak = 0;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -244,7 +248,17 @@ const Videos = () => {
       total: active.length, completed, inProgress,
       totalWatchTime, streak, totalDuration
     };
-  }, [videos]);
+  }, [videos, liveSeconds]);
+
+  const activeLiveLog = useMemo(() => {
+    if (isPlaying && sessionStartRef.current && liveSeconds > 0) {
+      return {
+        startTime: sessionStartRef.current.startTime,
+        duration: liveSeconds,
+      };
+    }
+    return null;
+  }, [isPlaying, liveSeconds]);
 
   const filteredVideos = useMemo(() => {
     let list = videos.filter(v => {
@@ -311,6 +325,24 @@ const Videos = () => {
 
   // ── Session tracking (Optimized to reduce db write costs) ─────────────────────────
 
+  // Live in-memory ticker (0 DB read/write cost)
+  useEffect(() => {
+    let timer = null;
+    if (isPlaying && sessionStartRef.current) {
+      timer = setInterval(() => {
+        if (sessionStartRef.current?.startTime) {
+          const elapsed = Math.floor((Date.now() - new Date(sessionStartRef.current.startTime).getTime()) / 1000);
+          setLiveSeconds(elapsed);
+        }
+      }, 1000);
+    } else {
+      setLiveSeconds(0);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isPlaying]);
+
   useEffect(() => {
     if (isPlaying && activeVideo && !sessionStartRef.current) {
       sessionStartRef.current = {
@@ -334,6 +366,7 @@ const Videos = () => {
         ));
       }
       sessionStartRef.current = null;
+      setLiveSeconds(0);
     }
     return () => {
       if (sessionStartRef.current && activeVideoIdRef.current) {
@@ -352,9 +385,34 @@ const Videos = () => {
           ));
         }
         sessionStartRef.current = null;
+        setLiveSeconds(0);
       }
     };
   }, [isPlaying, activeVideoId, activeVideo, playbackRate, setVideos]);
+
+  // Save session when tab closes / reloads
+  useEffect(() => {
+    const handleUnload = () => {
+      if (sessionStartRef.current && activeVideoIdRef.current) {
+        const dur = (new Date() - new Date(sessionStartRef.current.startTime)) / 1000;
+        if (dur > 5) {
+          const log = { ...sessionStartRef.current, endTime: new Date().toISOString(), duration: dur };
+          setVideos(prev => prev.map(v =>
+            v.id === activeVideoIdRef.current
+              ? { 
+                  ...v, 
+                  playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50),
+                  totalWatchTime: (v.totalWatchTime || 0) + Math.round(dur),
+                  lastWatched: new Date().toISOString()
+                }
+              : v
+          ));
+        }
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [setVideos]);
 
   // ── Reset on video switch ─────────────────────────────────────────────────
 
@@ -395,13 +453,13 @@ const Videos = () => {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const handleSaveBookmark = (bookmarkId, noteText) => {
+  const handleSaveBookmark = (bookmarkId, noteText, tag = null) => {
     const av = activeVideoRef.current;
     if (!av) return;
     setVideos(prev => prev.map(v => 
       v.id === av.id ? {
         ...v,
-        bookmarks: v.bookmarks.map(b => b.id === bookmarkId ? { ...b, note: noteText } : b)
+        bookmarks: v.bookmarks.map(b => b.id === bookmarkId ? { ...b, note: noteText, ...(tag ? { tag } : {}) } : b)
       } : v
     ));
   };
@@ -781,7 +839,7 @@ const Videos = () => {
         ))}
       </div>
 
-      <LearningHeatmap videos={videos} />
+      <LearningHeatmap videos={videos} activeLiveLog={activeLiveLog} />
 
       <div className="relative">
         <VideoFilter
@@ -1009,6 +1067,7 @@ const Videos = () => {
             updateVideoData={updateVideoData}
             courses={courses}
             projects={projects}
+            allResources={resources}
           />
         )}
       </AnimatePresence>

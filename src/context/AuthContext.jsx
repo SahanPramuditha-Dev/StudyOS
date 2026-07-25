@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -22,6 +22,7 @@ import { ref, uploadBytesResumable, getDownloadURL, listAll, deleteObject } from
 import { auth, storage, consumeFirebaseRedirectResult } from '../services/firebase';
 import { FirestoreService } from '../services/firestore';
 import { STORAGE_KEYS, StorageService } from '../services/storage';
+import { PREDEFINED_ROLES, getPredefinedRoleByCode } from '../constants/predefinedRoles';
 import toast from 'react-hot-toast';
 import posthog from 'posthog-js';
 import * as Sentry from "@sentry/react";
@@ -260,12 +261,12 @@ export const AuthProvider = ({ children }) => {
           name: hydratedUser.displayName || hydratedUser.email?.split('@')[0] || 'StudyOS User'
         });
 
-        // Hydrate permissions from custom roles
+        // Hydrate permissions from custom or predefined roles
         try {
           const customRoles = await FirestoreService.getCustomRoles();
           let userRole = customRoles.find(r => r.role === userProfile.role);
-          if (!userRole && customRoles.length > 0) {
-            userRole = customRoles.find(r => r.role === 'user') || customRoles[0];
+          if (!userRole) {
+            userRole = getPredefinedRoleByCode(userProfile.role);
           }
           if (userRole) {
             const hydratedModules = {};
@@ -290,6 +291,7 @@ export const AuthProvider = ({ children }) => {
           providerData: hydratedUser.providerData
         });
         setProfile(userProfile);
+        FirestoreService.logUserSession(hydratedUser.uid).catch(console.warn);
       } catch (error) {
         console.error('[AuthContext] Failed to initialize session:', error);
         toast.dismiss(GOOGLE_OAUTH_LOADING_TOAST_ID);
@@ -708,31 +710,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const value = useMemo(() => ({
+    user, 
+    profile, 
+    isAdmin, 
+    isSuperAdmin,
+    hasPermission,
+    loading, 
+    login, 
+    signup, 
+    logout, 
+    loginWithGoogle,
+    loginWithGitHub,
+    resetPassword,
+    deleteAccount,
+    uploadProfileImage,
+    updateUserProfile,
+    resendVerificationEmail,
+    linkOAuthProvider,
+    unlinkOAuthProvider,
+    setupPasswordCredential,
+    checkUsernameAvailability,
+    suggestUsernames,
+    changeUsername
+  }), [user, profile, isAdmin, isSuperAdmin, loading]);
+
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      profile, 
-      isAdmin, 
-      isSuperAdmin,
-      hasPermission,
-      loading, 
-      login, 
-      signup, 
-      logout, 
-      loginWithGoogle,
-      loginWithGitHub,
-      resetPassword,
-      deleteAccount,
-      uploadProfileImage,
-      updateUserProfile,
-      resendVerificationEmail,
-      linkOAuthProvider,
-      unlinkOAuthProvider,
-      setupPasswordCredential,
-      checkUsernameAvailability,
-      suggestUsernames,
-      changeUsername
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

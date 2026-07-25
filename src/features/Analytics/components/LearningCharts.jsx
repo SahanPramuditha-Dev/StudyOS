@@ -37,7 +37,7 @@ export const WatchChart = ({ data }) => (
       </div>
     </div>
     <div className="flex-1 min-h-[200px] w-full">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
         <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="8 8" vertical={false} stroke="#f1f5f9" className="dark:stroke-slate-800/50" />
           <XAxis 
@@ -160,7 +160,7 @@ const BasePieChart = ({ data, title, icon: Icon, label, onSelectSegment, selecte
           const activeData = data.filter(d => d.value > 0);
           const displayData = activeData.length > 0 ? activeData : [{ name: 'Empty', value: 1, color: '#f1f5f9' }];
           return (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={224}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={224}>
               <PieChart style={{ outline: 'none' }}>
                 <Pie
                   data={displayData}
@@ -244,7 +244,7 @@ export const StreakChart = ({ data }) => (
       </div>
     </div>
     <div className="flex-1 min-h-[250px] w-full">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={250}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={250}>
         <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="colorStreak" x1="0" y1="0" x2="0" y2="1">
@@ -294,7 +294,7 @@ export const CohortChart = ({ data }) => (
       </div>
     </div>
     <div className="flex-1 min-h-[250px] w-full">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={250}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={250}>
         <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="8 8" vertical={false} stroke="#f1f5f9" className="dark:stroke-slate-800/50" />
           <XAxis 
@@ -350,7 +350,7 @@ export const HourlyDistributionChart = ({ data }) => {
         </div>
       </div>
       <div className="flex-1 w-full min-h-[220px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
             <PolarGrid stroke="#e2e8f0" className="dark:stroke-slate-800" />
             <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
@@ -416,7 +416,7 @@ export const ProjectBurndownChart = ({ projects }) => {
         Task Burndown Momentum
       </h3>
       <div className="flex-1 w-full min-h-[220px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
@@ -614,7 +614,7 @@ export const SoundscapeCorrelationChart = () => {
         Focus Soundscapes
       </h3>
       <div className="flex-1 w-full min-h-[220px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <BarChart data={data} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="8 8" horizontal={false} stroke="#f1f5f9" className="dark:stroke-slate-800/50" />
             <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />

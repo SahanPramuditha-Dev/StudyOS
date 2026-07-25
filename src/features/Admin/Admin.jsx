@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Users, 
   Shield, 
@@ -21,7 +22,31 @@ import {
   Activity,
   Server,
   Upload,
-  ShieldAlert
+  ShieldAlert,
+  Sparkles,
+  Command,
+  Building2,
+  Megaphone,
+  Zap,
+  FileSpreadsheet,
+  Code,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  UserCog,
+  ShieldCheck,
+  ArrowRight,
+  History,
+  User,
+  Mail,
+  RotateCw,
+  Copy,
+  Info,
+  ExternalLink,
+  FileJson,
+  BookOpen,
+  Key,
+  ArrowUpRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FirestoreService } from '../../services/firestore';
@@ -34,26 +59,66 @@ import { useAuth } from '../../context/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../services/storage';
 import { computeUsageMetrics } from '../../services/usageMetrics';
+import { formatStorage as formatStorageUtil } from '../../services/storageService';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePlatformSettings } from '../../hooks/usePlatformSettings';
 import RoleBuilder from './components/RoleBuilder';
+import { AdminUserDrawer } from './components/AdminUserDrawer';
+import { AdminAIModule } from './components/AdminAIModule';
+import { AdminCommandPalette } from './components/AdminCommandPalette';
+import { AdminOrgModule } from './components/AdminOrgModule';
+import { AdminBroadcastModule } from './components/AdminBroadcastModule';
+import { AdminAutomationModule } from './components/AdminAutomationModule';
+import { AdminReportsModule } from './components/AdminReportsModule';
+import { AdminStorageModule } from './components/AdminStorageModule';
+import { AdminDevModule } from './components/AdminDevModule';
+
+const UserAvatar = ({ user, className = "w-10 h-10 rounded-xl" }) => {
+  const avatarUrl = (user?.avatar || user?.photoURL || user?.photoUrl || user?.profileImage || '').trim();
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [avatarUrl]);
+
+  if (avatarUrl && !imgError) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={user?.name || user?.email || 'User'}
+        onError={() => setImgError(true)}
+        className={`${className} object-cover border border-slate-200 dark:border-slate-700/60 shrink-0`}
+      />
+    );
+  }
+
+  return (
+    <div className={`${className} bg-primary-500/10 text-primary-500 border border-primary-500/20 flex items-center justify-center font-black shrink-0`}>
+      {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+    </div>
+  );
+};
 
 const Admin = () => {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const ROLE_META = {
     superadmin: { label: 'Platform Owner', short: 'Owner' },
-    admin: { label: 'Admin Manager', short: 'Admin' },
-    user: { label: 'Learner', short: 'Learner' },
-    restricted: { label: 'Limited Access', short: 'Limited' }
+    admin: { label: 'Platform Admin', short: 'Admin' },
+    educator: { label: 'Educator / Mentor', short: 'Educator' },
+    team_lead: { label: 'Workspace Lead', short: 'Lead' },
+    user: { label: 'Student / Learner', short: 'Learner' },
+    restricted: { label: 'Auditor / Guest', short: 'Guest' }
   };
   const MODULE_KEYS = ['videos','reminders','notes','analytics','resources','workspace','manageUsers','projects','courses','changePermissions','adminPanel'];
   const ACTION_KEYS = ['create','edit','delete','export'];
   const defaultRoleTemplates = [
     { id: 'tpl-owner', name: 'Platform Owner', role: 'superadmin', modules: [...MODULE_KEYS], actions: [...ACTION_KEYS] },
-    { id: 'tpl-admin', name: 'Admin Manager', role: 'admin', modules: [...MODULE_KEYS], actions: [...ACTION_KEYS] },
-    { id: 'tpl-learner', name: 'Learner Full Access', role: 'user', modules: ['courses', 'videos', 'notes', 'resources', 'projects', 'workspace', 'reminders'], actions: ['create', 'edit', 'export'] },
-    { id: 'tpl-limited', name: 'Limited Access', role: 'restricted', modules: ['notes', 'resources', 'reminders'], actions: [] }
+    { id: 'tpl-admin', name: 'Platform Admin', role: 'admin', modules: [...MODULE_KEYS], actions: [...ACTION_KEYS] },
+    { id: 'tpl-educator', name: 'Educator / Mentor', role: 'educator', modules: ['courses', 'videos', 'notes', 'resources', 'projects', 'workspace', 'reminders', 'analytics'], actions: ['create', 'edit', 'export'] },
+    { id: 'tpl-team_lead', name: 'Workspace Lead', role: 'team_lead', modules: ['courses', 'videos', 'notes', 'resources', 'projects', 'workspace', 'reminders', 'analytics'], actions: ['create', 'edit', 'delete', 'export'] },
+    { id: 'tpl-learner', name: 'Student / Learner', role: 'user', modules: ['courses', 'videos', 'notes', 'resources', 'projects', 'workspace', 'reminders'], actions: ['create', 'edit', 'export'] },
+    { id: 'tpl-limited', name: 'Auditor / Guest', role: 'restricted', modules: ['courses', 'videos', 'notes', 'resources', 'reminders'], actions: ['export'] }
   ];
   const buildDefaults = (role) => {
     const modules = {};
@@ -112,13 +177,29 @@ const Admin = () => {
   const [selectedUserOriginal, setSelectedUserOriginal] = useState(null);
   const [roleDraft, setRoleDraft] = useState(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [inspectUser, setInspectUser] = useState(null);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [activeAdminPage, setActiveAdminPage] = useState('overview');
   const [inviteEmail, setInviteEmail] = useState('');
   const [auditFeed, setAuditFeed] = useState([]);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
+  
+  // Ctrl+K Command Palette Listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   
   // Phase 2 states
   const [customRoles, setCustomRoles] = useState([]);
@@ -130,6 +211,13 @@ const Admin = () => {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const { data: platformSettings = { maintenanceMode: false, allowNewSignups: true, globalAnnouncement: '' } } = usePlatformSettings();
   const [bannerDraft, setBannerDraft] = useState('');
+  
+  // Audit Logs filtering & modal state
+  const [auditSearchQuery, setAuditSearchQuery] = useState('');
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState('all');
+  const [auditTimeframeFilter, setAuditTimeframeFilter] = useState('all');
+  const [selectedAuditLog, setSelectedAuditLog] = useState(null);
+  const [isRefetchingAudit, setIsRefetchingAudit] = useState(false);
   
   useEffect(() => {
     if (activeAdminPage === 'roles') {
@@ -149,6 +237,14 @@ const Admin = () => {
 
   const [savingPlatformSettings, setSavingPlatformSettings] = useState(false);
   const importRef = useRef(null);
+  const tabsScrollRef = useRef(null);
+
+  const scrollTabs = (direction) => {
+    if (tabsScrollRef.current) {
+      const scrollAmount = direction === 'left' ? -300 : 300;
+      tabsScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
   const [roleTemplates, setRoleTemplates] = useStorage('studyos_admin_role_templates', defaultRoleTemplates);
   const [adminFeatureFlags, setAdminFeatureFlags] = useStorage('studyos_admin_feature_flags', {
     githubIntegration: true,
@@ -175,9 +271,10 @@ const Admin = () => {
   const activeUsers = dashboardStats.activeUsers;
   const blockedUsers = dashboardStats.blockedUsers;
   const adminUsers = users.filter((u) => u.role === 'admin' || u.role === 'superadmin').length;
-  const totalStorageLimit = users.reduce((acc, u) => acc + Number(u.limits?.storageMB || 0), 0);
+  const totalStorageLimit = Math.max(1024, users.reduce((acc, u) => acc + Number(u.limits?.storageMB || 1024), 0));
   const totalStorageUsed = users.reduce((acc, u) => acc + Number(getCloudUsage(u.usage).displayStorageUsedMB || 0), 0);
-  const usagePercent = totalStorageLimit > 0 ? Math.round((totalStorageUsed / totalStorageLimit) * 100) : 0;
+  const rawPercent = totalStorageLimit > 0 ? Math.round((totalStorageUsed / totalStorageLimit) * 100) : 0;
+  const usagePercent = Math.min(100, Math.max(0, rawPercent));
   const recentActivity = auditFeed.slice(0, 5);
   const enabledFeatureCount = Object.values(adminFeatureFlags).filter(Boolean).length;
   const userDirectory = useMemo(() => {
@@ -209,8 +306,7 @@ const Admin = () => {
   
   // Storage Formatting Utility
   const formatStorage = (mb) => {
-    if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
-    return `${mb.toFixed(0)} MB`;
+    return formatStorageUtil((Number(mb) || 0) * 1024 * 1024);
   };
 
   // Export to CSV
@@ -315,11 +411,17 @@ const Admin = () => {
 
   const closeUserManager = () => {
     if (hasUnsavedChanges) {
-      const discard = window.confirm('You have unsaved changes. Discard and close?');
-      if (!discard) return;
+      setConfirmDiscardOpen(true);
+      return;
     }
     setSelectedUser(null);
     setSelectedUserOriginal(null);
+  };
+
+  const forceCloseUserManager = () => {
+    setSelectedUser(null);
+    setSelectedUserOriginal(null);
+    setConfirmDiscardOpen(false);
   };
 
   const hasUnsavedChanges = selectedUser && selectedUserOriginal
@@ -406,6 +508,330 @@ const Admin = () => {
     return 'No additional details';
   };
 
+  const getAuditMeta = (type = '') => {
+    const norm = String(type || '').toLowerCase();
+    if (norm.includes('user_update') || norm.includes('admin_update_user') || norm.includes('update_user')) {
+      return {
+        icon: UserCog,
+        badgeBg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20',
+        iconBg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20',
+        borderAccent: 'border-l-sky-500',
+      };
+    }
+    if (norm.includes('role') || norm.includes('permission')) {
+      return {
+        icon: ShieldCheck,
+        badgeBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+        iconBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+        borderAccent: 'border-l-purple-500',
+      };
+    }
+    if (norm.includes('email') || norm.includes('broadcast') || norm.includes('mail')) {
+      return {
+        icon: Mail,
+        badgeBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+        iconBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+        borderAccent: 'border-l-amber-500',
+      };
+    }
+    if (norm.includes('block') || norm.includes('delete') || norm.includes('revoke') || norm.includes('security')) {
+      return {
+        icon: ShieldAlert,
+        badgeBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+        iconBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
+        borderAccent: 'border-l-rose-500',
+      };
+    }
+    if (norm.includes('create') || norm.includes('add') || norm.includes('active')) {
+      return {
+        icon: UserPlus,
+        badgeBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+        borderAccent: 'border-l-emerald-500',
+      };
+    }
+    return {
+      icon: Activity,
+      badgeBg: 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border-primary-500/20',
+      iconBg: 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20',
+      borderAccent: 'border-l-primary-500',
+    };
+  };
+
+  const parseAuditChangeItems = (log = {}) => {
+    const items = [];
+    const updates = log?.updates;
+
+    if (updates && typeof updates === 'object') {
+      if (updates.limits) {
+        if (updates.limits.storageMB !== undefined) {
+          items.push({
+            label: 'Storage Limit',
+            value: `${updates.limits.storageMB} MB`,
+            icon: HardDrive,
+            badgeColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+          });
+        }
+        if (updates.limits.maxCourses !== undefined) {
+          items.push({
+            label: 'Max Courses',
+            value: `${updates.limits.maxCourses} Courses`,
+            icon: BookOpen,
+            badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+          });
+        }
+        if (updates.limits.maxFiles !== undefined) {
+          items.push({
+            label: 'Max Files',
+            value: `${updates.limits.maxFiles} Files`,
+            icon: FileText,
+            badgeColor: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20'
+          });
+        }
+        if (updates.limits.maxNotes !== undefined) {
+          items.push({
+            label: 'Max Notes',
+            value: `${updates.limits.maxNotes} Notes`,
+            icon: FileText,
+            badgeColor: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
+          });
+        }
+      }
+
+      if (updates.role) {
+        items.push({
+          label: 'Account Role',
+          value: String(updates.role).toUpperCase(),
+          icon: Shield,
+          badgeColor: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+        });
+      }
+
+      if (updates.plan) {
+        items.push({
+          label: 'Subscription Plan',
+          value: String(updates.plan).toUpperCase(),
+          icon: Zap,
+          badgeColor: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+        });
+      }
+
+      if (updates.status?.isActive !== undefined) {
+        items.push({
+          label: 'Account Status',
+          value: updates.status.isActive ? 'Active' : 'Inactive',
+          icon: CheckCircle2,
+          badgeColor: updates.status.isActive ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-slate-500/10 text-slate-500 border-slate-500/20'
+        });
+      }
+
+      if (updates.status?.isBlocked !== undefined) {
+        items.push({
+          label: 'Security Access',
+          value: updates.status.isBlocked ? 'Blocked' : 'Unblocked',
+          icon: AlertTriangle,
+          badgeColor: updates.status.isBlocked ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+        });
+      }
+
+      if (updates.permissions?.modules) {
+        items.push({
+          label: 'Module Permissions',
+          value: 'Updated',
+          icon: Key,
+          badgeColor: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
+        });
+      }
+
+      if (updates.permissions?.actions) {
+        items.push({
+          label: 'Action Permissions',
+          value: 'Updated',
+          icon: Key,
+          badgeColor: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+        });
+      }
+
+      if (updates.features) {
+        items.push({
+          label: 'Feature Flags',
+          value: 'Updated',
+          icon: Sparkles,
+          badgeColor: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20'
+        });
+      }
+    }
+
+    if (items.length > 0) return items;
+
+    // Fallback parsing from text summary or message
+    const summary = getAuditSummary(log);
+    if (summary && summary !== 'No additional details') {
+      const parts = summary.split(' • ');
+      parts.forEach((part) => {
+        if (part.includes('->')) {
+          const [key, val] = part.split('->').map((s) => s.trim());
+          let icon = Info;
+          if (key.toLowerCase().includes('storage')) icon = HardDrive;
+          else if (key.toLowerCase().includes('course')) icon = BookOpen;
+          else if (key.toLowerCase().includes('role')) icon = Shield;
+          else if (key.toLowerCase().includes('plan')) icon = Zap;
+          else if (key.toLowerCase().includes('permission')) icon = Key;
+          
+          items.push({
+            label: key.charAt(0).toUpperCase() + key.slice(1),
+            value: val,
+            icon,
+            badgeColor: 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border-primary-500/20'
+          });
+        } else {
+          items.push({
+            label: 'Event Detail',
+            value: part,
+            icon: Info,
+            badgeColor: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
+          });
+        }
+      });
+    }
+
+    if (items.length === 0) {
+      items.push({
+        label: 'Event Summary',
+        value: log.message || log.subject || 'System Action Logged',
+        icon: Info,
+        badgeColor: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20'
+      });
+    }
+
+    return items;
+  };
+
+  const renderAuditSummaryBadges = (log = {}) => {
+    const changeItems = parseAuditChangeItems(log);
+    if (!changeItems || changeItems.length === 0) return null;
+
+    return (
+      <div className="flex flex-wrap gap-2 mt-2.5">
+        {changeItems.map((item, idx) => {
+          const ItemIcon = item.icon || Info;
+          return (
+            <div 
+              key={idx} 
+              className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-100/80 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs"
+            >
+              <div className="p-1 rounded-lg bg-white dark:bg-slate-900 text-slate-500 shadow-2xs">
+                <ItemIcon size={12} />
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">{item.label}:</span>
+                <span className={`font-bold px-1.5 py-0.2 rounded-md border text-[11px] ${item.badgeColor}`}>
+                  {item.value}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const handleRefetchAudit = async () => {
+    setIsRefetchingAudit(true);
+    try {
+      const [logs, feed] = await Promise.all([
+        FirestoreService.getAuditLogs(100),
+        FirestoreService.getRecentAuditLogs(60)
+      ]);
+      setSystemAuditLogs(logs);
+      setAuditFeed(feed);
+      toast.success('Audit logs refreshed');
+    } catch (e) {
+      toast.error('Failed to refresh audit logs');
+    } finally {
+      setIsRefetchingAudit(false);
+    }
+  };
+
+  const handleExportAuditCSV = (logsToExport = []) => {
+    if (!logsToExport.length) {
+      toast.error('No logs available to export');
+      return;
+    }
+    const headers = ['Event ID', 'Type', 'Target', 'Summary', 'Performed By', 'Timestamp'];
+    const rows = logsToExport.map((log) => [
+      `"${log.id || ''}"`,
+      `"${getAuditTypeLabel(log.type)}"`,
+      `"${getAuditTargetLabel(log).replace(/"/g, '""')}"`,
+      `"${getAuditSummary(log).replace(/"/g, '""')}"`,
+      `"${getAuditActorLabel(log).replace(/"/g, '""')}"`,
+      `"${getAuditTimestamp(log) || ''}"`
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `studyos-audit-logs-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Audit logs exported as CSV');
+  };
+
+  const renderAuditItem = (log, onClickItem = null) => {
+    const meta = getAuditMeta(log.type);
+    const IconComp = meta.icon;
+    const summary = getAuditSummary(log);
+    const timeStr = getAuditTimestamp(log);
+    const actor = getAuditActorLabel(log);
+    const target = getAuditTargetLabel(log);
+
+    return (
+      <div 
+        key={log.id} 
+        onClick={() => onClickItem && onClickItem(log)}
+        className={`p-3.5 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 bg-white/60 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-all duration-200 shadow-sm border-l-4 ${meta.borderAccent} group ${onClickItem ? 'cursor-pointer hover:border-primary-500/40 hover:shadow-md' : ''}`}
+      >
+        <div className="flex items-start gap-3">
+          <div className={`p-2.5 rounded-xl shrink-0 ${meta.iconBg} mt-0.5`}>
+            <IconComp size={16} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${meta.badgeBg}`}>
+                {getAuditTypeLabel(log.type)}
+              </span>
+              {timeStr && (
+                <span className="flex items-center gap-1 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                  <Clock size={11} className="text-slate-400 shrink-0" />
+                  <span>{timeStr}</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate mt-1">
+              {target}
+            </p>
+            {renderAuditSummaryBadges(log)}
+            <div className="flex items-center justify-between gap-2 mt-2 pt-1 border-t border-slate-100 dark:border-slate-800/40">
+              {actor && (
+                <div className="flex items-center gap-1 text-[11px] font-medium text-slate-400 dark:text-slate-500 truncate">
+                  <User size={11} className="text-slate-400 shrink-0" />
+                  <span className="truncate">by {actor}</span>
+                </div>
+              )}
+              {onClickItem && (
+                <span className="text-[11px] font-semibold text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 ml-auto">
+                  View payload <ChevronRight size={12} />
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const toggleUserSelection = (userId) => {
     setSelectedUserIds((prev) => (
       prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
@@ -458,20 +884,7 @@ const Admin = () => {
 
   const applyBulkDelete = async () => {
     if (!selectedUserIds.length) return;
-    const confirm = window.confirm(`Are you sure you want to permanently delete ${selectedUserIds.length} user(s)? This cannot be undone.`);
-    if (!confirm) return;
-    
-    try {
-      await Promise.all(selectedUserIds.map((id) => {
-        if (id === currentUser?.id) return Promise.resolve();
-        return FirestoreService.deleteUserData(id);
-      }));
-      setUsers((prev) => prev.filter((u) => !selectedUserIds.includes(u.id) || u.id === currentUser?.id));
-      toast.success(`Deleted ${selectedUserIds.length} user(s)`);
-      setSelectedUserIds([]);
-    } catch {
-      toast.error('Bulk delete failed');
-    }
+    setConfirmBulkDeleteOpen(true);
   };
 
   const fetchInitialUsers = async () => {
@@ -622,34 +1035,120 @@ const Admin = () => {
     }
   };
 
-  const renderAdminPageTabs = () => (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-2 inline-flex gap-2">
-      {[
-        { id: 'overview', label: 'Overview', icon: Layout },
-        { id: 'users', label: 'Users', icon: Users },
-        { id: 'roles', label: 'Roles', icon: ClipboardList },
-        { id: 'requests', label: 'Access Requests', icon: ShieldAlert },
-        { id: 'features', label: 'Features', icon: Settings },
-        { id: 'audit', label: 'Audit Logs', icon: Activity },
-        { id: 'health', label: 'System Health', icon: Server },
-        { id: 'platform', label: 'Platform Settings', icon: Settings },
-        { id: 'support', label: 'Support', icon: UserPlus }
-      ].map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => setActiveAdminPage(tab.id)}
-          className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-widest inline-flex items-center gap-2 transition ${
-            activeAdminPage === tab.id
-              ? 'bg-slate-900 text-white'
-              : 'bg-slate-50 dark:bg-slate-800 text-slate-500'
-          }`}
-        >
-          <tab.icon size={14} />
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
+  const renderAdminPageTabs = () => {
+    const tabs = [
+      { id: 'overview', label: 'Overview', icon: Layout },
+      { id: 'ai', label: 'Orion AI', icon: Sparkles },
+      { id: 'organizations', label: 'Organizations', icon: Building2 },
+      { id: 'broadcasts', label: 'Broadcasts', icon: Megaphone },
+      { id: 'automations', label: 'Automations', icon: Zap },
+      { id: 'reports', label: 'Reports', icon: FileSpreadsheet },
+      { id: 'storage', label: 'Storage', icon: HardDrive },
+      { id: 'dev', label: 'Developer', icon: Code },
+      { id: 'users', label: 'Users', icon: Users },
+      { id: 'roles', label: 'Roles', icon: ClipboardList },
+      { id: 'requests', label: 'Access Requests', icon: ShieldAlert, badge: permissionRequests.length },
+      { id: 'features', label: 'Features', icon: Settings },
+      { id: 'audit', label: 'Audit Logs', icon: Activity },
+      { id: 'health', label: 'System Health', icon: Server },
+      { id: 'platform', label: 'Platform Settings', icon: Settings },
+      { id: 'support', label: 'Support', icon: UserPlus }
+    ];
+
+    const currentTab = tabs.find(t => t.id === activeAdminPage);
+
+    return (
+      <div className="space-y-6">
+        {/* Top Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-700 text-white shadow-xl shadow-slate-900/10 border border-slate-700/30 flex items-center justify-center shrink-0">
+              <Shield size={28} className="text-primary-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-800 dark:text-white tracking-tight">
+                  Admin Command Center
+                </h1>
+                {currentTab && (
+                  <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-extrabold bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20 items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
+                    {currentTab.label}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-400 font-semibold mt-0.5">
+                Manage platform operations, security roles, system health, and configurations
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-black tracking-wider uppercase inline-flex items-center gap-2 shadow-lg transition-all active:scale-95"
+            >
+              <Command size={14} className="text-primary-400 dark:text-primary-600" />
+              <span>Search (Ctrl+K)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Horizontal Tab Rail */}
+        <div className="relative flex items-center group">
+          <button
+            onClick={() => scrollTabs('left')}
+            className="absolute -left-3 z-10 p-2 rounded-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all opacity-0 group-hover:opacity-100 hidden sm:flex items-center justify-center"
+            title="Scroll left"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          <div
+            ref={tabsScrollRef}
+            className="w-full flex items-center gap-1.5 p-1.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-x-auto scroll-smooth"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {tabs.map((tab) => {
+              const isActive = activeAdminPage === tab.id;
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveAdminPage(tab.id)}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap inline-flex items-center gap-2 transition-all duration-200 shrink-0 ${
+                    isActive
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md ring-1 ring-slate-900/10 dark:ring-white/20 scale-[1.02]'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <TabIcon size={15} className={isActive ? 'text-primary-400 dark:text-primary-600' : 'text-slate-400 dark:text-slate-500'} />
+                  <span>{tab.label}</span>
+                  {Boolean(tab.badge) && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                      isActive 
+                        ? 'bg-amber-500 text-white shadow-sm' 
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                    }`}>
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => scrollTabs('right')}
+            className="absolute -right-3 z-10 p-2 rounded-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all opacity-0 group-hover:opacity-100 hidden sm:flex items-center justify-center"
+            title="Scroll right"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const loadMoreUsers = async () => {
     if (!lastVisible || loadingMore) return;
@@ -821,24 +1320,6 @@ const Admin = () => {
     return (
       <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
-              <div className="p-3 rounded-[1.5rem] bg-slate-900 text-white shadow-xl">
-                <Layout size={32} />
-              </div>
-              Admin Command Center
-            </h1>
-            <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs mt-2">
-              Manage users, features, and platform health from one place
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setActiveAdminPage('users')} className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">Open Users</button>
-            <button onClick={() => setActiveAdminPage('health')} className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">System Health</button>
-            <button onClick={() => setActiveAdminPage('support')} className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-bold">Support</button>
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
@@ -885,25 +1366,105 @@ const Admin = () => {
           </div>
 
           <div className="card space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-black">Recent Admin Activity</h2>
-              <button onClick={() => setActiveAdminPage('audit')} className="text-sm font-bold text-primary-500">Open Logs</button>
-            </div>
-            <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
-              {recentActivity.length === 0 && <p className="text-sm text-slate-400">No recent admin activity yet.</p>}
-              {recentActivity.map((log) => (
-                <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{getAuditTypeLabel(log.type)}</p>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{getAuditTargetLabel(log)}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{getAuditSummary(log)}</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {getAuditTimestamp(log) || 'Unknown time'} • by {getAuditActorLabel(log)}
-                  </p>
+            <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-primary-500/10 text-primary-500">
+                  <Activity size={18} />
                 </div>
-              ))}
+                <h2 className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                  Recent Admin Activity
+                  {recentActivity.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-primary-500/10 text-primary-600 dark:text-primary-400 text-xs font-bold">
+                      {recentActivity.length}
+                    </span>
+                  )}
+                </h2>
+              </div>
+              <button 
+                onClick={() => setActiveAdminPage('audit')} 
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/40 hover:bg-primary-100 dark:hover:bg-primary-900/60 border border-primary-200/50 dark:border-primary-800/40 transition-all duration-200 group"
+              >
+                <span>Open Logs</span>
+                <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+              {recentActivity.length === 0 && (
+                <div className="text-center py-8">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                    <History size={20} />
+                  </div>
+                  <p className="text-sm font-medium text-slate-400">No recent admin activity yet.</p>
+                </div>
+              )}
+              {recentActivity.map((log) => renderAuditItem(log))}
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'ai') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminAIModule onUpdateSettings={(updates) => toast.success('AI settings updated')} />
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'organizations') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminOrgModule />
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'broadcasts') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminBroadcastModule />
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'automations') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminAutomationModule />
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'reports') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminReportsModule users={users} />
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'storage') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminStorageModule users={users} />
+      </div>
+    );
+  }
+
+  if (activeAdminPage === 'dev') {
+    return (
+      <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+        {renderAdminPageTabs()}
+        <AdminDevModule />
       </div>
     );
   }
@@ -1047,44 +1608,378 @@ const Admin = () => {
   }
 
   if (activeAdminPage === 'audit') {
+    const rawLogs = systemAuditLogs.length > 0 ? systemAuditLogs : auditFeed;
+
+    // Filtering logic
+    const filteredAuditLogs = rawLogs.filter((log) => {
+      // 1. Text Search Query
+      if (auditSearchQuery.trim()) {
+        const q = auditSearchQuery.toLowerCase();
+        const target = getAuditTargetLabel(log).toLowerCase();
+        const actor = getAuditActorLabel(log).toLowerCase();
+        const summary = getAuditSummary(log).toLowerCase();
+        const type = getAuditTypeLabel(log.type).toLowerCase();
+        const id = String(log.id || '').toLowerCase();
+        const matches = target.includes(q) || actor.includes(q) || summary.includes(q) || type.includes(q) || id.includes(q);
+        if (!matches) return false;
+      }
+
+      // 2. Action Category Filter
+      if (auditCategoryFilter !== 'all') {
+        const norm = String(log.type || '').toLowerCase();
+        if (auditCategoryFilter === 'user' && !norm.includes('user')) return false;
+        if (auditCategoryFilter === 'security' && !norm.includes('role') && !norm.includes('permission') && !norm.includes('block') && !norm.includes('revoke')) return false;
+        if (auditCategoryFilter === 'communication' && !norm.includes('email') && !norm.includes('broadcast') && !norm.includes('mail')) return false;
+      }
+
+      // 3. Timeframe Filter
+      if (auditTimeframeFilter !== 'all') {
+        const logTime = new Date(log.performedAt || log.timestamp || log.createdAt || 0).getTime();
+        if (logTime > 0) {
+          const now = Date.now();
+          const diffMs = now - logTime;
+          if (auditTimeframeFilter === 'today' && diffMs > 24 * 60 * 60 * 1000) return false;
+          if (auditTimeframeFilter === '7days' && diffMs > 7 * 24 * 60 * 60 * 1000) return false;
+          if (auditTimeframeFilter === '30days' && diffMs > 30 * 24 * 60 * 60 * 1000) return false;
+        }
+      }
+
+      return true;
+    });
+
+    // KPI Metrics
+    const totalCount = rawLogs.length;
+    const userUpdatesCount = rawLogs.filter(l => (l.type || '').toLowerCase().includes('user')).length;
+    const securityCount = rawLogs.filter(l => {
+      const t = (l.type || '').toLowerCase();
+      return t.includes('role') || t.includes('permission') || t.includes('block');
+    }).length;
+    const commsCount = rawLogs.filter(l => {
+      const t = (l.type || '').toLowerCase();
+      return t.includes('email') || t.includes('broadcast') || t.includes('mail');
+    }).length;
+
     return (
       <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
-        <div className="card space-y-4">
-          <h2 className="text-xl font-black">Audit Logs (System Health)</h2>
-          <div className="space-y-2 max-h-[65vh] overflow-y-auto custom-scrollbar">
-            {systemAuditLogs.length === 0 && <p className="text-sm text-slate-400">No logs found.</p>}
-            {systemAuditLogs.map((log) => (
-              <div key={log.id} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-                <p className="text-[10px] uppercase tracking-widest font-black text-primary-500">{log.type}</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{log.details}</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {new Date(log.timestamp).toLocaleString()} • by {log.actorId}
-                </p>
+
+        {/* Stats KPI Banner */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { label: 'Total Audit Events', value: totalCount, icon: History, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-950/40' },
+            { label: 'User Updates', value: userUpdatesCount, icon: UserCog, color: 'text-sky-500', bg: 'bg-sky-50 dark:bg-sky-950/40' },
+            { label: 'Security & Roles', value: securityCount, icon: ShieldCheck, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-950/40' },
+            { label: 'Communications', value: commsCount, icon: Mail, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/40' }
+          ].map((stat, i) => (
+            <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-5">
+              <div className={`p-3.5 rounded-2xl ${stat.bg} ${stat.color}`}>
+                <stat.icon size={22} />
               </div>
-            ))}
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</p>
+                <p className="text-2xl font-black text-slate-800 dark:text-white">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Audit Log Controls & Feed */}
+        <div className="card space-y-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800/80">
+            <div>
+              <h2 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                System Audit Logs
+                <span className="px-2.5 py-0.5 rounded-full bg-primary-500/10 text-primary-600 dark:text-primary-400 text-xs font-bold">
+                  {filteredAuditLogs.length} of {totalCount}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Real-time inspection of administrative updates, security actions, and system broadcasts</p>
+            </div>
+
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <button
+                onClick={handleRefetchAudit}
+                disabled={isRefetchingAudit}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200/60 dark:border-slate-700/60"
+              >
+                <RotateCw size={14} className={isRefetchingAudit ? 'animate-spin' : ''} />
+                <span>Refresh</span>
+              </button>
+              <button
+                onClick={() => handleExportAuditCSV(filteredAuditLogs)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 transition-colors shadow-sm"
+              >
+                <Download size={14} />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            {/* Search Input */}
+            <div className="md:col-span-6 relative">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search target, actor, action or changes..."
+                value={auditSearchQuery}
+                onChange={(e) => setAuditSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs font-medium text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              />
+              {auditSearchQuery && (
+                <button
+                  onClick={() => setAuditSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Category Select */}
+            <div className="md:col-span-3">
+              <select
+                value={auditCategoryFilter}
+                onChange={(e) => setAuditCategoryFilter(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              >
+                <option value="all">All Action Types</option>
+                <option value="user">User Updates</option>
+                <option value="security">Security & Roles</option>
+                <option value="communication">Email & Broadcasts</option>
+              </select>
+            </div>
+
+            {/* Timeframe Select */}
+            <div className="md:col-span-3">
+              <select
+                value={auditTimeframeFilter}
+                onChange={(e) => setAuditTimeframeFilter(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-xs font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Past 24 Hours</option>
+                <option value="7days">Past 7 Days</option>
+                <option value="30days">Past 30 Days</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Active Filter Indicators / Clear Button */}
+          {(auditSearchQuery || auditCategoryFilter !== 'all' || auditTimeframeFilter !== 'all') && (
+            <div className="flex items-center justify-between bg-primary-50/50 dark:bg-primary-950/20 px-4 py-2 rounded-xl border border-primary-100 dark:border-primary-900/40 text-xs text-primary-700 dark:text-primary-300">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold">Active Filters:</span>
+                {auditSearchQuery && (
+                  <span className="px-2 py-0.5 rounded-md bg-primary-100 dark:bg-primary-900/60 font-mono">
+                    "{auditSearchQuery}"
+                  </span>
+                )}
+                {auditCategoryFilter !== 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-primary-100 dark:bg-primary-900/60 capitalize">
+                    Category: {auditCategoryFilter}
+                  </span>
+                )}
+                {auditTimeframeFilter !== 'all' && (
+                  <span className="px-2 py-0.5 rounded-md bg-primary-100 dark:bg-primary-900/60">
+                    Timeframe: {auditTimeframeFilter}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setAuditSearchQuery('');
+                  setAuditCategoryFilter('all');
+                  setAuditTimeframeFilter('all');
+                }}
+                className="font-bold text-primary-600 dark:text-primary-400 hover:underline shrink-0 ml-2"
+              >
+                Reset Filters
+              </button>
+            </div>
+          )}
+
+          {/* Audit Logs List */}
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+            {filteredAuditLogs.length === 0 && (
+              <div className="text-center py-12 bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                  <Filter size={24} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">No matching audit logs</h3>
+                <p className="text-xs text-slate-400 mt-1">Try broadening your search query or clearing filter selections.</p>
+              </div>
+            )}
+            {filteredAuditLogs.map((log) => renderAuditItem(log, (item) => setSelectedAuditLog(item)))}
           </div>
         </div>
+
+        {/* Audit Log Detail Inspector Modal */}
+        <AnimatePresence>
+          {selectedAuditLog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
+              >
+                {/* Modal Header */}
+                <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-primary-500/10 text-primary-500">
+                      <FileJson size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-slate-800 dark:text-white">Audit Event Details</h3>
+                      <p className="text-xs text-slate-400">Full payload and system metadata trace</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAuditLog(null)}
+                    className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Modal Content */}
+                <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                  {/* Action Banner */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-primary-500/10 text-primary-500 border border-primary-500/20">
+                        <Activity size={20} />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-primary-500">Action Type</span>
+                        <p className="text-base font-black text-slate-800 dark:text-slate-100">
+                          {getAuditTypeLabel(selectedAuditLog.type)}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Timestamp</span>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-0.5 flex items-center gap-1.5">
+                        <Clock size={13} className="text-slate-400" />
+                        {getAuditTimestamp(selectedAuditLog) || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Target & Actor Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400 font-black text-sm flex items-center justify-center shrink-0 border border-sky-500/20">
+                        {getAuditTargetLabel(selectedAuditLog).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Target Account / Resource</p>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                          {getAuditTargetLabel(selectedAuditLog)}
+                        </p>
+                        {selectedAuditLog.targetUserId && (
+                          <div className="flex items-center gap-1 mt-1.5 text-[11px] font-mono text-slate-400">
+                            <span>ID:</span>
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300">{selectedAuditLog.targetUserId}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 font-black text-sm flex items-center justify-center shrink-0 border border-purple-500/20">
+                        {getAuditActorLabel(selectedAuditLog).charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Executed By (Actor)</p>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                          {getAuditActorLabel(selectedAuditLog)}
+                        </p>
+                        {selectedAuditLog.performedBy && (
+                          <div className="flex items-center gap-1 mt-1.5 text-[11px] font-mono text-slate-400">
+                            <span>Actor ID:</span>
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300">{selectedAuditLog.performedBy}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Structured Field Changes Grid */}
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
+                      <Sparkles size={14} className="text-primary-500" />
+                      Summary of Modified Attributes
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {parseAuditChangeItems(selectedAuditLog).map((item, idx) => {
+                        const ItemIcon = item.icon || Info;
+                        return (
+                          <div key={idx} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shadow-2xs">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800 shadow-2xs">
+                                <ItemIcon size={16} />
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</p>
+                                <p className="text-xs font-black text-slate-800 dark:text-slate-100 mt-0.5">{item.value}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border shrink-0 ${item.badgeColor}`}>
+                              Updated
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Full JSON Payload */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Raw Document Payload</h4>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(selectedAuditLog, null, 2));
+                          toast.success('Payload copied to clipboard');
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-500 hover:underline px-2.5 py-1 rounded-lg bg-primary-500/10"
+                      >
+                        <Copy size={12} />
+                        <span>Copy JSON</span>
+                      </button>
+                    </div>
+                    <pre className="p-4 rounded-2xl bg-slate-950 text-sky-400 font-mono text-[11px] overflow-x-auto border border-slate-800/80 max-h-48 custom-scrollbar leading-relaxed">
+                      {JSON.stringify(selectedAuditLog, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
 
   if (activeAdminPage === 'requests') {
-    const handleApprove = async (reqId) => {
+    const handleApprove = async (req) => {
       try {
         const reviewerId = currentUser?.uid || currentUser?.id;
-        await FirestoreService.updatePermissionRequest(reqId, 'approved', reviewerId);
-        setPermissionRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'approved' } : r));
-        toast.success('Request approved');
+        await FirestoreService.updatePermissionRequest(req.id, 'approved', reviewerId, req);
+        setPermissionRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'approved' } : r));
+        toast.success(`Request approved! User granted role ${req.targetRole || req.requestedResource}`);
       } catch (e) {
         toast.error('Failed to approve request');
       }
     };
-    const handleDeny = async (reqId) => {
+    const handleDeny = async (req) => {
       try {
         const reviewerId = currentUser?.uid || currentUser?.id;
-        await FirestoreService.updatePermissionRequest(reqId, 'denied', reviewerId);
-        setPermissionRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'denied' } : r));
+        await FirestoreService.updatePermissionRequest(req.id, 'denied', reviewerId, req);
+        setPermissionRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'denied' } : r));
         toast.success('Request denied');
       } catch (e) {
         toast.error('Failed to deny request');
@@ -1095,25 +1990,49 @@ const Admin = () => {
       <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
         {renderAdminPageTabs()}
         <div className="card space-y-4">
-          <h2 className="text-xl font-black">Permission Requests</h2>
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-black text-slate-800 dark:text-white">Permission & Role Access Requests</h2>
+              <p className="text-xs text-slate-400 font-medium">Review and approve self-service role escalation requests from users.</p>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-primary-500/10 text-primary-500 border border-primary-500/20">
+              {permissionRequests.filter(r => r.status === 'pending').length} Pending
+            </span>
+          </div>
+
           <div className="space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar">
-            {permissionRequests.length === 0 && <p className="text-sm text-slate-400">No pending requests.</p>}
+            {permissionRequests.length === 0 && (
+              <div className="p-8 text-center text-slate-400 text-xs font-semibold border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                No access requests submitted yet.
+              </div>
+            )}
             {permissionRequests.map((req) => (
-              <div key={req.id} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 justify-between items-start">
-                <div>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">User ID: {req.userId}</p>
-                  <p className="text-xs text-slate-500">Requested Resource: <span className="font-bold text-primary-500">{req.requestedResource}</span></p>
-                  <p className="text-xs text-slate-400 mt-2 italic">"{req.reason}"</p>
-                  <p className="text-[10px] text-slate-400 mt-2">{new Date(req.createdAt).toLocaleString()}</p>
+              <div key={req.id} className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row gap-4 justify-between items-start hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-sm">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-black text-slate-800 dark:text-white">{req.userName || req.userEmail || req.userId}</p>
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">Current: {req.currentRole || 'user'}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Requested Role: <span className="font-bold text-primary-500 uppercase tracking-wider">{req.targetRole || req.requestedResource}</span>
+                  </p>
+                  {req.reason && (
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-2 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 italic">
+                      "{req.reason}"
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-400 font-mono mt-1">
+                    Submitted: {req.createdAt ? new Date(req.createdAt).toLocaleString() : 'Recently'}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   {req.status === 'pending' ? (
                     <>
-                      <button onClick={() => handleApprove(req.id)} className="px-3 py-1.5 rounded-lg bg-green-100 text-green-700 text-xs font-bold uppercase tracking-widest hover:bg-green-200 transition-colors">Approve</button>
-                      <button onClick={() => handleDeny(req.id)} className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-xs font-bold uppercase tracking-widest hover:bg-red-200 transition-colors">Deny</button>
+                      <button onClick={() => handleApprove(req)} className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold uppercase tracking-widest transition-all shadow-md shadow-emerald-500/20">Approve</button>
+                      <button onClick={() => handleDeny(req)} className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-widest transition-all">Deny</button>
                     </>
                   ) : (
-                    <span className={`px-3 py-1 rounded text-xs font-bold uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-widest border ${req.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'}`}>
                       {req.status}
                     </span>
                   )}
@@ -1299,7 +2218,7 @@ const Admin = () => {
           { label: 'Total Users', value: users.length, icon: Users, color: 'text-primary-500', bg: 'bg-primary-50' },
           { label: 'Super Admins', value: users.filter(u => u.role === 'superadmin').length, icon: Shield, color: 'text-slate-900', bg: 'bg-slate-100' },
           { label: 'Active Profiles', value: users.filter(u => u.status?.isActive).length, icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-50' },
-          { label: 'Total MBs', value: `${(users.reduce((acc, u) => acc + (u.limits?.storageMB || 0), 0)).toFixed(0)}MB`, icon: HardDrive, color: 'text-blue-500', bg: 'bg-blue-50' }
+          { label: 'Total Storage Capacity', value: formatStorage(users.reduce((acc, u) => acc + (u.limits?.storageMB || 0), 0)), icon: HardDrive, color: 'text-blue-500', bg: 'bg-blue-50' }
         ].map((stat, i) => (
           <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-6">
             <div className={`p-4 rounded-2xl ${stat.bg} dark:bg-opacity-10 ${stat.color}`}>
@@ -1450,9 +2369,7 @@ const Admin = () => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-slate-500">
-                        {user.name?.[0].toUpperCase()}
-                      </div>
+                      <UserAvatar user={user} className="w-10 h-10 rounded-xl text-base" />
                       <div>
                         <p className="text-sm font-bold text-slate-800 dark:text-white">{user.name}</p>
                         <p className="text-xs text-slate-400">{user.email}</p>
@@ -1496,6 +2413,13 @@ const Admin = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => setInspectUser(user)}
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-all"
+                        title="Inspect User Details"
+                      >
+                        <FileText size={18} />
+                      </button>
                       <button 
                         onClick={() => openUserManager(user)}
                         className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-primary-500 hover:bg-primary-50 transition-all"
@@ -1560,9 +2484,10 @@ const Admin = () => {
       )}
 
       {/* User Management Modal */}
-      <AnimatePresence>
-        {selectedUser && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {selectedUser && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1571,21 +2496,20 @@ const Admin = () => {
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-6xl shadow-2xl border border-slate-100 dark:border-slate-800 max-h-[92vh] overflow-hidden flex flex-col"
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-[1400px] shadow-2xl border border-slate-100 dark:border-slate-800 max-h-[94vh] overflow-hidden flex flex-col"
             >
-              <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 px-6 md:px-8 py-5 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
-                <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-2xl font-black text-slate-500">
-                  {selectedUser.name?.[0].toUpperCase()}
+              {/* Modal Top Bar */}
+              <div className="flex items-center gap-5 border-b border-slate-100 dark:border-slate-800 px-6 md:px-8 py-5 bg-white/95 dark:bg-slate-900/95 backdrop-blur shrink-0">
+                <UserAvatar user={selectedUser} className="w-14 h-14 rounded-2xl text-xl" />
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl font-black text-slate-800 dark:text-white truncate">{selectedUser.name || 'User Profile'}</h2>
+                  <p className="text-xs text-slate-400 font-medium truncate mt-0.5">{selectedUser.email}</p>
                 </div>
-                <div className="flex-1">
-                  <h2 className="text-xl font-black text-slate-800 dark:text-white">{selectedUser.name}</h2>
-                  <p className="text-slate-400 font-medium">{selectedUser.email}</p>
-                </div>
-                <div className="text-right space-y-1">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <div className="text-right shrink-0 space-y-1">
+                  <div className="flex items-center justify-end gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
                     <Clock size={12} />
                     Last Login
                   </div>
@@ -1593,14 +2517,22 @@ const Admin = () => {
                     {selectedUser.lastLogin ? new Date(selectedUser.lastLogin).toLocaleString() : 'Never'}
                   </p>
                   <p className={`text-[10px] font-black uppercase tracking-widest ${hasUnsavedChanges ? 'text-amber-500' : 'text-emerald-500'}`}>
-                    {hasUnsavedChanges ? 'Unsaved Changes' : 'All Changes Saved'}
+                    {hasUnsavedChanges ? '● Unsaved Changes' : '✓ All Changes Saved'}
                   </p>
                 </div>
+                <button 
+                  onClick={closeUserManager} 
+                  className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors ml-3 shrink-0"
+                  title="Close Modal"
+                >
+                  <X size={20} />
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar px-6 md:px-8 py-6 space-y-8">
                 <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity size={14} className="text-primary-500" />
                     <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Recent Admin Activity</h3>
                   </div>
                   {auditLoading ? (
@@ -1608,19 +2540,8 @@ const Admin = () => {
                   ) : auditLogs.length === 0 ? (
                     <p className="text-xs text-slate-400">No recent audit entries for this user.</p>
                   ) : (
-                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
-                      {auditLogs.map((log) => (
-                        <div key={log.id} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-primary-500">{getAuditTypeLabel(log.type)}</p>
-                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-1">{getAuditActorLabel(log)}</p>
-                          <p className="text-xs text-slate-500 mt-1">
-                            {getAuditTimestamp(log) || 'Unknown time'}
-                          </p>
-                          <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1.5">
-                            {getAuditSummary(log)}
-                          </p>
-                        </div>
-                      ))}
+                    <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                      {auditLogs.map((log) => renderAuditItem(log))}
                     </div>
                   )}
                 </div>
@@ -1645,8 +2566,8 @@ const Admin = () => {
                             }}
                             className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
                               isSelected 
-                                ? 'bg-slate-900 text-white border-slate-900 shadow-lg' 
-                                : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-400'
+                                ? 'bg-slate-900 text-white border-slate-900 shadow-lg dark:bg-white dark:text-slate-900 dark:border-white' 
+                                : 'bg-slate-50 dark:bg-slate-800/80 border-slate-100 dark:border-slate-700/60 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                             } ${locked ? 'opacity-30 cursor-not-allowed' : ''}`}
                           >
                             <span>{ROLE_META[role]?.label || role}</span>
@@ -1663,8 +2584,8 @@ const Admin = () => {
                         onClick={() => setSelectedUser(prev => ({ ...prev, status: { ...prev.status, isActive: !prev.status?.isActive } }))}
                         className={`w-full py-3 rounded-xl border transition-all flex items-center justify-center gap-3 ${
                           selectedUser.status?.isActive 
-                            ? 'bg-green-50 text-green-600 border-green-100' 
-                            : 'bg-red-50 text-red-600 border-red-100'
+                            ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30' 
+                            : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30'
                         }`}
                       >
                         {selectedUser.status?.isActive ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
@@ -1703,7 +2624,7 @@ const Admin = () => {
                               setSelectedUser(prev => ({ ...prev, plan, limits: { ...prev.limits, ...limits } }));
                             }}
                             className={`py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
-                              isSelected ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-400'
+                              isSelected ? 'bg-slate-900 text-white border-slate-900 shadow-lg dark:bg-white dark:text-slate-900 dark:border-white' : 'bg-slate-50 dark:bg-slate-800/80 border-slate-100 dark:border-slate-700/60 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
                             }`}
                           >
                             {plan}
@@ -1820,8 +2741,8 @@ const Admin = () => {
                             }}
                             className={`px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center justify-between ${
                               isEnabled 
-                                ? 'bg-primary-50 text-primary-600 border-primary-100' 
-                                : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-400 opacity-60'
+                                ? 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border-primary-500/30 font-bold' 
+                                : 'bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-400 opacity-60'
                             }`}
                           >
                             <span className="truncate">{key}</span>
@@ -1859,7 +2780,7 @@ const Admin = () => {
                               setSelectedUser(prev => ({ ...prev, permissions: { ...base, actions: next } }));
                             }}
                             className={`px-3 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center justify-between ${
-                              enabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-400 opacity-60'
+                              enabled ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold' : 'bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-400 opacity-60'
                             }`}
                           >
                             {action}
@@ -1882,8 +2803,8 @@ const Admin = () => {
                           }}
                           className={`px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center justify-between ${
                             selectedUser.features[key] 
-                              ? 'bg-amber-50 text-amber-600 border-amber-100' 
-                              : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-400 opacity-60'
+                              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-bold' 
+                              : 'bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-400 opacity-60'
                           }`}
                         >
                           {key.replace(/([A-Z])/g, ' $1').trim()}
@@ -1954,7 +2875,9 @@ const Admin = () => {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+      )}
       <ConfirmModal
         isOpen={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
@@ -1963,27 +2886,55 @@ const Admin = () => {
             toast.error('You cannot delete your own account from Admin panel');
             return;
           }
-          const typed = window.prompt(`Type the user email to confirm deletion:\n${selectedUser?.email || ''}`);
-          if (typed !== selectedUser?.email) {
-            toast.error('Type the user email to confirm deletion');
-            return;
-          }
           try {
             await FirestoreService.deleteUserData(selectedUser.id);
             setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
             setSelectedUser(null);
             setSelectedUserOriginal(null);
             toast.success('User deleted');
-          } catch {
-            toast.error('Failed to delete user');
+          } catch (err) {
+            console.error('[Admin] Delete user error:', err);
+            toast.error(err?.message ? `Failed to delete user: ${err.message}` : 'Failed to delete user');
           }
         }}
         title="Delete User"
-        message={`This will permanently remove ${selectedUser?.email || 'this user'} and all associated data. Type their email to confirm in the input below.`}
-        confirmText="Delete"
+        message={`This action will permanently remove ${selectedUser?.email || 'this user'} and all associated data.`}
+        confirmMatchText={selectedUser?.email}
+        confirmText="Delete User"
         type="danger"
-      >
-      </ConfirmModal>
+      />
+      <ConfirmModal
+        isOpen={confirmDiscardOpen}
+        onClose={() => setConfirmDiscardOpen(false)}
+        onConfirm={forceCloseUserManager}
+        title="Discard Unsaved Changes?"
+        message="You have unsaved changes in this user profile. Are you sure you want to discard your changes and close?"
+        confirmText="Discard Changes"
+        cancelText="Keep Editing"
+        type="danger"
+      />
+      <ConfirmModal
+        isOpen={confirmBulkDeleteOpen}
+        onClose={() => setConfirmBulkDeleteOpen(false)}
+        onConfirm={async () => {
+          try {
+            await Promise.all(selectedUserIds.map((id) => {
+              if (id === currentUser?.id) return Promise.resolve();
+              return FirestoreService.deleteUserData(id);
+            }));
+            setUsers((prev) => prev.filter((u) => !selectedUserIds.includes(u.id) || u.id === currentUser?.id));
+            toast.success(`Deleted ${selectedUserIds.length} user(s)`);
+            setSelectedUserIds([]);
+          } catch (err) {
+            console.error('[Admin] Bulk delete error:', err);
+            toast.error('Bulk delete failed');
+          }
+        }}
+        title="Delete Selected Users"
+        message={`Are you sure you want to permanently delete ${selectedUserIds.length} user(s)? This action cannot be undone.`}
+        confirmText="Delete Users"
+        type="danger"
+      />
       <AnimatePresence>
         {showCreateUserModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm">
@@ -2047,6 +2998,26 @@ const Admin = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Slide-over User Inspection Drawer */}
+      <AdminUserDrawer 
+        user={inspectUser} 
+        onClose={() => setInspectUser(null)} 
+        onUpdateUser={handleUpdateUser} 
+        auditLogs={auditFeed} 
+        currentUser={currentUser} 
+      />
+
+      {/* Global Admin Command Palette (Ctrl+K) */}
+      <AdminCommandPalette 
+        isOpen={commandPaletteOpen} 
+        onClose={() => setCommandPaletteOpen(false)} 
+        users={users} 
+        onNavigate={setActiveAdminPage} 
+        onAction={(action, data) => {
+          if (action === 'inspectUser') setInspectUser(data);
+        }}
+      />
     </div>
   );
 };

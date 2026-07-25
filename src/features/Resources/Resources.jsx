@@ -119,6 +119,36 @@ const Resources = () => {
     toast.success('Papers merged into Resources');
   }, [papers, setPapers, setResources]);
 
+  // Synchronize resources uploaded to course videos into main Resources library
+  useEffect(() => {
+    if (!Array.isArray(videos) || videos.length === 0) return;
+    const videoResources = [];
+    videos.forEach(v => {
+      if (Array.isArray(v.resources) && v.resources.length > 0) {
+        v.resources.forEach(r => {
+          videoResources.push({
+            id: r.id || nanoid(),
+            name: r.name || 'Video Resource',
+            url: r.url || '',
+            type: r.name?.endsWith('.pdf') ? 'PDF' : r.name?.endsWith('.py') ? 'Code' : 'Document',
+            description: `Attachment for video course: ${v.title}`,
+            tags: ['video-resource', 'course-attachment'],
+            associatedType: 'Video',
+            associatedId: v.id,
+            category: 'course',
+            createdAt: r.dateAdded || new Date().toISOString()
+          });
+        });
+      }
+    });
+    if (videoResources.length === 0) return;
+    setResources(prev => {
+      const existingIds = new Set(prev.map(r => r.id));
+      const newItems = videoResources.filter(vr => !existingIds.has(vr.id));
+      return newItems.length > 0 ? [...newItems, ...prev] : prev;
+    });
+  }, [videos, setResources]);
+
   const currentFolder = useMemo(
     () => folders.find((f) => f.id === currentFolderId) || null,
     [folders, currentFolderId]

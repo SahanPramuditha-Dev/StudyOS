@@ -526,9 +526,55 @@ const OrionCompanion = () => {
                 setIsDragging(true);
                 setEmotion(ORION_EMOTIONS.CONFUSED); // Wide eyes, surprised look while dragged
               }}
-              onDragEnd={() => {
+              onDragEnd={(event, info) => {
                 setTimeout(() => setIsDragging(false), 100);
-                setEmotion(ORION_EMOTIONS.IDLE);
+
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+
+                const pointX = info?.point?.x ?? 0;
+                const pointY = info?.point?.y ?? 0;
+
+                const vx = info?.velocity?.x ?? 0;
+                const vy = info?.velocity?.y ?? 0;
+
+                // Position predicted with throwing velocity
+                const predictedX = pointX + vx * 0.25;
+                const predictedY = pointY + vy * 0.25;
+
+                // Threshold margin around viewport edges
+                const margin = 40;
+
+                const isPointOffscreen = (
+                  pointX <= margin ||
+                  pointX >= windowWidth - margin ||
+                  pointY <= margin ||
+                  pointY >= windowHeight - margin
+                );
+
+                const isPredictedOffscreen = (
+                  predictedX <= 10 ||
+                  predictedX >= windowWidth - 10 ||
+                  predictedY <= 10 ||
+                  predictedY >= windowHeight - 10
+                );
+
+                // Check element bounds if dragged outside
+                const rect = event?.target?.getBoundingClientRect ? event.target.getBoundingClientRect() : null;
+                const isRectOffscreen = rect ? (
+                  rect.right <= margin ||
+                  rect.left >= windowWidth - margin ||
+                  rect.bottom <= margin ||
+                  rect.top >= windowHeight - margin
+                ) : false;
+
+                if (isPointOffscreen || isPredictedOffscreen || isRectOffscreen) {
+                  handleHide();
+                  orionSounds.pop();
+                  speak("Whoaaa! See ya! 🦉", 2500);
+                } else {
+                  setEmotion(ORION_EMOTIONS.IDLE);
+                }
               }}
               className="pointer-events-auto cursor-pointer relative focus:outline-none"
               whileDrag={{ scale: 1.06 }}

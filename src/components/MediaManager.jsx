@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService, STORAGE_KEYS } from '../services/storage';
+import { formatStorage } from '../services/storageService';
 import { Trash2, FileText, Image as ImageIcon, HardDrive } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -17,16 +18,18 @@ const MediaManager = () => {
   const extractBase64Assets = (contentString) => {
     const assets = [];
     if (typeof contentString !== 'string') return assets;
-    // Very naive regex for base64 images in markdown/html
+    // Naive regex for base64 images in markdown/html
     const regex = /data:(image\/[^;]+|application\/pdf);base64,([^"'\s\)\>]+)/g;
     let match;
     while ((match = regex.exec(contentString)) !== null) {
+      const sizeBytes = Math.floor((match[2].length * 3) / 4);
       assets.push({
         type: match[1].includes('pdf') ? 'pdf' : 'image',
         mime: match[1],
         data: match[2],
         fullString: match[0],
-        sizeMB: (match[2].length * (3/4)) / (1024 * 1024)
+        sizeBytes,
+        sizeMB: sizeBytes / (1024 * 1024)
       });
     }
     return assets;
@@ -127,7 +130,7 @@ const MediaManager = () => {
               <p className="text-xs font-bold truncate text-slate-800 dark:text-slate-200">{asset.sourceTitle}</p>
               <p className="text-[10px] text-slate-500 flex justify-between mt-1">
                 <span className="uppercase tracking-widest">{asset.sourceType}</span>
-                <span className="font-bold">{asset.sizeMB.toFixed(2)} MB</span>
+                <span className="font-bold">{formatStorage(asset.sizeBytes)}</span>
               </p>
             </div>
 

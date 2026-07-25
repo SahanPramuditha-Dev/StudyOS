@@ -40,8 +40,45 @@ const Analytics = () => {
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
   const [notes] = useStorage(STORAGE_KEYS.NOTES, []);
   const [projects] = useStorage(STORAGE_KEYS.PROJECTS, []);
+  const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
+  const [tasks] = useStorage(STORAGE_KEYS.TASKS, []);
+  const [reminders] = useStorage(STORAGE_KEYS.REMINDERS, []);
   const [streakData] = useStorage(STORAGE_KEYS.STREAK, { current: 0, lastUpdate: null });
   const streakCurrent = streakData.current || 0;
+
+  // Review & Triage Metrics Calculation
+  const reviewMetrics = useMemo(() => {
+    let total = 0;
+    let overdue = 0;
+    let completed = 0;
+
+    (assignments || []).forEach((a) => {
+      total++;
+      if (a.status === 'Submitted' || a.status === 'Completed') completed++;
+      else if (a.deadline && new Date(a.deadline) < new Date()) overdue++;
+    });
+
+    (projects || []).forEach((p) => {
+      total++;
+      if (p.status === 'Completed' || p.status === 'Submitted') completed++;
+      else if (p.deadline && new Date(p.deadline) < new Date()) overdue++;
+    });
+
+    (tasks || []).forEach((t) => {
+      total++;
+      if (t.completed || t.status === 'Completed') completed++;
+      else if (t.dueDate && new Date(t.dueDate) < new Date()) overdue++;
+    });
+
+    (reminders || []).forEach((r) => {
+      total++;
+      if (r.completed) completed++;
+      else if (r.date && new Date(r.date) < new Date()) overdue++;
+    });
+
+    const healthScore = total > 0 ? Math.round(((total - overdue) / total) * 100) : 100;
+    return { total, overdue, completed, pending: total - completed, healthScore };
+  }, [assignments, projects, tasks, reminders]);
 
   // State Management
   const [selectedRange, setSelectedRange] = useState('7d');
@@ -387,6 +424,36 @@ const Analytics = () => {
             onSelectCourse={setSelectedCourseFilter} 
             selectedCourse={selectedCourseFilter}
           />
+        </div>
+      </div>
+
+      {/* Spaced Review & Triage Velocity Card */}
+      <div className="card p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-0 shadow-xl flex flex-wrap items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3.5 rounded-2xl bg-primary-500/20 text-primary-400 border border-primary-500/30">
+            <TrendingUp size={28} />
+          </div>
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary-400">Review Hub Integration</span>
+            <h3 className="text-xl font-black text-white">Spaced Triage Health: {reviewMetrics.healthScore}%</h3>
+            <p className="text-xs text-slate-300 mt-0.5">
+              {reviewMetrics.completed} items triaged • {reviewMetrics.overdue} overdue items pending action
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 font-mono text-xs">
+          <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700 text-center">
+            <p className="text-slate-400 font-bold uppercase text-[9px]">Backlog</p>
+            <p className="text-lg font-black text-rose-400">{reviewMetrics.overdue}</p>
+          </div>
+          <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700 text-center">
+            <p className="text-slate-400 font-bold uppercase text-[9px]">Completed</p>
+            <p className="text-lg font-black text-emerald-400">{reviewMetrics.completed}</p>
+          </div>
+          <div className="px-3.5 py-2 rounded-xl bg-slate-800/80 border border-slate-700 text-center">
+            <p className="text-slate-400 font-bold uppercase text-[9px]">Total Tracked</p>
+            <p className="text-lg font-black text-primary-400">{reviewMetrics.total}</p>
+          </div>
         </div>
       </div>
 

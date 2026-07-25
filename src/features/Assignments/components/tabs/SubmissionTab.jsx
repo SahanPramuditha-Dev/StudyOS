@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { nanoid } from 'nanoid';
 import Select from '../../../../components/ui/Select';
+import { formatStorage } from '../../../../services/storageService.js';
 
 const SubmissionTab = ({ assignment, onUpdate }) => {
   const [submissions, setSubmissions] = useState(assignment.submissions || []);
@@ -13,11 +14,7 @@ const SubmissionTab = ({ assignment, onUpdate }) => {
   const [submissionType, setSubmissionType] = useState('Draft');
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return formatStorage(bytes);
   };
 
   const handleFileSelect = (e) => {

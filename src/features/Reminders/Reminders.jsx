@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Bell,
   CalendarDays,
@@ -6,7 +6,19 @@ import {
   ChevronRight,
   Filter,
   Plus,
-  TrendingUp
+  TrendingUp,
+  Search,
+  RefreshCw,
+  Sparkles,
+  CheckCircle2,
+  Calendar as CalendarIcon,
+  Clock,
+  ListFilter,
+  Download,
+  CheckSquare,
+  Square,
+  Trash2,
+  X
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -17,14 +29,16 @@ import { STORAGE_KEYS } from '../../services/storage';
 import { useReminders } from '../../context/ReminderContext';
 import { useGoogleCalendarContext } from '../../context/GoogleCalendarContext';
 import { formatDateKey, toReminderDateTime } from '../../utils/reminderDate';
+import { exportEventsToICal } from '../../utils/icalExport';
 import { createGoogleCalendarEvent, updateGoogleCalendarEvent, deleteGoogleCalendarEvent } from '../../services/googleCalendar';
 import { uploadAlarmSound, isValidAlarmSoundFile, getAlarmSoundLimitBytes } from '../../services/alarmSound';
 import { stopAlarmSound } from '../../utils/alarmAudio';
 import ConfirmModal from '../../components/ConfirmModal';
 import CalendarView from './components/CalendarView';
 import EventModal from './components/EventModal';
-import EventList from './components/EventList';
-import ReminderPanel from './components/ReminderPanel';
+import CategoryLegend from './components/CategoryLegend';
+import QuickEventPopover from './components/QuickEventPopover';
+import CalendarSidePanel from './components/CalendarSidePanel';
 import Select from '../../components/ui/Select';
 
 const MAX_EVENTS_PER_MONTH = 100;
@@ -83,7 +97,7 @@ const Reminders = () => {
   const [assignments] = useStorage(STORAGE_KEYS.ASSIGNMENTS, []);
   const [videos] = useStorage(STORAGE_KEYS.VIDEOS, []);
 
-  const [view, setView] = useState('month');
+  const [view, setView] = useState('month'); // 'month' | 'week' | 'day' | 'agenda'
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -92,6 +106,12 @@ const Reminders = () => {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [soundUploadState, setSoundUploadState] = useState({ uploading: false, error: '' });
+  
+  // Quick popover & multi-select state
+  const [quickPopover, setQuickPopover] = useState({ isOpen: false, date: null, time: '09:00' });
+  const [isMultiSelect, setIsMultiSelect] = useState(false);
+  const [selectedEventIds, setSelectedEventIds] = useState([]);
+
   const [confirmConfig, setConfirmConfig] = useState({
     isOpen: false,
     title: '',
@@ -100,6 +120,27 @@ const Reminders = () => {
     type: 'danger',
     onConfirm: () => {}
   });
+
+  // Keyboard Shortcuts ('T', 'M', 'W', 'D', 'A')
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.key === 't' || e.key === 'T') {
+        setSelectedDate(new Date());
+        toast('Jumped to Today', { icon: '📅' });
+      } else if (e.key === 'm' || e.key === 'M') {
+        setView('month');
+      } else if (e.key === 'w' || e.key === 'W') {
+        setView('week');
+      } else if (e.key === 'd' || e.key === 'D') {
+        setView('day');
+      } else if (e.key === 'a' || e.key === 'A') {
+        setView('agenda');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const eventRows = useMemo(() => reminders.map((r) => ({
     ...r,
@@ -135,6 +176,14 @@ const Reminders = () => {
       });
   }, [eventRows, searchTerm, categoryFilter, statusFilter]);
 
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    eventRows.forEach((e) => {
+      counts[e.category] = (counts[e.category] || 0) + 1;
+    });
+    return counts;
+  }, [eventRows]);
+
   const analytics = useMemo(() => {
     const now = new Date();
     const completed = eventRows.filter((e) => e.completed).length;
@@ -143,7 +192,6 @@ const Reminders = () => {
       return at && at < now && !e.completed;
     }).length;
     const scheduledHours = eventRows.reduce((acc, e) => acc + (Number(e.durationMinutes) || 0), 0) / 60;
-    const completedHours = eventRows.reduce((acc, e) => acc + (e.completed ? (Number(e.durationMinutes) || 0) : 0), 0) / 60;
 
     const hourBuckets = Array.from({ length: 24 }, () => 0);
     eventRows.forEach((e) => {
@@ -157,43 +205,34 @@ const Reminders = () => {
       completed,
       missed,
       scheduledHours: scheduledHours.toFixed(1),
-      completedHours: completedHours.toFixed(1),
       peakHour: `${String(peakHour).padStart(2, '0')}:00`
     };
   }, [eventRows]);
-
-  const categories = useMemo(() => {
-    const set = new Set(eventRows.map((e) => e.category).filter(Boolean));
-    return ['All', ...Array.from(set)];
-  }, [eventRows]);
-
-  const nextEvents = useMemo(() => {
-    const now = new Date();
-    return filteredEvents.filter((event) => {
-      const at = toReminderDateTime(event.date, event.time);
-      return at && at >= now && !event.completed;
-    });
-  }, [filteredEvents]);
 
   const navigatePeriod = (direction) => {
     setSelectedDate((prev) => {
       const next = new Date(prev);
       if (view === 'month') next.setMonth(next.getMonth() + direction);
       if (view === 'week') next.setDate(next.getDate() + (7 * direction));
-      if (view === 'day') next.setDate(next.getDate() + direction);
+      if (view === 'day' || view === 'agenda') next.setDate(next.getDate() + direction);
       return next;
     });
   };
 
   const jumpToToday = () => setSelectedDate(new Date());
 
-  const openNewEvent = (date = selectedDate) => {
+  const openNewEvent = (date = selectedDate, time = '09:00') => {
     setEditingEvent(null);
     setFormData({
       ...defaultFormData(),
-      date: formatDateKey(date)
+      date: formatDateKey(date),
+      time
     });
     setIsModalOpen(true);
+  };
+
+  const openQuickPopover = (date = selectedDate, time = '09:00') => {
+    setQuickPopover({ isOpen: true, date, time });
   };
 
   const openEditEvent = (event) => {
@@ -224,7 +263,7 @@ const Reminders = () => {
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
 
     const monthlyCount = getMonthlyCount(formData.date, editingEvent?.id || null);
     if (monthlyCount >= MAX_EVENTS_PER_MONTH) {
@@ -234,7 +273,6 @@ const Reminders = () => {
 
     if (editingEvent) {
       updateReminder(editingEvent.id, formData);
-      // Sync update to Google Calendar if enabled
       if (syncEnabled && googleAccessToken && editingEvent.googleCalendarEventId) {
         updateGoogleCalendarEvent(googleAccessToken, editingEvent.googleCalendarEventId, formData)
           .catch((error) => {
@@ -242,10 +280,65 @@ const Reminders = () => {
             toast.error('Sync to Google Calendar failed');
           });
       }
+      toast.success('Event updated');
     } else {
       addReminder(formData);
+      toast.success('Event created');
     }
     closeModal();
+  };
+
+  const handleQuickSave = (quickData) => {
+    addReminder(quickData);
+    toast.success('Event added to calendar');
+  };
+
+  const handleExportICal = () => {
+    if (filteredEvents.length === 0) {
+      toast.error('No events to export');
+      return;
+    }
+    const success = exportEventsToICal(filteredEvents, 'studyos-calendar.ics');
+    if (success) {
+      toast.success(`Exported ${filteredEvents.length} events to .ics file`);
+    }
+  };
+
+  const toggleSelectEvent = (id) => {
+    setSelectedEventIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEventIds.length === filteredEvents.length) {
+      setSelectedEventIds([]);
+    } else {
+      setSelectedEventIds(filteredEvents.map((e) => e.id));
+    }
+  };
+
+  const handleBulkComplete = () => {
+    if (selectedEventIds.length === 0) return;
+    selectedEventIds.forEach((id) => markReminderAsDone(id));
+    toast.success(`Marked ${selectedEventIds.length} events complete`);
+    setSelectedEventIds([]);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedEventIds.length === 0) return;
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Bulk Delete Events',
+      message: `Are you sure you want to delete ${selectedEventIds.length} selected events?`,
+      confirmText: 'Delete All',
+      type: 'danger',
+      onConfirm: () => {
+        selectedEventIds.forEach((id) => deleteReminder(id));
+        toast.success(`Deleted ${selectedEventIds.length} events`);
+        setSelectedEventIds([]);
+      }
+    });
   };
 
   const handleSoundUpload = async (file) => {
@@ -260,7 +353,7 @@ const Reminders = () => {
     }
     const maxBytes = getAlarmSoundLimitBytes(profile?.plan, profile?.role);
     if (file.size > maxBytes) {
-      toast.error(`Sound file is too large. Your account limit is ${(maxBytes / (1024 * 1024)).toFixed(0)} MB.`);
+      toast.error(`Sound file is too large. Limit is ${(maxBytes / (1024 * 1024)).toFixed(0)} MB.`);
       return;
     }
 
@@ -299,14 +392,13 @@ const Reminders = () => {
       type: 'danger',
       onConfirm: () => {
         deleteReminder(eventId);
-        // Sync deletion to Google Calendar if enabled
         if (syncEnabled && googleAccessToken && event?.googleCalendarEventId) {
           deleteGoogleCalendarEvent(googleAccessToken, event.googleCalendarEventId)
             .catch((error) => {
               console.error('Failed to sync deletion to Google Calendar:', error);
-              toast.error('Event deleted locally but Google Calendar sync failed');
             });
         }
+        toast.success('Event deleted');
       }
     });
   };
@@ -319,6 +411,7 @@ const Reminders = () => {
 
   const handleMarkDone = (eventId) => {
     markReminderAsDone(eventId);
+    toast.success('Marked complete');
   };
 
   const navigateLinked = (event, dryRun = false) => {
@@ -337,203 +430,287 @@ const Reminders = () => {
   };
 
   return (
-    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-10">
+    <div className="w-full max-w-[1680px] mx-auto pb-12 space-y-8">
+      {/* 1. Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-800 dark:text-white flex items-center gap-4">
-            <div className="p-3 rounded-[1.5rem] bg-primary-500 text-white shadow-xl shadow-primary-500/20">
-              <CalendarDays size={32} />
-            </div>
-            Calendar Planner
-          </h1>
-          <p className="text-slate-400 font-bold ml-20 uppercase tracking-widest text-xs mt-2">
-            Unified events, reminders and deadlines
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-primary-500 text-white shadow-lg shadow-primary-500/20">
+                <CalendarDays size={28} />
+              </div>
+              Calendar Planner
+            </h1>
+            {syncEnabled && (
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Google Sync Active
+              </span>
+            )}
+          </div>
+          <p className="text-slate-400 font-semibold text-xs mt-2 ml-1">
+            Unified schedule, academic deadlines, alarms and study time-blocks
           </p>
         </div>
-        <div className="flex items-center gap-4">
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={handleExportICal}
+            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-wider hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-xs"
+            title="Export calendar feed as .ics file"
+          >
+            <Download size={15} />
+            Export .ics
+          </button>
+
+          <button
+            onClick={() => {
+              setIsMultiSelect(!isMultiSelect);
+              setSelectedEventIds([]);
+            }}
+            className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border ${
+              isMultiSelect
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <CheckSquare size={15} />
+            {isMultiSelect ? 'Exit Select' : 'Select Events'}
+          </button>
+
           <button
             onClick={() => {
               stopAlarmSound();
-              toast.success('All sounds stopped');
+              toast.success('All alarm sounds stopped');
             }}
-            className="flex items-center gap-3 px-6 py-3.5 rounded-[2rem] bg-red-500 hover:bg-red-600 text-white font-black transition-all shadow-xl shadow-red-500/30 active:scale-95"
+            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-rose-500/20 active:scale-95"
           >
-            <Bell size={20} />
+            <Bell size={16} />
             Stop Sounds
           </button>
+
           <button
             onClick={() => openNewEvent()}
-            className="flex items-center gap-3 px-8 py-3.5 rounded-[2rem] bg-primary-500 hover:bg-primary-600 text-white font-black transition-all shadow-xl shadow-primary-500/30 active:scale-95"
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary-500 hover:bg-primary-600 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-primary-500/20 active:scale-95"
           >
-            <Plus size={22} />
+            <Plus size={18} />
             New Event
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Multi-Select Bulk Actions Bar */}
+      {isMultiSelect && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between gap-4 p-4 rounded-3xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xl"
+        >
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSelectAll}
+              className="flex items-center gap-2 text-xs font-black uppercase tracking-wider hover:opacity-80"
+            >
+              {selectedEventIds.length === filteredEvents.length ? <CheckSquare size={16} /> : <Square size={16} />}
+              <span>{selectedEventIds.length === filteredEvents.length ? 'Deselect All' : 'Select All'}</span>
+            </button>
+            <span className="text-xs font-bold opacity-70">
+              ({selectedEventIds.length} selected)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              disabled={selectedEventIds.length === 0}
+              onClick={handleBulkComplete}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500 text-white text-xs font-black uppercase tracking-wider disabled:opacity-40 hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
+            >
+              <CheckCircle2 size={14} />
+              <span>Mark Done</span>
+            </button>
+            <button
+              disabled={selectedEventIds.length === 0}
+              onClick={handleBulkDelete}
+              className="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-black uppercase tracking-wider disabled:opacity-40 hover:bg-rose-600 transition-colors flex items-center gap-1.5"
+            >
+              <Trash2 size={14} />
+              <span>Delete</span>
+            </button>
+            <button
+              onClick={() => {
+                setIsMultiSelect(false);
+                setSelectedEventIds([]);
+              }}
+              className="p-2 rounded-xl opacity-70 hover:opacity-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* 2. Statistics Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Total Events', value: analytics.total, icon: CalendarDays, color: 'text-primary-500', bg: 'bg-primary-50' },
-          { label: 'Completed', value: analytics.completed, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-          { label: 'Missed', value: analytics.missed, icon: Bell, color: 'text-red-500', bg: 'bg-red-50' },
-          { label: 'Scheduled Hrs', value: analytics.scheduledHours, icon: CalendarDays, color: 'text-sky-500', bg: 'bg-sky-50' },
-          { label: 'Peak Hour', value: analytics.peakHour, icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-50' }
+          { label: 'Total Events', value: analytics.total, icon: CalendarDays, color: 'text-primary-500', bg: 'bg-primary-50 dark:bg-primary-500/10' },
+          { label: 'Completed', value: analytics.completed, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10' },
+          { label: 'Missed', value: analytics.missed, icon: Bell, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10' },
+          { label: 'Scheduled Hrs', value: `${analytics.scheduledHours}h`, icon: Clock, color: 'text-sky-500', bg: 'bg-sky-50 dark:bg-sky-500/10' },
+          { label: 'Peak Study Hour', value: analytics.peakHour, icon: Sparkles, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10' }
         ].map((stat) => (
-          <div key={stat.label} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4">
-            <div className={`p-3 rounded-xl ${stat.bg} dark:bg-opacity-10 ${stat.color}`}>
-              <stat.icon size={18} />
+          <div key={stat.label} className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-xs flex items-center gap-3.5">
+            <div className={`p-3 rounded-2xl ${stat.bg} ${stat.color}`}>
+              <stat.icon size={20} />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
-              <p className="text-xl font-black text-slate-800 dark:text-white">{stat.value}</p>
+              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{stat.label}</p>
+              <p className="text-lg font-black text-slate-800 dark:text-white">{stat.value}</p>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-center p-4 rounded-[2rem] bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigatePeriod(-1)} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-            <ChevronLeft size={18} />
-          </button>
-          <button onClick={() => navigatePeriod(1)} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-            <ChevronRight size={18} />
-          </button>
-          <button onClick={jumpToToday} className="px-4 py-2.5 rounded-xl bg-primary-500 text-white text-xs font-black uppercase tracking-widest">
-            Today
-          </button>
+      {/* 3. Toolbar (Category Legend, Search, View Controls) */}
+      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-4 md:p-6 shadow-xs space-y-4">
+        {/* Top toolbar: Date navigation + View Mode buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800/60 p-1 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <button
+                onClick={() => navigatePeriod(-1)}
+                className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                title="Previous"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={jumpToToday}
+                className="px-3.5 py-1.5 rounded-xl bg-primary-500 text-white text-xs font-black uppercase tracking-wider shadow-xs"
+              >
+                Today
+              </button>
+              <button
+                onClick={() => navigatePeriod(1)}
+                className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 transition-colors"
+                title="Next"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            <h2 className="text-base md:text-lg font-black text-slate-800 dark:text-white tracking-tight">
+              {selectedDate.toLocaleDateString(undefined, {
+                month: 'long',
+                year: 'numeric',
+                day: view === 'day' ? 'numeric' : undefined
+              })}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-800">
+            {[
+              { id: 'month', label: 'Month' },
+              { id: 'week', label: 'Week' },
+              { id: 'day', label: 'Day' },
+              { id: 'agenda', label: 'Agenda' }
+            ].map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setView(v.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                  view === v.id
+                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="text-sm font-black text-slate-600 dark:text-slate-300">
-          {selectedDate.toLocaleDateString(undefined, {
-            month: 'long',
-            year: 'numeric',
-            day: view === 'day' ? 'numeric' : undefined
-          })}
+        {/* Category legend chips */}
+        <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+          <CategoryLegend
+            selectedCategory={categoryFilter}
+            onSelectCategory={setCategoryFilter}
+            categoryCounts={categoryCounts}
+          />
         </div>
 
-        <div className="flex items-center gap-2 ml-auto">
-          {['month', 'week', 'day'].map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
-                view === v ? 'bg-primary-500 text-white' : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-slate-500'
-              }`}
-            >
-              {v}
-            </button>
-          ))}
+        {/* Search bar & status filter */}
+        <div className="flex flex-col md:flex-row items-center gap-3 pt-1">
+          <div className="relative flex-1 w-full">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search events, exams, assignments..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 text-slate-900 dark:text-white placeholder-slate-400 text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto shrink-0">
+            <ListFilter size={15} className="text-slate-400" />
+            <Select
+              variant="ghost"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              options={['All', 'Upcoming', 'Completed', 'Missed'].map(s => ({ label: `${s} Status`, value: s }))}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center gap-4 p-4 rounded-[2rem] bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800">
-        <div className="relative flex-1 w-full">
-          <input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search events and reminders"
-            className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 outline-none"
-          />
-        </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <Filter size={16} className="text-slate-400" />
-          <Select
-            variant="ghost"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            options={categories.map(category => ({ label: category, value: category }))}
-          />
-          <Select
-            variant="ghost"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            options={['All', 'Upcoming', 'Completed', 'Missed'].map(status => ({ label: status, value: status }))}
-          />
-        </div>
-      </div>
-
+      {/* 4. Main Grid & Side Panel Split View */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-6 items-start">
+        {/* Calendar View Component */}
         <CalendarView
           view={view}
           selectedDate={selectedDate}
           events={filteredEvents}
+          courses={courses}
           onSelectDate={(date) => {
             setSelectedDate(startOfDay(date));
             if (view === 'month') setView('day');
           }}
-          onCreateEvent={(date) => openNewEvent(date)}
+          onCreateEvent={(date, time) => openQuickPopover(date, time)}
           onEventClick={openEditEvent}
+          onNavigateLinked={navigateLinked}
+          isMultiSelect={isMultiSelect}
+          selectedEventIds={selectedEventIds}
+          onToggleSelectEvent={toggleSelectEvent}
         />
 
-        <div className="space-y-4">
-          <EventList
-            events={nextEvents}
-            onEventClick={openEditEvent}
-            onNavigateLinked={navigateLinked}
-          />
-          <ReminderPanel
-            notifications={notifications}
-            onSnooze={(notification, minutesOverride = 5) => {
-              stopAlarmSound();
-              snoozeReminder(notification.id, notification.reminderId, minutesOverride);
-            }}
-            onMute={(notification) => {
-              stopAlarmSound();
-              muteReminder(notification.id, notification.reminderId);
-            }}
-            onUnmute={(notification) => {
-              stopAlarmSound();
-              unmuteReminder(notification.id, notification.reminderId);
-            }}
-            onStopAlarm={() => stopAlarmSound()}
-            onMarkRead={markNotificationAsRead}
-          />
-        </div>
+        {/* Unified Side Panel */}
+        <CalendarSidePanel
+          selectedDate={selectedDate}
+          onSelectDate={(date) => setSelectedDate(startOfDay(date))}
+          events={eventRows}
+          notifications={notifications}
+          onEventClick={openEditEvent}
+          onNavigateLinked={navigateLinked}
+          onSnooze={(notification, minutesOverride = 5) => {
+            stopAlarmSound();
+            snoozeReminder(notification.id, notification.reminderId, minutesOverride);
+          }}
+          onMute={(notification) => {
+            stopAlarmSound();
+            muteReminder(notification.id, notification.reminderId);
+          }}
+          onUnmute={(notification) => {
+            stopAlarmSound();
+            unmuteReminder(notification.id, notification.reminderId);
+          }}
+          onStopAlarm={() => stopAlarmSound()}
+          onMarkRead={markNotificationAsRead}
+          onToggleComplete={handleMarkDone}
+          onDeleteEvent={(ev) => handleDelete(ev.id)}
+        />
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-5 shadow-sm">
-        <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">Selected Day Events</h3>
-        <div className="space-y-2">
-          {filteredEvents
-            .filter((event) => {
-              const at = toReminderDateTime(event.date, event.time);
-              return at && startOfDay(at).getTime() === startOfDay(selectedDate).getTime();
-            })
-            .map((event) => (
-              <div key={event.id} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-slate-800 dark:text-slate-100 truncate">{event.message}</p>
-                  <p className="text-[10px] font-bold text-slate-400">
-                    {event.allDay ? 'All day' : event.time} · {event.durationMinutes || 60} min · {event.category}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => navigateLinked(event)}
-                    disabled={!event.relatedCourseId && !event.relatedVideoId && !event.relatedProjectId}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-primary-50 dark:bg-primary-500/10 text-primary-600 disabled:opacity-40"
-                  >
-                    Open
-                  </button>
-                  <button
-                    onClick={() => handleMarkDone(event.id)}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
-                  >
-                    Done
-                  </button>
-                  <button
-                    onClick={() => handleDelete(event.id)}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-red-50 dark:bg-red-500/10 text-red-600"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-        </div>
-      </div>
-
+      {/* 5. Modals & Popovers */}
       <AnimatePresence>
         {isModalOpen && (
           <EventModal
@@ -552,6 +729,15 @@ const Reminders = () => {
           />
         )}
       </AnimatePresence>
+
+      {quickPopover.isOpen && (
+        <QuickEventPopover
+          date={quickPopover.date}
+          time={quickPopover.time}
+          onClose={() => setQuickPopover({ isOpen: false, date: null, time: '09:00' })}
+          onSave={handleQuickSave}
+        />
+      )}
 
       <ConfirmModal
         isOpen={confirmConfig.isOpen}

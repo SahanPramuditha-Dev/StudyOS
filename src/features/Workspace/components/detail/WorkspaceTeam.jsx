@@ -118,7 +118,9 @@ const WorkspaceTeam = ({ project }) => {
                 onChange={(e) => setInviteRole(e.target.value)}
               >
                 <option value="member">Member (Can edit)</option>
-                <option value="admin">Admin (Can manage settings)</option>
+                <option value="team_lead">Workspace Lead (Full management)</option>
+                <option value="educator">Educator / Mentor (Guide & Review)</option>
+                <option value="admin">Workspace Admin (Settings & Roles)</option>
                 <option value="viewer">Viewer (Read only)</option>
               </select>
             </div>

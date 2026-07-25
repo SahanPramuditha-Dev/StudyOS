@@ -10,6 +10,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useStorage } from '../../../../hooks/useStorage';
 import { STORAGE_KEYS } from '../../../../services/storage';
 import Select from '../../../../components/ui/Select';
+import { formatStorage, validateStorageSize } from '../../../../services/storageService.js';
 
 const ResourcesTab = ({ project, onUpdate, onActivityAdd }) => {
   const { user } = useAuth();
@@ -140,18 +141,14 @@ const ResourcesTab = ({ project, onUpdate, onActivityAdd }) => {
   };
 
   const formatFileSize = (bytes) => {
-    if (!bytes) return 'Unknown size';
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    if (!bytes || bytes === 0) return '0 Bytes';
+    return formatStorage(bytes);
   };
 
   const totalStorageBytes = projectResources
     .filter(r => r.type !== 'Link')
-    .reduce((acc, f) => acc + (f.size || 0), 0);
-  const storageMB = (totalStorageBytes / (1024 * 1024)).toFixed(2);
+    .reduce((acc, f) => acc + validateStorageSize(f.sizeBytes ?? f.size), 0);
+  const storageMB = formatStorage(totalStorageBytes);
 
   return (
     <div className="space-y-8">

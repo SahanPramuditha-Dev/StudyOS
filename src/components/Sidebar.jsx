@@ -43,24 +43,31 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
   };
 
   const menuItems = [
+    // Overview & Planning
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { id: 'planner', icon: CalendarClock, label: 'Planner' },
+    { id: 'reminders', icon: Bell, label: 'Calendar', permission: 'reminders' },
+    { id: 'tasks', icon: ListTodo, label: 'Tasks' },
+
+    // Academics
     { id: 'courses', icon: BookOpen, label: 'Courses', permission: 'courses' },
-    { id: 'videos', icon: Youtube, label: 'Video Tracker', permission: 'videos' },
     { id: 'notes', icon: FileText, label: 'Notes', permission: 'notes' },
-    { id: 'resources', icon: FolderOpen, label: 'Resources', permission: 'resources' },
-    { id: 'projects', icon: GithubIcon, label: 'Projects', permission: 'projects' },
     { id: 'assignments', icon: FileText, label: 'Assignments', permission: 'assignments' },
     { id: 'grades', icon: GraduationCap, label: 'Grades', permission: 'assignments' },
-    { id: 'workspace', icon: Kanban, label: 'Workspace', permission: 'workspace' },
-    { id: 'tasks', icon: ListTodo, label: 'Tasks' },
+    { id: 'resources', icon: FolderOpen, label: 'Resources', permission: 'resources' },
+    { id: 'videos', icon: Youtube, label: 'Video Tracker', permission: 'videos' },
+
+    // Study Tools & Execution
     { id: 'timer', icon: Clock, label: 'Timer' },
-    { id: 'analytics', icon: BarChart, label: 'Analytics', permission: 'analytics' },
-    { id: 'goals', icon: Target, label: 'Goals' },
-    { id: 'budget', icon: Wallet, label: 'Budget' },
-    { id: 'planner', icon: CalendarClock, label: 'Planner' },
     { id: 'review', icon: Inbox, label: 'Review Hub' },
+    { id: 'workspace', icon: Kanban, label: 'Workspace', permission: 'workspace' },
+    { id: 'projects', icon: GithubIcon, label: 'Projects', permission: 'projects' },
+
+    // Growth & Insights
+    { id: 'goals', icon: Target, label: 'Goals' },
+    { id: 'analytics', icon: BarChart, label: 'Analytics', permission: 'analytics' },
+    { id: 'budget', icon: Wallet, label: 'Budget' },
     { id: 'chat', icon: MessageSquare, label: 'Chat' },
-    { id: 'reminders', icon: Bell, label: 'Calendar', permission: 'reminders' },
   ];
 
   // Filter menu items based on permissions
