@@ -358,13 +358,28 @@ sahan.dev.tech@gmail.com
 
 ## 🚀 Roadmap
 
-- [ ] Demo video/GIFs and interactive tutorials
-- [ ] PWA support for offline-first experience
-- [ ] Mobile app (iOS/Android via Capacitor)
-- [x] AI study assistant (Orion AI companion)
-- [ ] Enhanced real-time collaboration features
-- [ ] Advanced analytics and learning insights
-- [ ] Integration with LMS platforms (Blackboard, Canvas)
+### Phase 1: Core Platform Infrastructure (Completed ✓)
+- [x] Multi-tenant Firebase authentication & Security Rules
+- [x] Courses, Assignments, and Projects Hub with GitHub repo sync
+- [x] Smart Notes Hub, Planner, Reminders, and Analytics Dashboard
+
+### Phase 2: AI Companion & Interactive Video Workspace (Completed ✓)
+- [x] Orion AI Copilot for summaries, active recall quizzes & LaTeX math rendering (`$f(n)$`)
+- [x] YouTube Data API integration: dynamic chapter timestamps & live top comments
+- [x] Bookmark CRUD Workspace (`+ Bookmark Now`, timestamp editor, note editor, seek/delete)
+- [x] Rich Markdown Notes Preview & Edit modes with toolbar formatting
+- [x] Glassmorphic Learning Dock with exact timestamp progress calculation
+
+### Phase 3: Collaboration & Offline Engine (In Progress - Q3 2026)
+- [ ] Real-time multi-user collaborative study rooms & live cursor notes
+- [ ] 2-Way Google Calendar sync & automated reminder webhooks
+- [ ] Progressive Web App (PWA) offline support with IndexedDB local caching
+- [ ] AI Spaced Repetition Flashcards (SuperMemo SM-2 algorithm)
+
+### Phase 4: Mobile Ecosystem & LMS Connectors (Q4 2026 - Q1 2027)
+- [ ] Native iOS & Android mobile apps (Capacitor / React Native)
+- [ ] Canvas & Blackboard LMS API connectors for automatic course & deadline imports
+- [ ] Predictive learning fatigue analytics & exam readiness AI score
 
 ## 📞 Support
 
