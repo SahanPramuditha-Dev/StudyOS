@@ -835,44 +835,21 @@ const VideoDetailSidebar = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Player Mode Switcher */}
-            <button
-              onClick={() => setIsPlayingVideo(!isPlayingVideo)}
-              className="px-2.5 py-1 rounded-lg bg-[#111726] border border-white/[0.08] text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              <Eye size={12} />
-              <span>{isPlayingVideo ? 'Banner Mode' : 'Live Player'}</span>
-            </button>
-
-            {/* Dark Mode Switcher Pill */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="w-10 h-5 rounded-full bg-[#111726] p-0.5 border border-white/[0.08] flex items-center cursor-pointer transition-colors"
-            >
-              <motion.div
-                animate={{ x: darkMode ? 18 : 0 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                className="w-3.5 h-3.5 rounded-full bg-blue-500 flex items-center justify-center text-white shadow-sm"
-              >
-                {darkMode ? <Moon size={8} /> : <Sun size={8} />}
-              </motion.div>
-            </button>
-
-            <button className="w-7 h-7 rounded-lg bg-[#111726] border border-white/[0.08] text-slate-300 hover:text-white flex items-center justify-center transition-colors">
-              <MoreHorizontal size={14} />
-            </button>
-
+            {/* Fullscreen Toggle Button */}
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="px-2.5 py-1 rounded-lg bg-[#111726] border border-white/[0.08] text-[11px] font-semibold text-slate-200 hover:bg-[#182034] transition-colors flex items-center gap-1.5"
+              className="px-2.5 py-1 rounded-lg bg-[#111726] border border-white/[0.08] text-[11px] font-bold text-slate-300 hover:text-white hover:bg-[#182034] transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             >
               <Maximize2 size={12} />
-              <span>Fullscreen</span>
+              <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
             </button>
 
+            {/* Close Modal Button */}
             <button
               onClick={() => setActiveVideoId(null)}
-              className="w-7 h-7 rounded-lg bg-[#111726] hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center transition-colors border border-white/[0.08]"
+              className="w-7 h-7 rounded-lg bg-[#111726] hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center transition-colors border border-white/[0.08] cursor-pointer shadow-sm"
+              title="Close Course Player"
             >
               <X size={14} />
             </button>
