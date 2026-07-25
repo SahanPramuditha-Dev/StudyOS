@@ -1,17 +1,26 @@
 # Code of Conduct
 
-This project and everyone participating in it is expected to follow a respectful and inclusive code of conduct.
+StudyOS is committed to providing a welcoming and inclusive environment for all contributors.
 
-## Expected behavior
+## Our Standards
 
-- Be respectful
-- Use welcoming language
-- Provide constructive feedback
+**Expected behavior:**
+- Be respectful and considerate in all interactions.
+- Use welcoming and inclusive language.
+- Accept and offer constructive feedback graciously.
+- Focus on what is best for the community and the project.
 
-## Unacceptable behavior
+**Unacceptable behavior:**
+- Harassment, hate speech, or discrimination of any kind.
+- Personal attacks, insults, or threats.
+- Publishing others' private information without consent.
+- Any conduct that would be inappropriate in a professional setting.
 
-- Harassment, hate speech, or discrimination
-- Threats or aggressive behavior
+## Enforcement
 
-If you experience or witness unacceptable behavior, contact the project maintainers.
+Violations may be reported to the project maintainer at **sahan.dev.tech@gmail.com**.  
+All reports will be reviewed confidentially. Maintainers may take any action deemed appropriate, including temporary or permanent bans.
 
+## Scope
+
+This Code of Conduct applies to all project spaces — GitHub issues, pull requests, discussions, and any other communication channels associated with StudyOS.

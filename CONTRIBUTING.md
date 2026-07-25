@@ -1,21 +1,46 @@
-# Contributing
+# Contributing to StudyOS
 
-Contributions are welcome.
+Thank you for your interest in contributing! Please read these guidelines before submitting a pull request.
 
-## How to contribute
+## How to Contribute
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b my-feature`
-3. Make changes and commit
-4. Open a pull request
+1. **Fork** the repository on GitHub.
+2. **Create a feature branch** from `main`:
+   ```bash
+   git checkout -b feature/my-feature
+   ```
+3. **Make your changes** — keep them focused and well-scoped.
+4. **Lint and test** before committing:
+   ```bash
+   npm run lint
+   npm run test
+   ```
+5. **Commit** with a clear, descriptive message.
+6. **Open a pull request** against `main` and describe what you changed and why.
 
-## Code style
+## Code Style
 
-- Follow existing code patterns in the repository
-- Keep changes focused and well-scoped
+- Follow existing patterns and file structure in the repository.
+- Components live in `src/features/<FeatureName>/` or `src/components/`.
+- Use Tailwind CSS utility classes consistent with the existing design system (see [docs/UI_SYSTEM_GUIDELINES.md](docs/UI_SYSTEM_GUIDELINES.md)).
+- Prefer Lucide React icons for consistency.
+- Animations should use Framer Motion.
 
-## Tests
+## Commit Messages
 
-- Run existing test/lint scripts (see `package.json`)
-- Ensure the app builds and basic flows work
+Use a short imperative subject line, e.g.:
+- `Add bookmark CRUD to video tracker`
+- `Fix broken Papers screenshot in README`
+- `Refactor Firestore rules for Projects collection`
 
+## Reporting Bugs
+
+Open an issue at https://github.com/SahanPramuditha-Dev/StudyOS/issues with:
+- A clear description of the bug
+- Steps to reproduce
+- Expected vs actual behavior
+- Screenshots if applicable
+
+## Questions
+
+See [SUPPORT.md](SUPPORT.md) for contact information.

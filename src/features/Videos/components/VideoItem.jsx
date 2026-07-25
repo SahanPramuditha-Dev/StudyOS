@@ -203,22 +203,38 @@ const VideoItem = ({
       </div>
 
       <div className="relative z-10 space-y-4 mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">
-            <Clock size={12} /> Progress
-          </span>
-          <span className="text-sm font-black text-primary-500">
-            {video.duration ? `${formatTime(video.lastPosition || 0)} / ${formatDuration(video.duration)}` : formatTime(video.lastPosition || 0)}
-          </span>
-        </div>
+        {(() => {
+          const displayProgress = video.completed
+            ? 100
+            : (video.duration && video.duration > 0)
+              ? Math.min(100, Math.round(((video.lastPosition || 0) / video.duration) * 100))
+              : (video.progress || 0);
 
-        <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${video.progress}%` }}
-            className="h-full bg-primary-500 rounded-full shadow-[0_0_10px_rgba(14,165,233,0.5)]"
-          />
-        </div>
+          const durationDisplay = (video.duration && video.duration > 0)
+            ? `${formatTime(video.lastPosition || 0)} / ${formatDuration(video.duration)}`
+            : (video.lastPosition > 0 ? `${formatTime(video.lastPosition)} watched` : '0:00');
+
+          return (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                  <Clock size={12} /> Progress
+                </span>
+                <span className="text-sm font-black text-primary-500">
+                  {durationDisplay}
+                </span>
+              </div>
+
+              <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${displayProgress}%` }}
+                  className="h-full bg-primary-500 rounded-full shadow-[0_0_10px_rgba(14,165,233,0.5)]"
+                />
+              </div>
+            </>
+          );
+        })()}
 
         <div className="grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
           {course && (

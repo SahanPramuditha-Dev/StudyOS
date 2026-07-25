@@ -12,7 +12,10 @@ import {
   VideoOff,
   SearchX,
   Download,
-  Upload
+  Upload,
+  Calendar,
+  Zap,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStorage } from '../../hooks/useStorage';
@@ -87,9 +90,43 @@ const getEmbedUrl = (video) => {
   return `https://www.youtube.com/embed/${vid}?${p.toString()}`;
 };
 
+const parseISO8601Duration = (isoStr) => {
+  if (!isoStr) return 0;
+  const regex = /P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/i;
+  const matches = isoStr.match(regex);
+  if (!matches) return 0;
+  const days = parseInt(matches[1] || 0, 10);
+  const hours = parseInt(matches[2] || 0, 10);
+  const minutes = parseInt(matches[3] || 0, 10);
+  const seconds = parseInt(matches[4] || 0, 10);
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+};
+
 const fetchVideoMeta = async (url) => {
   const id = extractYouTubeId(url);
   if (!id) return null;
+  
+  // Primary: Fetch from YouTube Data API v3 (includes contentDetails duration)
+  try {
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=${id}&key=${YOUTUBE_API_KEY}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.items && data.items.length > 0) {
+        const item = data.items[0];
+        const durationSec = parseISO8601Duration(item.contentDetails?.duration);
+        return {
+          title: item.snippet?.title,
+          thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.high?.url || `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
+          author: item.snippet?.channelTitle || null,
+          duration: durationSec,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('YouTube Data API fetch error:', err);
+  }
+
+  // Fallback: oEmbed
   try {
     const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`);
     if (!r.ok) return null;
@@ -98,6 +135,7 @@ const fetchVideoMeta = async (url) => {
       title: d.title,
       thumbnail: d.thumbnail_url || `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
       author: d.author_name || null,
+      duration: 0,
     };
   } catch { return null; }
 };
@@ -189,7 +227,11 @@ const Videos = () => {
   // Ref for latest activeVideo so keyboard handler always has fresh data
   const activeVideoRef   = useRef(activeVideo);
 
-  useEffect(() => { activeVideoIdRef.current = activeVideoId; }, [activeVideoId]);
+  useEffect(() => {
+    if (activeVideoId) {
+      activeVideoIdRef.current = activeVideoId;
+    }
+  }, [activeVideoId]);
   useEffect(() => { activeVideoRef.current = activeVideo; }, [activeVideo]);
   
   useEffect(() => {
@@ -224,19 +266,29 @@ const Videos = () => {
     const inProgress = active.filter(v => !v.completed && v.progress > 0).length;
     const totalWatchTime = active.reduce((a, v) => a + (v.totalWatchTime || 0), 0) + liveSeconds;
 
+    const getLocalDateKey = (dInput) => {
+      if (!dInput) return '';
+      const d = new Date(dInput);
+      if (isNaN(d.getTime())) return '';
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const date = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${date}`;
+    };
+
     const daySet = new Set();
     active.forEach(v => (v.playbackLogs || []).forEach(l => {
-      if (l.startTime) daySet.add(l.startTime.split('T')[0]);
+      if (l.startTime) daySet.add(getLocalDateKey(l.startTime));
     }));
     if (liveSeconds > 0 && sessionStartRef.current?.startTime) {
-      daySet.add(sessionStartRef.current.startTime.split('T')[0]);
+      daySet.add(getLocalDateKey(sessionStartRef.current.startTime));
     }
 
     let streak = 0;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     for (let i = 0; i < 365; i++) {
       const d = new Date(today); d.setDate(today.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = getLocalDateKey(d);
       if (daySet.has(key)) streak++;
       else if (i === 0) continue; // today not watched yet — check yesterday before breaking
       else break;
@@ -259,6 +311,78 @@ const Videos = () => {
     }
     return null;
   }, [isPlaying, liveSeconds]);
+
+  // Auto-fetch missing YouTube video durations in batch
+  useEffect(() => {
+    const missing = videos.filter(v => {
+      if (v.duration && v.duration > 0) return false;
+      const vid = (v.videoId?.length === 11 ? v.videoId : null) || extractYouTubeId(v.url);
+      return Boolean(vid);
+    });
+
+    if (missing.length === 0) return;
+
+    let isMounted = true;
+
+    const fetchDurations = async () => {
+      const vidMap = {};
+      missing.forEach(v => {
+        const vid = (v.videoId?.length === 11 ? v.videoId : null) || extractYouTubeId(v.url);
+        if (vid && !vidMap[vid]) vidMap[vid] = [];
+        if (vid) vidMap[vid].push(v.id);
+      });
+
+      const uniqueVids = Object.keys(vidMap);
+      if (uniqueVids.length === 0) return;
+
+      for (let i = 0; i < uniqueVids.length; i += 50) {
+        const batch = uniqueVids.slice(i, i + 50);
+        try {
+          const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=${batch.join(',')}&key=${YOUTUBE_API_KEY}`);
+          if (!res.ok || !isMounted) continue;
+          const data = await res.json();
+          if (!data.items) continue;
+
+          const durationMap = {};
+          const authorMap = {};
+          data.items.forEach(item => {
+            const dur = parseISO8601Duration(item.contentDetails?.duration);
+            if (dur > 0) {
+              durationMap[item.id] = dur;
+            }
+            if (item.snippet?.channelTitle) {
+              authorMap[item.id] = item.snippet.channelTitle;
+            }
+          });
+
+          if (Object.keys(durationMap).length > 0 && isMounted) {
+            setVideos(prev => prev.map(v => {
+              const vid = (v.videoId?.length === 11 ? v.videoId : null) || extractYouTubeId(v.url);
+              if (vid && durationMap[vid]) {
+                const dur = durationMap[vid];
+                const calcProgress = v.completed ? 100 : Math.min(100, Math.round(((v.lastPosition || 0) / dur) * 100));
+                return {
+                  ...v,
+                  duration: dur,
+                  author: v.author || authorMap[vid] || null,
+                  progress: v.completed ? 100 : Math.max(v.progress || 0, calcProgress),
+                };
+              }
+              return v;
+            }));
+          }
+        } catch (e) {
+          console.error('Failed to batch fetch video durations', e);
+        }
+      }
+    };
+
+    fetchDurations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [videos, setVideos]);
 
   const filteredVideos = useMemo(() => {
     let list = videos.filter(v => {
@@ -290,16 +414,45 @@ const Videos = () => {
   }, []);
 
   useEffect(() => {
+    if (activeVideoId) {
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+    }
+  }, [activeVideoId]);
+
+  useEffect(() => {
     const onMsg = (event) => {
-      if (event.origin !== 'https://www.youtube.com') return;
-      let data; try { data = JSON.parse(event.data); } catch { return; }
-      const vid = activeVideoIdRef.current; if (!vid) return;
-      if (data.event === 'onReady') iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'yt-player' }), '*');
-      if (data.event === 'onStateChange') setIsPlaying(data.info === 1);
+      if (!event.origin.includes('youtube.com') && !event.origin.includes('youtube-nocookie.com')) return;
+      let data = event.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch { return; }
+      }
+      if (!data || typeof data !== 'object') return;
+
+      const vid = activeVideoIdRef.current;
+      if (!vid) return;
+
+      if (data.event === 'onReady' || data.info?.playerState !== undefined || data.info?.currentTime !== undefined) {
+        iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'yt-player' }), '*');
+      }
+
+      if (data.event === 'onStateChange') {
+        if (data.info === 1) setIsPlaying(true);
+        else if (data.info === 2 || data.info === 0) setIsPlaying(false);
+      }
+
       if (data.event === 'infoDelivery' && data.info) {
-        const { currentTime, duration } = data.info;
-        if (currentTime !== undefined && duration > 0) {
-          const progress = Math.round((currentTime / duration) * 100);
+        if (typeof data.info.playerState === 'number') {
+          if (data.info.playerState === 1) setIsPlaying(true);
+          else if (data.info.playerState === 2 || data.info.playerState === 0) setIsPlaying(false);
+        }
+        
+        const currentTime = data.info.currentTime;
+        const duration = data.info.duration || activeVideoRef.current?.duration || 0;
+        
+        if (typeof currentTime === 'number' && currentTime >= 0) {
+          const progress = duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : (activeVideoRef.current?.progress || 0);
           let completedTitle = null;
           setVideos(prev => prev.map(v => {
             if (v.id !== vid) return v;
@@ -308,7 +461,7 @@ const Videos = () => {
             return {
               ...v,
               lastPosition: currentTime,
-              duration: duration,
+              duration: duration > 0 ? duration : (v.duration || 0),
               progress: Math.max(v.progress || 0, progress),
               completed: v.completed || done,
               completionNotified: v.completionNotified || done,
@@ -323,39 +476,52 @@ const Videos = () => {
     return () => window.removeEventListener('message', onMsg);
   }, [setVideos, addNotification]);
 
-  // ── Session tracking (Optimized to reduce db write costs) ─────────────────────────
+  // Poll YouTube iframe for current position & listening status every 1 second
+  useEffect(() => {
+    if (!activeVideoId) return;
 
-  // Live in-memory ticker (0 DB read/write cost)
+    const pollInterval = setInterval(() => {
+      if (iframeRef.current?.contentWindow) {
+        try {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'yt-player' }), '*');
+          iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'getCurrentTime', args: [] }), '*');
+        } catch (e) {
+          // Catch cross-origin postMessage errors if any
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(pollInterval);
+  }, [activeVideoId]);
+
+  // ── Session tracking (Optimized live ticker & persistent logger) ──────────────
+
   useEffect(() => {
     let timer = null;
-    if (isPlaying && sessionStartRef.current) {
+    const targetVidId = activeVideoIdRef.current || activeVideoId;
+
+    if (isPlaying && activeVideo && targetVidId) {
+      if (!sessionStartRef.current) {
+        sessionStartRef.current = {
+          startTime: new Date().toISOString(),
+          startPosition: activeVideo.lastPosition || 0,
+          speed: playbackRate,
+        };
+      }
+
+      // Live ticker for Activity Overview real-time updates
       timer = setInterval(() => {
         if (sessionStartRef.current?.startTime) {
           const elapsed = Math.floor((Date.now() - new Date(sessionStartRef.current.startTime).getTime()) / 1000);
           setLiveSeconds(elapsed);
         }
       }, 1000);
-    } else {
-      setLiveSeconds(0);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [isPlaying]);
-
-  useEffect(() => {
-    if (isPlaying && activeVideo && !sessionStartRef.current) {
-      sessionStartRef.current = {
-        startTime: new Date().toISOString(),
-        startPosition: activeVideo.lastPosition || 0,
-        speed: playbackRate,
-      };
     } else if (!isPlaying && sessionStartRef.current) {
-      const dur = (new Date() - new Date(sessionStartRef.current.startTime)) / 1000;
-      if (dur > 5 && activeVideoId) {
+      const dur = (Date.now() - new Date(sessionStartRef.current.startTime).getTime()) / 1000;
+      if (dur >= 1 && targetVidId) {
         const log = { ...sessionStartRef.current, endTime: new Date().toISOString(), duration: dur };
         setVideos(prev => prev.map(v =>
-          v.id === activeVideoId
+          v.id === targetVidId
             ? { 
                 ...v, 
                 playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50),
@@ -368,25 +534,9 @@ const Videos = () => {
       sessionStartRef.current = null;
       setLiveSeconds(0);
     }
+
     return () => {
-      if (sessionStartRef.current && activeVideoIdRef.current) {
-        const dur = (new Date() - new Date(sessionStartRef.current.startTime)) / 1000;
-        if (dur > 5) {
-          const log = { ...sessionStartRef.current, endTime: new Date().toISOString(), duration: dur };
-          setVideos(prev => prev.map(v =>
-            v.id === activeVideoIdRef.current
-              ? { 
-                  ...v, 
-                  playbackLogs: [log, ...(v.playbackLogs || [])].slice(0, 50),
-                  totalWatchTime: (v.totalWatchTime || 0) + Math.round(dur),
-                  lastWatched: new Date().toISOString()
-                }
-              : v
-          ));
-        }
-        sessionStartRef.current = null;
-        setLiveSeconds(0);
-      }
+      if (timer) clearInterval(timer);
     };
   }, [isPlaying, activeVideoId, activeVideo, playbackRate, setVideos]);
 
@@ -395,7 +545,7 @@ const Videos = () => {
     const handleUnload = () => {
       if (sessionStartRef.current && activeVideoIdRef.current) {
         const dur = (new Date() - new Date(sessionStartRef.current.startTime)) / 1000;
-        if (dur > 5) {
+        if (dur >= 1) {
           const log = { ...sessionStartRef.current, endTime: new Date().toISOString(), duration: dur };
           setVideos(prev => prev.map(v =>
             v.id === activeVideoIdRef.current
@@ -417,7 +567,9 @@ const Videos = () => {
   // ── Reset on video switch ─────────────────────────────────────────────────
 
   useEffect(() => {
-    requestAnimationFrame(() => setIsPlaying(false));
+    if (!activeVideoId) {
+      setIsPlaying(false);
+    }
     clearInterval(watchIntervalRef.current);
   }, [activeVideoId]);
 
@@ -1190,6 +1342,160 @@ const Videos = () => {
               </motion.div>
             </div>
           )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Watch History Modal */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {isHistoryOpen && (() => {
+            // Build flat list of all sessions sorted by most recent first
+            const allSessions = [];
+            videos.forEach(v => {
+              (v.playbackLogs || []).forEach(log => {
+                allSessions.push({ ...log, videoTitle: v.title, videoId: v.id, thumbnail: v.thumbnail });
+              });
+            });
+            allSessions.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
+
+            // Group by date
+            const grouped = {};
+            allSessions.forEach(session => {
+              const dateKey = session.startTime
+                ? new Date(session.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                : 'Unknown Date';
+              if (!grouped[dateKey]) grouped[dateKey] = [];
+              grouped[dateKey].push(session);
+            });
+            const groupedEntries = Object.entries(grouped);
+
+            return (
+              <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                />
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                  className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col"
+                  style={{ maxHeight: '85vh' }}
+                >
+                  {/* Header */}
+                  <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-primary-500/10 flex items-center justify-center">
+                        <History size={20} className="text-primary-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-slate-800 dark:text-white">Watch History</h3>
+                        <p className="text-xs text-slate-400 font-medium">{allSessions.length} session{allSessions.length !== 1 ? 's' : ''} logged</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsHistoryOpen(false)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="overflow-y-auto flex-1 p-6 space-y-6">
+                    {allSessions.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                          <History size={36} className="text-slate-300 dark:text-slate-600" />
+                        </div>
+                        <h4 className="text-base font-black text-slate-800 dark:text-white mb-1">No Watch History Yet</h4>
+                        <p className="text-sm text-slate-400">Start watching videos to build your history.</p>
+                      </div>
+                    ) : (
+                      groupedEntries.map(([dateLabel, sessions]) => (
+                        <div key={dateLabel}>
+                          {/* Date group header */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <Calendar size={13} className="text-slate-400" />
+                            <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">{dateLabel}</span>
+                            <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
+                            <span className="text-[10px] font-bold text-slate-400">
+                              {formatWatchTime(sessions.reduce((acc, s) => acc + (s.duration || 0), 0))}
+                            </span>
+                          </div>
+                          {/* Sessions in this date group */}
+                          <div className="space-y-2">
+                            {sessions.map((session, idx) => {
+                              const durationSec = Math.round(session.duration || 0);
+                              const speed = session.speed || 1;
+                              const timeStr = session.startTime
+                                ? new Date(session.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                                : '';
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 hover:border-primary-200 dark:hover:border-primary-500/30 transition-all group"
+                                >
+                                  {/* Thumbnail */}
+                                  <div className="w-12 h-9 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0">
+                                    {session.thumbnail
+                                      ? <img src={session.thumbnail} alt="" className="w-full h-full object-cover" />
+                                      : <div className="w-full h-full flex items-center justify-center"><Play size={14} className="text-slate-400" /></div>
+                                    }
+                                  </div>
+                                  {/* Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white truncate leading-tight">{session.videoTitle}</p>
+                                    <div className="flex items-center gap-3 mt-0.5">
+                                      <span className="text-[11px] text-slate-400 font-medium">{timeStr}</span>
+                                      {session.startPosition > 5 && (
+                                        <span className="text-[10px] text-slate-400">from {formatTime(session.startPosition)}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Right meta */}
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {speed !== 1 && (
+                                      <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-black">
+                                        <Zap size={10} />{speed}x
+                                      </span>
+                                    )}
+                                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 text-[11px] font-black">
+                                      <Clock size={11} />
+                                      {durationSec >= 3600
+                                        ? `${Math.floor(durationSec/3600)}h ${Math.floor((durationSec%3600)/60)}m`
+                                        : durationSec >= 60
+                                          ? `${Math.floor(durationSec/60)}m ${durationSec%60}s`
+                                          : `${durationSec}s`
+                                      }
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  {allSessions.length > 0 && (
+                    <div className="p-4 border-t border-slate-100 dark:border-slate-800 shrink-0">
+                      <button
+                        onClick={() => { exportHistoryCSV(); setIsHistoryOpen(false); }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-primary-50 dark:hover:bg-primary-500/10 hover:text-primary-600 dark:hover:text-primary-400 hover:border-primary-200 dark:hover:border-primary-500/30 transition-all"
+                      >
+                        <Download size={15} /> Export History as CSV
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            );
+          })()}
         </AnimatePresence>,
         document.body
       )}

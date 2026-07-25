@@ -26,6 +26,7 @@ const STORAGE_KEYS = {
   SEMESTERS: 'studyos_semesters',
   ACADEMIC_SETTINGS: 'studyos_academic_settings',
   GRADE_CENTER: 'studyos_grade_center',
+  PLAYLISTS: 'studyos_video_playlists',
 };
 
 const defaultSchemas = {
