@@ -143,14 +143,62 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const inFlightRequests = new Map();
 
 /**
- * Generates a SHA-256 hash for caching and deduplication based on request payload.
+ * Generates an isolated SHA-256 hash for caching based on user and request payload.
+ * User isolation prevents cross-user academic content/notes leakage.
  */
-function generateRequestHash(prompt, systemInstruction, config) {
-  const payload = JSON.stringify({ prompt, systemInstruction, config });
+function generateRequestHash(userId, prompt, systemInstruction, config) {
+  const payload = JSON.stringify({ userId: userId || 'anon', prompt, systemInstruction, config });
   return crypto.createHash("sha256").update(payload).digest("hex");
 }
 
+/**
+ * Server-side transactional User Quota & Rate Limiter
+ * Free tier: 30 requests/day, 6 requests/minute
+ * Admin/Pro: 300 requests/day, 20 requests/minute
+ */
+async function enforceUserAiQuota(db, uid, userRole = 'user') {
+  const today = new Date().toISOString().split("T")[0];
+  const quotaRef = db.collection("ai_user_quotas").doc(`${uid}_${today}`);
+  const now = Date.now();
 
+  const isElevated = ['admin', 'superadmin', 'pro'].includes(userRole);
+  const DAILY_MAX = isElevated ? 300 : 30;
+  const MINUTE_MAX = isElevated ? 20 : 6;
+  const ONE_MINUTE = 60 * 1000;
+
+  await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(quotaRef);
+    const data = doc.exists ? doc.data() : { dailyCount: 0, timestamps: [] };
+
+    // Filter timestamps within the last 60 seconds
+    const recentCalls = (data.timestamps || []).filter((t) => now - t < ONE_MINUTE);
+
+    if (recentCalls.length >= MINUTE_MAX) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `Rate limit exceeded: Max ${MINUTE_MAX} AI requests per minute. Please slow down.`
+      );
+    }
+
+    if ((data.dailyCount || 0) >= DAILY_MAX) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `Daily AI quota reached (${DAILY_MAX} requests/day). Resets at midnight UTC.`
+      );
+    }
+
+    recentCalls.push(now);
+    transaction.set(
+      quotaRef,
+      {
+        dailyCount: (data.dailyCount || 0) + 1,
+        timestamps: recentCalls,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+  });
+}
 
 /**
  * AI Gateway Cloud Function
@@ -164,14 +212,19 @@ exports.aiGateway = onCall(
       throw new HttpsError("unauthenticated", "User must be logged in.");
     }
 
+    const uid = request.auth.uid;
+    const userRole = request.auth.token?.role || 'user';
+    const db = admin.firestore();
+
+    // 2. Enforce User-level abuse protection & quotas
+    await enforceUserAiQuota(db, uid, userRole);
+
     const { prompt, systemInstruction, config, task, qualityPreference } = request.data;
     if (!prompt) {
       throw new HttpsError("invalid-argument", "Missing prompt.");
     }
-
-    const db = admin.firestore();
     
-    // Strategy 10: Daily Budget Manager
+    // Strategy 10: Global Daily Budget Manager
     const today = new Date().toISOString().split("T")[0];
     const budgetRef = db.collection("ai_budget").doc(today);
     const budgetSnap = await budgetRef.get();
@@ -189,8 +242,8 @@ exports.aiGateway = onCall(
       modelPriority = [MODELS.v35FlashLite, MODELS.v31FlashLite, MODELS.gemma426b, MODELS.v25FlashLite];
     }
 
-    // Phase 2: Caching & Deduplication (Strategies 4, 9)
-    const requestHash = generateRequestHash(prompt, systemInstruction, config);
+    // Phase 2: Caching & Deduplication (Strategies 4, 9) - User-scoped to prevent leakage
+    const requestHash = generateRequestHash(uid, prompt, systemInstruction, config);
 
     // 1. Check Deduplication (In-flight requests on this instance)
     if (inFlightRequests.has(requestHash)) {
@@ -199,20 +252,20 @@ exports.aiGateway = onCall(
     }
 
     const generateResponsePromise = async () => {
-      // 2. Check Persistent Cache (Firestore)
-      const db = admin.firestore();
-      const cacheRef = db.collection("ai_cache").doc(requestHash);
+      // 2. Check Persistent Cache (Firestore) - Scoped by uid
+      const cacheRef = db.collection("ai_cache").doc(`${uid}_${requestHash}`);
       
       try {
         const cacheSnap = await cacheRef.get();
         if (cacheSnap.exists) {
-          console.log(`[AI Gateway] Cache hit for ${requestHash}`);
+          console.log(`[AI Gateway] User cache hit for ${requestHash}`);
           const cachedData = cacheSnap.data();
           
-          // Log Cache Hit Analytics
+          // Log Cache Hit Analytics (anonymized)
+          const anonUid = crypto.createHash("sha256").update(uid).digest("hex").slice(0, 10);
           db.collection("ai_analytics").add({
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            userId: request.auth.uid,
+            userHash: anonUid,
             task: task || 'general',
             modelUsed: cachedData.modelUsed,
             cached: true,
@@ -263,26 +316,25 @@ exports.aiGateway = onCall(
             cached: false,
           };
 
-          // Save to persistent cache (Strategy 4)
+          // Save to persistent user-scoped cache (Strategy 4) - Do not store raw prompt for privacy
           try {
             await cacheRef.set({
               ...result,
-              prompt,
               timestamp: admin.firestore.FieldValue.serverTimestamp(),
             });
-            console.log(`[AI Gateway] Saved result to cache ${requestHash}`);
+            console.log(`[AI Gateway] Saved result to user cache ${requestHash}`);
           } catch (err) {
             console.error("[AI Gateway] Failed to save to cache:", err);
           }
 
           // Strategy 14 & 10: Cost-Optimized Telemetry (Single Doc Rolling Buffer)
-          // Reduces write operations to 1 atomic update per call & eliminates collection bloat
+          // Uses anonymized hash instead of actual names/emails to prevent PII leakage
           const logAnalytics = async () => {
             try {
-              const userName = request.auth.token?.name || request.auth.token?.email || request.auth.uid?.slice(0, 8) || 'Student';
+              const anonUser = 'user_' + crypto.createHash("sha256").update(uid).digest("hex").slice(0, 8);
               const logEntry = {
                 id: crypto.randomBytes(6).toString('hex'),
-                user: userName,
+                user: anonUser,
                 task: task || 'general',
                 modelUsed: currentModel,
                 cached: false,
@@ -369,6 +421,13 @@ exports.orionTTSGateway = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "User must be logged in.");
     }
+
+    const uid = request.auth.uid;
+    const userRole = request.auth.token?.role || 'user';
+    const db = admin.firestore();
+
+    // Enforce User-level abuse protection & quotas for TTS as well
+    await enforceUserAiQuota(db, uid, userRole);
 
     const { text } = request.data;
     if (!text) {

@@ -96,28 +96,11 @@ exports.ensureMyUserProfileDoc = onCall(async (request) => {
 });
 
 /**
- * Callable: resolve a username to the account email before sign-in.
- * This uses the Admin SDK so the login flow does not depend on client-side Firestore reads.
+ * Callable: resolveUsernameToEmail (Disabled for security)
+ * Direct email authentication is required to prevent username-to-email enumeration.
  */
-exports.resolveUsernameToEmail = onCall(async (request) => {
-  const username = String(request.data?.username || "").trim().toLowerCase().replace(/^@/, "");
-  if (!username) {
-    throw new HttpsError("invalid-argument", "Username is required.");
-  }
-
-  const db = admin.firestore();
-  const snapshot = await db
-    .collection("users")
-    .where("username", "==", username)
-    .limit(1)
-    .get();
-
-  if (snapshot.empty) {
-    return { email: null };
-  }
-
-  const userData = snapshot.docs[0].data() || {};
-  return { email: userData.email || null };
+exports.resolveUsernameToEmail = onCall(async () => {
+  throw new HttpsError("unimplemented", "Username-to-email resolution is disabled. Please sign in with your email address.");
 });
 
 

@@ -43,13 +43,8 @@ const Auth = () => {
     const password = formData.password;
 
     if (isLogin) {
-      if (!identifier) return 'Please enter your email address or username.';
-      if (identifier.includes('@') && !emailPattern.test(identifier)) return 'Please enter a valid email address.';
-
-      const username = identifier.replace(/^@/, '').toLowerCase();
-      const usernameError = identifier.includes('@') ? '' : FirestoreService.validateUsernameFormat(username);
-      if (usernameError) return usernameError;
-
+      if (!identifier) return 'Please enter your account email address.';
+      if (!emailPattern.test(identifier)) return 'Please enter a valid email address.';
       if (!password) return 'Please enter your password.';
       if (password.length < 6) return 'Password must be at least 6 characters.';
       return '';
@@ -292,14 +287,14 @@ const Auth = () => {
 
               <div className="space-y-1">
                 <label className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
-                  {isLogin ? 'Username or Email' : 'Email Address'}
+                  Email Address
                 </label>
                 <div className="relative group">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-300 group-focus-within:text-primary-500 transition-colors" size={16} />
                   <input
                     required
-                    type={isLogin ? 'text' : 'email'}
-                    placeholder={isLogin ? '@username or email@domain.com' : 'you@domain.com'}
+                    type="email"
+                    placeholder="you@domain.com"
                     className="w-full pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 focus:bg-white dark:focus:bg-slate-800 focus:border-primary-500 focus:ring-4 ring-primary-500/10 outline-none transition-all text-slate-900 dark:text-white font-bold text-sm placeholder:text-slate-400 placeholder:font-medium dark:placeholder:text-slate-500"
                     value={formData.email}
                     onChange={(event) => {

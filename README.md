@@ -12,14 +12,15 @@
 
 ## What It Includes
 
-- **Auth & Navigation** — Google OAuth 2.0, email/password, role-aware routing, global search.
+- **Auth & Navigation** — Google OAuth 2.0, GitHub OAuth, email/password, role-aware routing, global search.
 - **Academic Tracking** — Courses, assignments, grades, and a review hub.
+- **Spaced Repetition & Recall** — Scientific SuperMemo SM-2 algorithm flashcard decks with 3D flip card review and AI deck generator.
 - **Projects Hub** — Full project lifecycle: task boards, bug tracker, code snippets, file manager, GitHub repo sync, docs editor, submission versioning.
 - **Study Content** — Notes, resources, papers, and an interactive YouTube video workspace with transcripts, chapters, bookmarks, AI summaries, and quizzes.
-- **Planning & Productivity** — Weekly planner, Google Calendar integration, reminders, focus timer, goals, and budget tracker.
+- **Planning & Productivity** — Weekly planner, Google Calendar integration, reminders, focus timer, goals, and comprehensive student finance tracker.
 - **Analytics & Admin** — Learning charts, heatmaps, AI insights, admin portal with role-based access control.
-- **Collaboration** — Real-time chat and Orion AI study companion.
-- **Infrastructure** — Firebase Auth, Firestore, Storage, Hosting, and Cloud Functions.
+- **AI Companion** — Orion AI study assistant and context-aware tutor.
+- **Infrastructure** — Firebase Auth, Firestore, Storage, Cloudflare Pages/Assets, and Cloud Functions.
 
 ---
 

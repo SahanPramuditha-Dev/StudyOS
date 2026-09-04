@@ -356,17 +356,10 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const login = async (emailOrUsername, password, remember = true) => {
-    let normalizedInput = (emailOrUsername || '').trim();
-    
-    // Check if it's not an email, try resolving via Firestore username
-    if (!normalizedInput.includes('@')) {
-      const resolvedEmail = await FirestoreService.getUserEmailByUsername(normalizedInput);
-      if (resolvedEmail) {
-        normalizedInput = resolvedEmail;
-      } else {
-        throw new Error('Username not found. Please try again or use your email.');
-      }
+  const login = async (email, password, remember = true) => {
+    const normalizedInput = (email || '').trim();
+    if (!normalizedInput || !normalizedInput.includes('@')) {
+      throw new Error('Please enter a valid account email address.');
     }
 
     try {
@@ -482,8 +475,8 @@ export const AuthProvider = ({ children }) => {
 
   const loginWithGitHub = async () => {
     const provider = new GithubAuthProvider();
-    provider.addScope('repo');
     provider.addScope('read:user');
+    provider.addScope('user:email');
     provider.setCustomParameters({ allow_signup: 'true' });
 
     try {
