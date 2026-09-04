@@ -60,6 +60,7 @@ const SOUND_COOLDOWN_MS = 10 * 1000;
 const App = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentTabFromPath = location.pathname.slice(1).split('/')[0] || 'dashboard';
   const { user, profile, isAdmin, hasPermission, logout, loading } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const {

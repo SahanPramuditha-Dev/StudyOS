@@ -37,6 +37,10 @@ export default defineConfig([
       'no-unused-vars': 'off',
       'react-refresh/only-export-components': 'off',
       'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/purity': 'warn',
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn'
     },
   },
 ])

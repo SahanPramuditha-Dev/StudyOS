@@ -20,6 +20,7 @@ import {
   Inbox,
   ListTodo,
   Clock,
+  Layers,
   Wallet,
   GraduationCap,
   ChevronsLeft,
