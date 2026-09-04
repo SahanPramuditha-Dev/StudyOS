@@ -107,6 +107,14 @@ class FirestoreService {
   }
 
   /**
+   * Normalizes an email address for chat/presence comparisons
+   */
+  static normalizeChatEmail(email) {
+    if (!email || typeof email !== 'string') return '';
+    return email.trim().toLowerCase();
+  }
+
+  /**
    * Default user profile shape (Firestore + client fallback when cloud init fails).
    */
   static buildDefaultUserProfile(userId, profileData) {
