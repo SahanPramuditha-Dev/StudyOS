@@ -124,17 +124,17 @@ class FirestoreService {
       email: profileData.email,
       name: profileData.name,
       username: profileData.username || null,
-      role: 'restricted',
+      role: 'user',
       status: {
         isActive: true,
         isBlocked: false,
-        isTrial: true
+        isTrial: false
       },
       limits: {
-        storageMB: 5,
-        maxFiles: 10,
-        maxCourses: 2,
-        maxNotes: 20
+        storageMB: 50,
+        maxFiles: 100,
+        maxCourses: 20,
+        maxNotes: 200
       },
       usage: {
         storageUsedMB: 0,
@@ -143,22 +143,22 @@ class FirestoreService {
         noteCount: 0
       },
       permissions: {
-        courses: false,
-        videos: false,
+        courses: true,
+        videos: true,
         notes: true,
         resources: true,
-        projects: false,
-        workspace: false,
+        projects: true,
+        workspace: true,
         reminders: true,
-        analytics: false,
+        analytics: true,
         adminPanel: false,
         manageUsers: false,
         changePermissions: false
       },
       features: {
-        advancedAnalytics: false,
-        aiNotes: false,
-        exportPDF: false
+        advancedAnalytics: true,
+        aiNotes: true,
+        exportPDF: true
       },
       createdAt: now,
       lastLogin: now

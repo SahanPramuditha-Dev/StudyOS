@@ -33,13 +33,13 @@ service cloud.firestore {
     function isActive() {
       let profile = getOwnProfile();
       let status = profile.get('status', {
-        'isActive': false,
-        'isBlocked': true
+        'isActive': true,
+        'isBlocked': false
       });
       return isAuthenticated() &&
         ownProfileExists() &&
-        status.get('isActive', false) == true &&
-        status.get('isBlocked', true) == false;
+        status.get('isActive', true) == true &&
+        status.get('isBlocked', false) == false;
     }
 
     function isVerified() {
@@ -48,23 +48,25 @@ service cloud.firestore {
 
     function withinLimits() {
       let profile = getOwnProfile();
-      let role = profile.get('role', 'restricted');
+      let role = profile.get('role', 'user');
       let limits = profile.get('limits', {});
       let usage = profile.get('usage', {});
 
       return role in ['admin', 'superadmin'] || (
-        usage.get('fileCount', 0) <= limits.get('maxFiles', 100) &&
-        usage.get('storageUsedMB', 0) <= limits.get('storageMB', 10)
+        usage.get('fileCount', 0) <= limits.get('maxFiles', 500) &&
+        usage.get('storageUsedMB', 0) <= limits.get('storageMB', 50)
       );
     }
 
 
 
     function hasModuleAccess(document) {
-      let perms = getOwnProfile().get('permissions', {});
+      let profile = getOwnProfile();
+      let role = profile.get('role', 'user');
+      let perms = profile.get('permissions', {});
       let modules = perms.get('modules', {});
 
-      return
+      return role in ['user', 'admin', 'superadmin', 'educator', 'team_lead'] ||
         (document == 'studyos_courses' && (modules.get('courses', false) == true || perms.get('courses', false) == true)) ||
         (document == 'studyos_videos' && (modules.get('videos', false) == true || perms.get('videos', false) == true)) ||
         (document == 'studyos_notes' && (modules.get('notes', false) == true || perms.get('notes', false) == true)) ||
@@ -76,8 +78,17 @@ service cloud.firestore {
         (document == 'studyos_reminders' && (modules.get('reminders', false) == true || perms.get('reminders', false) == true)) ||
         (document == 'studyos_goals') ||
         (document == 'studyos_folders') ||
+        (document == 'studyos_note_folders') ||
         (document == 'studyos_weekly_planner') ||
         (document == 'studyos_review_prefs') ||
+        (document == 'studyos_flashcards') ||
+        (document == 'studyos_semesters') ||
+        (document == 'studyos_academic_settings') ||
+        (document == 'studyos_grade_center') ||
+        (document == 'studyos_video_playlists') ||
+        (document == 'studyos_orion') ||
+        (document == 'studyos_orion_memory') ||
+        (document == 'preferences') ||
         (document == 'studyos_assignments' && (
           modules.get('projects', false) == true || perms.get('projects', false) == true ||
           modules.get('courses', false) == true || perms.get('courses', false) == true
