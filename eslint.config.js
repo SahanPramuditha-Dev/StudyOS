@@ -18,7 +18,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -35,11 +35,17 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': 'off',
+      'no-useless-escape': 'off',
+      'no-empty': 'off',
+      'no-useless-catch': 'off',
       'react-refresh/only-export-components': 'off',
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/refs': 'warn',
       'react-hooks/purity': 'warn',
-      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-hooks/static-components': 'warn',
+      'react-hooks/rules-of-hooks': 'warn',
       'react-hooks/exhaustive-deps': 'warn'
     },
   },

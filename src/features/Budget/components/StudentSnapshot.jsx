@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DollarSign, Calendar, ShieldCheck, AlertTriangle, ArrowUpRight, TrendingDown, PiggyBank, Plus } from 'lucide-react';
 import { roundCurrency } from '../utils';
