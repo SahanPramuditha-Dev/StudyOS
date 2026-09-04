@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible problem in StudyOS
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve StudyOS. Do not include credentials, private user data, or security vulnerabilities here; use the security policy for sensitive reports.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Go to...\n2. Click...\n3. Observe..."
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, device, and relevant version information
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Logs or screenshots with sensitive information removed
