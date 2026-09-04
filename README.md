@@ -10,6 +10,14 @@
 
 ---
 
+## Architecture Overview
+
+![StudyOS architecture overview](assets/architecture-overview.svg)
+
+StudyOS uses a React/Vite client for the study workspace, Firebase for identity and persisted application data, Cloud Functions for server-side workflows, and external integrations for AI, calendar, analytics, and connected services. See [`docs/ARCHITECTURE_OVERVIEW.md`](docs/ARCHITECTURE_OVERVIEW.md) for the deeper system design.
+
+---
+
 ## What It Includes
 
 - **Auth & Navigation** — Google OAuth 2.0, GitHub OAuth, email/password, role-aware routing, global search.
@@ -116,6 +124,7 @@ src/
 functions/       Firebase Cloud Functions
 server/          Optional Node.js scaffold
 public/          Hosted app assets and SPA redirects
+assets/          README architecture diagram
 docs/            Architecture, development, deployment, testing, and UI guidance
 ```
 
