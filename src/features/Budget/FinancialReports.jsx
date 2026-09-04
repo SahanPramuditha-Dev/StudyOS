@@ -1,18 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Download, TrendingUp, TrendingDown, Landmark } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const FinancialReports = ({ budgetData }) => {
-  const { totalBudget = 0, expenses = [], incomes = [], currency = '$' } = budgetData || {};
+  const { totalBudget = 0, expenses = [], incomes = [], currency = 'Rs.' } = budgetData || {};
+  const [timeframe, setTimeframe] = useState('This Year');
   
-  const totalSpent = expenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalIncome = incomes.reduce((acc, curr) => acc + curr.amount, 0);
-  const remaining = totalBudget - totalSpent;
+  const totalSpent = expenses.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const totalIncome = incomes.reduce((acc, curr) => acc + (curr.amount || 0), 0);
   const netSavings = totalIncome - totalSpent;
+
+  // Generate real monthly trend chart data from expenses
+  const trendData = React.useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlyData = months.map(m => ({ month: m, amount: 0 }));
+
+    expenses.forEach(exp => {
+      if (!exp.date) return;
+      const d = new Date(exp.date);
+      const mIdx = d.getMonth();
+      if (mIdx >= 0 && mIdx < 12) {
+        monthlyData[mIdx].amount += (exp.amount || 0);
+      }
+    });
+
+    if (timeframe === 'This Month') {
+      const currentMonthIdx = new Date().getMonth();
+      return [monthlyData[currentMonthIdx]];
+    } else if (timeframe === 'Last 6 Months') {
+      const currentMonthIdx = new Date().getMonth();
+      const start = Math.max(0, currentMonthIdx - 5);
+      return monthlyData.slice(start, currentMonthIdx + 1);
+    }
+
+    return monthlyData;
+  }, [expenses, timeframe]);
 
   // Group expenses by category for the Top Categories widget
   const categoryTotals = expenses.reduce((acc, curr) => {
-    acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+    acc[curr.category || 'Other'] = (acc[curr.category || 'Other'] || 0) + (curr.amount || 0);
     return acc;
   }, {});
 
@@ -50,7 +77,7 @@ const FinancialReports = ({ budgetData }) => {
     <div className="flex flex-col gap-6 pb-8">
       <div className="flex justify-between items-end mb-2">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white">Reports</h2>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white">Reports & Financial Analytics</h2>
           <p className="text-sm text-slate-500 mt-1">Generate, view, and export your financial summaries.</p>
         </div>
         <div className="flex gap-3">
@@ -70,8 +97,8 @@ const FinancialReports = ({ budgetData }) => {
             <Landmark size={16} className="text-sky-500" />
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Budget (YTD)</h3>
           </div>
-          <p className="text-3xl font-black text-slate-800 dark:text-white">{currency}{totalBudget.toFixed(2)}</p>
-          <div className="mt-4 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10 inline-block px-2 py-1 rounded-lg">
+          <p className="text-3xl font-black text-slate-800 dark:text-white">{currency} {totalBudget.toLocaleString()}</p>
+          <div className="mt-4 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10 inline-block px-2.5 py-1 rounded-lg">
             +5% from last month
           </div>
         </div>
@@ -81,9 +108,9 @@ const FinancialReports = ({ budgetData }) => {
             <TrendingDown size={16} className="text-rose-500" />
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Expenses (YTD)</h3>
           </div>
-          <p className="text-3xl font-black text-slate-800 dark:text-white">{currency}{totalSpent.toFixed(2)}</p>
-          <div className="mt-4 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-500/10 inline-block px-2 py-1 rounded-lg">
-            +12% from last month
+          <p className="text-3xl font-black text-slate-800 dark:text-white">{currency} {totalSpent.toLocaleString()}</p>
+          <div className="mt-4 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-500/10 inline-block px-2.5 py-1 rounded-lg">
+            Based on logged expenses
           </div>
         </div>
         
@@ -92,8 +119,8 @@ const FinancialReports = ({ budgetData }) => {
             <TrendingUp size={16} className="text-emerald-500" />
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Net Savings (YTD)</h3>
           </div>
-          <p className="text-3xl font-black text-slate-800 dark:text-white">{currency}{netSavings.toFixed(2)}</p>
-          <div className="mt-4 text-xs font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 inline-block px-2 py-1 rounded-lg">
+          <p className="text-3xl font-black text-slate-800 dark:text-white">{currency} {netSavings.toLocaleString()}</p>
+          <div className="mt-4 text-xs font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 inline-block px-2.5 py-1 rounded-lg">
             Based on tracked income & expenses
           </div>
         </div>
@@ -103,17 +130,35 @@ const FinancialReports = ({ budgetData }) => {
         <div className="lg:col-span-2 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Expense Trends</h3>
-            <select className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 rounded-lg px-3 py-1 outline-none">
+            <select 
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value)}
+              className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 rounded-lg px-3 py-1 outline-none cursor-pointer"
+            >
               <option>This Year</option>
               <option>Last 6 Months</option>
               <option>This Month</option>
             </select>
           </div>
-          <div className="flex-1 flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/50">
-            <div className="text-center">
-               <TrendingUp size={48} className="mx-auto mb-3 text-slate-300 dark:text-slate-700" />
-               <p className="text-slate-500 text-sm font-semibold">Interactive trend chart rendering...</p>
-            </div>
+          
+          <div className="flex-1 w-full min-h-[280px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  formatter={(val) => [`${currency} ${val.toLocaleString()}`, 'Expenses']}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                />
+                <Area type="monotone" dataKey="amount" stroke="#06b6d4" strokeWidth={3} fillOpacity={1} fill="url(#trendGradient)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
         
@@ -121,13 +166,13 @@ const FinancialReports = ({ budgetData }) => {
           <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Top Categories</h3>
           <div className="flex-1 flex flex-col gap-5">
             {topCategories.length === 0 ? (
-              <p className="text-sm font-semibold text-slate-500 text-center py-8">No expenses yet.</p>
+              <p className="text-sm font-semibold text-slate-500 text-center py-8">No expenses logged yet.</p>
             ) : (
               topCategories.map((cat, idx) => (
                 <div key={idx} className="flex flex-col gap-2">
                   <div className="flex justify-between text-xs font-bold">
                     <span className="text-slate-600 dark:text-slate-400">{cat.name}</span>
-                    <span className="text-slate-800 dark:text-white">{currency}{cat.amount.toFixed(2)}</span>
+                    <span className="text-slate-800 dark:text-white">{currency} {cat.amount.toLocaleString()}</span>
                   </div>
                   <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                     <motion.div 
@@ -141,9 +186,6 @@ const FinancialReports = ({ budgetData }) => {
               ))
             )}
           </div>
-          <button className="w-full mt-6 py-2 text-xs font-bold text-cyan-500 hover:text-cyan-600 transition-colors">
-            View All Categories →
-          </button>
         </div>
       </div>
     </div>

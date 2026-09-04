@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Target, Plus, CheckCircle, TrendingUp } from 'lucide-react';
+import EmptyState from '../../components/EmptyState';
 
 const SavingsGoals = ({ budgetData, setBudgetData }) => {
   const [title, setTitle] = useState('');
@@ -76,7 +77,34 @@ const SavingsGoals = ({ budgetData, setBudgetData }) => {
         
         {/* Add Goal Form */}
         <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm h-fit">
-          <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Create New Goal</h2>
+          <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Create New Goal</h2>
+          
+          {/* Preset Student Shortcuts */}
+          <div className="mb-4 space-y-1">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Student Presets:</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { name: 'Gaming Laptop', target: 250000, initial: 50000 },
+                { name: 'New Phone', target: 120000, initial: 20000 },
+                { name: 'University Trip', target: 45000, initial: 10000 },
+                { name: 'Emergency Fund', target: 100000, initial: 25000 }
+              ].map((p, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setTitle(p.name);
+                    setTargetAmount(p.target.toString());
+                    setCurrentAmount(p.initial.toString());
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-cyan-500 hover:text-white transition-all text-[11px] font-bold"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <form onSubmit={handleAddGoal} className="flex flex-col gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1">Goal Name</label>
@@ -128,10 +156,12 @@ const SavingsGoals = ({ budgetData, setBudgetData }) => {
            
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              {savingsGoals.length === 0 ? (
-               <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center py-12 text-slate-400 gap-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
-                  <Target size={48} className="opacity-20 text-slate-500" />
-                  <p className="text-sm font-semibold text-slate-500">No savings goals yet. Create one!</p>
-               </div>
+               <EmptyState
+                 compact
+                 icon={<Target size={32} />}
+                 title="No Savings Goals Yet"
+                 description="Create a target goal (e.g. Gaming Laptop, Emergency Fund) to track your progress."
+               />
              ) : (
                savingsGoals.map(goal => {
                  const progress = (goal.currentAmount / goal.targetAmount) * 100;

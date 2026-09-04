@@ -14,14 +14,23 @@ const serializeValue = (value) => {
 
 const hydratedSessionKeys = new Set();
 
+const syncChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
+  ? new BroadcastChannel('studyos_cross_tab_sync')
+  : null;
+
 /**
  * useStorage provides cloud-first persistent state synced with Firestore.
  * The hook keeps local persistence immediate, hydrates from Firestore once,
+ * syncs instantly across open browser tabs via BroadcastChannel,
  * and only writes cloud updates after the value has actually changed.
  */
 export const useStorage = (key, initialValue) => {
   const { user, profile } = useAuth();
   const isHydratingFromCloud = useRef(false);
+  const hookInstanceId = useRef(null);
+  if (!hookInstanceId.current) {
+    hookInstanceId.current = `hook_${Date.now()}_${(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(performance.now())).replace(/[^a-zA-Z0-9]/g, '').slice(0, 7)}`;
+  }
   const [storedValue, setStoredValue] = useState(() => {
     const localItem = StorageService.get(key);
     return localItem !== null ? localItem : initialValue;
@@ -34,7 +43,43 @@ export const useStorage = (key, initialValue) => {
   useEffect(() => {
     storedValueRef.current = storedValue;
     StorageService.set(key, storedValue);
-  }, [key, storedValue]);
+
+    // Broadcast change to other open browser tabs
+    if (syncChannel && isInitialized && !isHydratingFromCloud.current) {
+      try {
+        syncChannel.postMessage({
+          key,
+          value: storedValue,
+          senderId: hookInstanceId.current
+        });
+      } catch (e) {
+        // Fallback silently if cloning fails
+      }
+    }
+  }, [key, storedValue, isInitialized]);
+
+  // Listen for cross-tab updates via BroadcastChannel
+  useEffect(() => {
+    if (!syncChannel) return undefined;
+
+    const handleCrossTabMessage = (event) => {
+      const { key: msgKey, value: msgVal, senderId } = event.data || {};
+      if (msgKey === key && senderId !== hookInstanceId.current) {
+        const nextSerialized = serializeValue(msgVal);
+        if (nextSerialized !== serializeValue(storedValueRef.current)) {
+          storedValueRef.current = msgVal;
+          // Mark cloud value as matching so this tab does not trigger a duplicate network write
+          lastCloudValueRef.current = nextSerialized;
+          setStoredValue(msgVal);
+        }
+      }
+    };
+
+    syncChannel.addEventListener('message', handleCrossTabMessage);
+    return () => {
+      syncChannel.removeEventListener('message', handleCrossTabMessage);
+    };
+  }, [key]);
 
   // Check if user is active and within storage limits
   const isActionAllowed = useCallback(() => {
@@ -139,7 +184,7 @@ export const useStorage = (key, initialValue) => {
           setStoredValue(initialValue);
         }
       }
-    }, 1800);
+    }, 3500);
 
     return () => clearTimeout(handler);
   }, [isInitialized, key, user?.id, profile, storedValue, isActionAllowed]);

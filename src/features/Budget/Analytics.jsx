@@ -6,7 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 const COLORS = ['#06b6d4', '#10b981', '#f43f5e', '#8b5cf6', '#f59e0b', '#3b82f6', '#64748b'];
 
 const Analytics = ({ budgetData }) => {
-  const { expenses = [], totalBudget = 0 } = budgetData || {};
+  const { expenses = [], totalBudget = 0, currency = 'Rs.' } = budgetData || {};
   const totalSpent = expenses.reduce((acc, curr) => acc + curr.amount, 0);
 
   // Group expenses by category
@@ -49,7 +49,7 @@ const Analytics = ({ budgetData }) => {
       return (
         <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-xl">
           <p className="text-slate-300 text-xs font-bold mb-1">{label || payload[0].name}</p>
-          <p className="text-white font-black">${payload[0].value.toFixed(2)}</p>
+          <p className="text-white font-black">{currency} {payload[0].value.toFixed(2)}</p>
         </div>
       );
     }
@@ -85,7 +85,7 @@ const Analytics = ({ budgetData }) => {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} tickFormatter={(val) => `$${val}`} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} tickFormatter={(val) => `${currency}${val}`} />
                 <RechartsTooltip content={<CustomTooltip />} />
                 <Area type="monotone" dataKey="amount" stroke="#06b6d4" strokeWidth={3} fillOpacity={1} fill="url(#colorAmount)" activeDot={{ r: 6, fill: '#06b6d4', stroke: '#fff', strokeWidth: 2 }} />
               </AreaChart>
@@ -135,7 +135,7 @@ const Analytics = ({ budgetData }) => {
                     <div key={idx} className="flex items-center gap-2 text-xs">
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
                       <span className="font-bold text-slate-600 dark:text-slate-300 truncate">{cat.name}</span>
-                      <span className="font-bold text-slate-800 dark:text-white ml-auto">${cat.amount.toFixed(0)}</span>
+                      <span className="font-bold text-slate-800 dark:text-white ml-auto">{currency} {cat.amount.toFixed(0)}</span>
                     </div>
                   ))}
                 </div>

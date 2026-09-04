@@ -223,7 +223,7 @@ const Admin = () => {
     if (activeAdminPage === 'roles') {
       FirestoreService.getCustomRoles().then(setCustomRoles);
     } else if (activeAdminPage === 'audit') {
-      FirestoreService.getAuditLogs(100).then(setSystemAuditLogs);
+      FirestoreService.getAuditLogs(30).then(setSystemAuditLogs);
     } else if (activeAdminPage === 'requests') {
       FirestoreService.getPermissionRequests().then(setPermissionRequests);
     }

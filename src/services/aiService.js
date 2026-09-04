@@ -109,6 +109,39 @@ ${text}`;
   return await generateGeminiResponse(prompt, null, 'flashcards');
 };
 
+export const generateStructuredFlashcards = async ({ topic, textContent, count = 5 }) => {
+  const prompt = `You are an expert academic tutor. Generate a high-yield flashcard deck based on the provided topic/notes.
+Target card count: ${count} cards.
+
+Strict Output Rules:
+- Return ONLY a valid JSON array of objects.
+- Do not add markdown backticks (\`\`\`json or \`\`\`), conversational intros, or postambles.
+- Each object in the array MUST have this exact schema:
+  {
+    "front": "Clear, direct question, concept, or term (supports LaTeX math with $..$ or $...$)",
+    "back": "Concise, precise explanation or answer (supports LaTeX math)",
+    "hint": "Brief subtle hint or key term memory hook (optional, 1 short sentence)"
+  }
+
+Context / Material:
+Topic: "${topic || 'General Academic Topic'}"
+Source Material:
+${textContent ? textContent.slice(0, 4000) : 'Generate comprehensive fundamentals for the topic above.'}`;
+
+  try {
+    const raw = await generateGeminiResponse(prompt, "You are a specialized flashcard generator that always outputs valid JSON arrays.", 'flashcards');
+    const cleaned = raw.replace(/^\s*```json/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return [];
+  } catch (err) {
+    console.error('[aiService] generateStructuredFlashcards parse error:', err);
+    throw err;
+  }
+};
+
 export const getRecommendations = async (title, description) => {
   const prompt = `You are an expert academic advisor. A student is currently studying a topic and needs recommendations for further research.
 

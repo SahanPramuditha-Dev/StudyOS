@@ -3,8 +3,8 @@ import { FirestoreService } from '../services/firestore';
 import { auth } from '../services/firebase';
 
 const LOCAL_STORAGE_KEY = 'studyos_local_gamification';
-const SYNC_XP_THRESHOLD = 50; // Sync when 50 XP is pending
-const SYNC_INTERVAL_MS = 15 * 60 * 1000; // Auto-sync every 15 minutes
+const SYNC_XP_THRESHOLD = 150; // Sync when 150 XP is pending (reduces Firestore writes)
+const SYNC_INTERVAL_MS = 30 * 60 * 1000; // Auto-sync every 30 minutes
 
 export function useLocalGamification() {
   const [pendingXP, setPendingXP] = useState(0);

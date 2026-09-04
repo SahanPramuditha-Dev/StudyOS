@@ -9,7 +9,35 @@ const BudgetOperations = ({ budgetData, setBudgetData }) => {
   const inputRef = useRef(null);
   const id = () => crypto.randomUUID();
   const addAccount = (e) => { e.preventDefault(); if (!accountName || !balance) return; setBudgetData({ ...budgetData, accounts: [...accounts, { id: id(), name: accountName, balance: Number(balance) }] }); setAccountName(''); setBalance(''); };
-  const transfer = (e) => { e.preventDefault(); const amount = Number(transferAmount); if (!from || !to || from === to || !amount) return; setBudgetData({ ...budgetData, accounts: accounts.map((account) => account.id === from ? { ...account, balance: account.balance - amount } : account.id === to ? { ...account, balance: account.balance + amount } : account), transfers: [...(budgetData.transfers || []), { id: id(), from, to, amount, date: new Date().toISOString() }] }); setTransferAmount(''); };
+  const transfer = (e) => {
+    e.preventDefault();
+    const amount = Number(transferAmount);
+    if (!from || !to || from === to || !amount) return;
+
+    const fromAcc = accounts.find(a => a.id === from);
+    const toAcc = accounts.find(a => a.id === to);
+    const fromName = fromAcc ? fromAcc.name : 'Account';
+    const toName = toAcc ? toAcc.name : 'Account';
+
+    const newTransferLog = {
+      id: id(),
+      title: `Transfer: ${fromName} -> ${toName}`,
+      amount: amount,
+      category: 'Transfer',
+      date: new Date().toISOString()
+    };
+
+    setBudgetData({
+      ...budgetData,
+      accounts: accounts.map((account) =>
+        account.id === from ? { ...account, balance: account.balance - amount } :
+        account.id === to ? { ...account, balance: account.balance + amount } : account
+      ),
+      expenses: [newTransferLog, ...(budgetData.expenses || [])],
+      transfers: [...(budgetData.transfers || []), { id: id(), from, to, amount, date: new Date().toISOString() }]
+    });
+    setTransferAmount('');
+  };
   const addShare = (e) => { e.preventDefault(); if (!shareTitle || !sharePerson || !shareAmount) return; setBudgetData({ ...budgetData, sharedExpenses: [...sharedExpenses, { id: id(), title: shareTitle, person: sharePerson, amount: Number(shareAmount), settled: false }] }); setShareTitle(''); setSharePerson(''); setShareAmount(''); };
   const importCsv = (event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { const rows = String(reader.result).split(/\r?\n/).slice(1).filter(Boolean).map((row) => row.split(',').map((cell) => cell.replace(/^"|"$/g, '').trim())); const imported = rows.map(([title, amount, category = 'Other', date]) => ({ id: id(), title, amount: Number(amount), category, date: date ? new Date(date).toISOString() : new Date().toISOString() })).filter((item) => item.title && Number.isFinite(item.amount)); setBudgetData({ ...budgetData, expenses: [...(budgetData.expenses || []), ...imported] }); }; reader.readAsText(file); event.target.value = ''; };
   const card = 'rounded-3xl border border-white/20 bg-white/50 p-6 shadow-xl backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-900/50'; const input = 'w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white';

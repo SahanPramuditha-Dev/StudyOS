@@ -10,7 +10,6 @@ import {
   BarChart, 
   Bell, 
   Search,
-  MessageSquare,
   Settings,
   X,
   Plus,
@@ -58,6 +57,7 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
     { id: 'videos', icon: Youtube, label: 'Video Tracker', permission: 'videos' },
 
     // Study Tools & Execution
+    { id: 'flashcards', icon: Layers, label: 'Flashcards' },
     { id: 'timer', icon: Clock, label: 'Timer' },
     { id: 'review', icon: Inbox, label: 'Review Hub' },
     { id: 'workspace', icon: Kanban, label: 'Workspace', permission: 'workspace' },
@@ -67,7 +67,6 @@ const Sidebar = ({ activeTab, setActiveTab, isMobileOpen, setIsMobileOpen }) => 
     { id: 'goals', icon: Target, label: 'Goals' },
     { id: 'analytics', icon: BarChart, label: 'Analytics', permission: 'analytics' },
     { id: 'budget', icon: Wallet, label: 'Budget' },
-    { id: 'chat', icon: MessageSquare, label: 'Chat' },
   ];
 
   // Filter menu items based on permissions

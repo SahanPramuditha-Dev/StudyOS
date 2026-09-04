@@ -70,16 +70,6 @@ service firebase.storage {
         2 * 1024 * 1024;
     }
 
-    function maxChatAttachmentBytes() {
-      let profile = getOwnProfile();
-      let role = profile.get('role', 'restricted');
-      let plan = profile.get('plan', 'Free');
-
-      return role in ['admin', 'superadmin'] ? 50 * 1024 * 1024 :
-        plan == 'Pro' ? 25 * 1024 * 1024 :
-        10 * 1024 * 1024;
-    }
-
     function canUploadAlarmSound() {
       let contentType = request.resource.contentType;
       return isAuthenticated() &&
@@ -96,15 +86,6 @@ service firebase.storage {
     match /users/{userId}/alarmSounds/{scope}/{fileName} {
       allow read: if (isOwner(userId) && isActive()) || isAdmin();
       allow write: if (isOwner(userId) && canUploadAlarmSound()) || isAdmin();
-    }
-
-    match /users/{userId}/chatAttachments/{roomId}/{fileName} {
-      allow read: if (isOwner(userId) && isActive()) || isAdmin();
-      allow write: if isOwner(userId) &&
-        ownProfileExists() &&
-        isActive() &&
-        isVerified() &&
-        request.resource.size <= maxChatAttachmentBytes();
     }
 
     // User-owned files: /users/{userId}/{allPaths=**}

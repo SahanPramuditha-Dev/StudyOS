@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { RefreshCw, Plus, Trash2, CalendarDays } from 'lucide-react';
+import EmptyState from '../../components/EmptyState';
 
 const SubscriptionsTracker = ({ budgetData, setBudgetData }) => {
   const [serviceName, setServiceName] = useState('');
@@ -139,16 +140,18 @@ const SubscriptionsTracker = ({ budgetData, setBudgetData }) => {
            
            <div className="flex flex-col gap-3">
              {subscriptions.length === 0 ? (
-               <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
-                  <RefreshCw size={48} className="opacity-20 text-slate-500" />
-                  <p className="text-sm font-semibold text-slate-500">No subscriptions tracked yet.</p>
-               </div>
+               <EmptyState
+                 compact
+                 icon={<RefreshCw size={32} />}
+                 title="No Subscriptions Tracked"
+                 description="Keep track of ChatGPT, Spotify, Netflix, or cloud hosting services to see your monthly & annual costs."
+               />
              ) : (
                subscriptions.map(sub => (
                  <div key={sub.id} className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 group transition-colors hover:border-cyan-500/30">
                    <div className="flex items-center gap-4">
                      <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 shadow-sm shrink-0">
-                       <span className="font-bold text-sm">{sub.serviceName.charAt(0)}</span>
+                       <span className="font-bold text-sm">{(sub?.serviceName || sub?.name || 'S').charAt(0)}</span>
                      </div>
                      <div>
                        <h3 className="font-bold text-slate-800 dark:text-white">{sub.serviceName}</h3>

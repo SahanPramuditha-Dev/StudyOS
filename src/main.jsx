@@ -14,7 +14,17 @@ import App from './App.jsx'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './context/AuthContext'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 15 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      retry: 1
+    }
+  }
+});
 import { ThemeProvider } from './context/ThemeContext'
 import { ReminderProvider } from './context/ReminderContext'
 import { GoogleCalendarProvider } from './context/GoogleCalendarContext'
@@ -46,6 +56,20 @@ if (import.meta.env.VITE_POSTHOG_KEY) {
     api_host: import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com',
     person_profiles: 'identified_only',
     capture_pageview: false // Manual capture in AuthContext/App
+  });
+}
+
+// 3. Register Service Worker for offline app shell and static asset caching
+if ('serviceWorker' in navigator && !import.meta.env.DEV) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        console.log('[StudyOS] Service Worker active, scope:', reg.scope);
+      })
+      .catch((err) => {
+        console.warn('[StudyOS] Service Worker registration failed:', err);
+      });
   });
 }
 

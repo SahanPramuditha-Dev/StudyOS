@@ -1,8 +1,8 @@
-import '@testing-library/jest-dom';
 import { afterEach } from 'vitest';
-import { cleanup } from '@testing-library/react';
 
-// runs a cleanup after each test case (e.g. clearing jsdom)
+// Optional cleanup after each test case if testing library is present
 afterEach(() => {
-  cleanup();
+  if (typeof document !== 'undefined') {
+    document.body.innerHTML = '';
+  }
 });

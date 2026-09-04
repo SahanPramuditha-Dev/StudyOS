@@ -48,7 +48,7 @@ const ProjectOrion = ({ project }) => {
     const text = typeof textToSend === 'string' ? textToSend : input;
     if (!text.trim()) return;
 
-    const userMessage = { id: Date.now().toString(), role: 'user', content: text };
+    const userMessage = { id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, role: 'user', content: text };
     setMessages(prev => [...prev, userMessage]);
     if (typeof textToSend !== 'string') setInput('');
     setIsTyping(true);

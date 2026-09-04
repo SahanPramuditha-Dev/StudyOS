@@ -6,7 +6,8 @@ const { randomUUID } = require("crypto");
 const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY || "YOUR_STRIPE_SECRET_KEY");
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey ? require("stripe")(stripeSecretKey) : null;
 
 // Define secrets
 const githubClientSecret = defineSecret("GITHUB_CLIENT_SECRET");
@@ -119,96 +120,7 @@ exports.resolveUsernameToEmail = onCall(async (request) => {
   return { email: userData.email || null };
 });
 
-const normalizeChatEmail = (email) => String(email || "").trim().toLowerCase();
 
-/**
- * Callable: send a chat message using the Admin SDK.
- * This acts as a safe fallback when Firestore security rules are too strict for a valid member.
- */
-exports.sendChatMessageToRoom = onCall(async (request) => {
-  const auth = request.auth;
-  if (!auth?.uid) {
-    throw new HttpsError("unauthenticated", "Sign in required.");
-  }
-
-  const {
-    roomId,
-    text,
-    senderUid,
-    senderEmail,
-    senderName = "",
-    senderAvatar = "",
-    attachments = [],
-    replyToMessageId = "",
-    replyToText = "",
-    replyToSenderName = "",
-    replyToSenderEmail = ""
-  } = request.data || {};
-
-  const normalizedEmail = normalizeChatEmail(senderEmail);
-  if (!roomId || !senderUid || !normalizedEmail || !String(text || "").trim()) {
-    throw new HttpsError("invalid-argument", "Missing message metadata.");
-  }
-
-  if (auth.uid !== senderUid) {
-    throw new HttpsError("permission-denied", "Sender mismatch.");
-  }
-
-  const db = admin.firestore();
-  const roomRef = db.collection("chat_rooms").doc(String(roomId));
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.exists) {
-    throw new HttpsError("not-found", "Chat room not found.");
-  }
-
-  const room = roomSnap.data() || {};
-  const normalizedMembers = Array.isArray(room.memberEmails)
-    ? room.memberEmails.map(normalizeChatEmail).filter(Boolean)
-    : [];
-  const roomCreatorEmail = normalizeChatEmail(room.createdByEmail);
-  const allowed =
-    room.createdByUid === auth.uid ||
-    normalizedMembers.includes(normalizedEmail) ||
-    roomCreatorEmail === normalizedEmail;
-
-  if (!allowed) {
-    throw new HttpsError("permission-denied", "You are not a member of this chat room.");
-  }
-
-  const messageData = {
-    text: String(text || "").trim(),
-    senderUid,
-    senderEmail: normalizedEmail,
-    senderName: senderName || "StudyOs User",
-    senderAvatar: senderAvatar || "",
-    attachments,
-    replyToMessageId: String(replyToMessageId || ""),
-    replyToText: String(replyToText || ""),
-    replyToSenderName: String(replyToSenderName || ""),
-    replyToSenderEmail: String(replyToSenderEmail || ""),
-    reactions: {
-      thumbsUp: [],
-      heart: [],
-      laugh: []
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  const messageRef = await roomRef.collection("messages").add(messageData);
-  await roomRef.set(
-    {
-      lastMessage: String(text || "").trim().slice(0, 240),
-      lastMessageAt: new Date().toISOString(),
-      lastMessageSenderEmail: normalizedEmail,
-      lastMessageSenderUid: senderUid,
-      updatedAt: new Date().toISOString()
-    },
-    { merge: true }
-  );
-
-  return { messageId: messageRef.id };
-});
 
 const formatDateKey = (date) => {
   const year = date.getFullYear();
@@ -898,7 +810,22 @@ exports.exportUserDataPackage = onCall(async (request) => {
  * This prevents client-side tampering and ensures race-condition safety.
  */
 exports.aggregateUserUsage = onDocumentWritten("users/{userId}/data/{moduleName}", async (event) => {
-  const { userId } = event.params;
+  const { userId, moduleName } = event.params;
+
+  // Only trigger aggregation for asset and storage-relevant module changes
+  const relevantModules = new Set([
+    'studyos_courses', 
+    'studyos_notes', 
+    'studyos_resources', 
+    'studyos_papers', 
+    'studyos_projects',
+    'studyos_videos'
+  ]);
+  
+  if (!relevantModules.has(moduleName)) {
+    return;
+  }
+
   const db = admin.firestore();
   
   // 1. Fetch all documents in the user's data collection

@@ -33,7 +33,7 @@ const Goals = lazy(() => import('./features/Goals/Goals'));
 const Budget = lazy(() => import('./features/Budget/index'));
 const WeeklyPlanner = lazy(() => import('./features/Planner/WeeklyPlanner'));
 const ReviewHub = lazy(() => import('./features/Review/ReviewHub'));
-const Chat = lazy(() => import('./features/Chat/Chat'));
+const Flashcards = lazy(() => import('./features/Flashcards/Flashcards'));
 const Reminders = lazy(() => import('./features/Reminders/Reminders'));
 const Timer = lazy(() => import('./features/Timer/Timer'));
 const Grades = lazy(() => import('./features/Grades/Grades'));
@@ -102,8 +102,7 @@ const App = () => {
       reminder: { web: true, email: true },
       deadline: { web: true, email: false },
       streak: { web: true, email: false },
-      roleChanges: { web: true, email: true },
-      chat: { web: true, email: false }
+      roleChanges: { web: true, email: true }
     },
     silentHours: { enabled: false, start: '22:00', end: '07:00' },
     emailNotifications: { roleChanges: true, reminders: true }
@@ -112,12 +111,6 @@ const App = () => {
   const lastAlarmPlayedAtRef = useRef(0);
   const { data: platformSettings = { maintenanceMode: false, globalAnnouncement: '' } } = usePlatformSettings();
 
-  const currentTabFromPath = (() => {
-    const firstSegment = location.pathname.replace(/^\//, '').split('/')[0] || 'dashboard';
-    if (firstSegment === 'support') return 'legal';
-    return firstSegment;
-  })();
-  const isChatRoute = currentTabFromPath === 'chat';
   const isPublicLegalRoute = [
     '/legal',
     '/legal/privacy',
@@ -156,7 +149,7 @@ const App = () => {
 
     const shouldNotify = (notification) => {
       if (!notification) return false;
-      if (!['reminder', 'deadline', 'chat', 'chat-mention', 'chat-share'].includes(notification.type)) return false;
+      if (!['reminder', 'deadline'].includes(notification.type)) return false;
       if (notification.browserDeliveredAt) return false;
       if (browserDeliveredRef.current.has(notification.id)) return false;
       return true;
@@ -185,7 +178,6 @@ const App = () => {
 
       for (const notification of sortedPending) {
         browserDeliveredRef.current.add(notification.id);
-        const isChatNotification = String(notification.type || '').startsWith('chat');
 
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification(notification.title || 'StudyOs Alert', {
@@ -194,34 +186,31 @@ const App = () => {
           });
         }
 
-        if (!isChatNotification) {
-          const isFreshForSound = isFreshNotification(notification);
-          const withinCooldown = (Date.now() - lastAlarmPlayedAtRef.current) < SOUND_COOLDOWN_MS;
+        const isFreshForSound = isFreshNotification(notification);
+        const withinCooldown = (Date.now() - lastAlarmPlayedAtRef.current) < SOUND_COOLDOWN_MS;
 
-          // Sound guard: play only once per delivery batch, only for fresh notifications, with cooldown protection.
-          if (soundPlayedForBatch || !isFreshForSound || withinCooldown) {
-            if (!isFreshForSound) {
-              console.log(`[App] Skipping sound for stale notification ${notification.id}`);
-            }
-          } else if (getIsPlaying()) {
+        if (soundPlayedForBatch || !isFreshForSound || withinCooldown) {
+          if (!isFreshForSound) {
+            console.log(`[App] Skipping sound for stale notification ${notification.id}`);
+          }
+        } else if (getIsPlaying()) {
+          soundPlayedForBatch = true;
+          console.log(`[App] Skipping sound for notification ${notification.id} - already playing`);
+        } else {
+          setIsPlaying(true);
+          try {
+            await playAlarmSound({
+              soundUrl: notification.soundUrl || alarm.soundUrl || '',
+              volume: Number(notification.soundVolume ?? alarm.volume ?? 0.8),
+              repeatCount: Number(notification.soundRepeatCount ?? alarm.repeatCount ?? 1),
+              muted: Boolean(alarm.muted || notification.soundMode === 'mute' || alarm.enabled === false)
+            });
+            lastAlarmPlayedAtRef.current = Date.now();
             soundPlayedForBatch = true;
-            console.log(`[App] Skipping sound for notification ${notification.id} - already playing`);
-          } else {
-            setIsPlaying(true);
-            try {
-              await playAlarmSound({
-                soundUrl: notification.soundUrl || alarm.soundUrl || '',
-                volume: Number(notification.soundVolume ?? alarm.volume ?? 0.8),
-                repeatCount: Number(notification.soundRepeatCount ?? alarm.repeatCount ?? 1),
-                muted: Boolean(alarm.muted || notification.soundMode === 'mute' || alarm.enabled === false)
-              });
-              lastAlarmPlayedAtRef.current = Date.now();
-              soundPlayedForBatch = true;
-            } catch (error) {
-              console.warn('[App] Alarm sound playback failed:', error);
-            } finally {
-              setIsPlaying(false);
-            }
+          } catch (error) {
+            console.warn('[App] Alarm sound playback failed:', error);
+          } finally {
+            setIsPlaying(false);
           }
         }
 
@@ -496,7 +485,7 @@ const App = () => {
             <Route path="/expenses" element={<Budget />} />
             <Route path="/planner" element={<WeeklyPlanner />} />
             <Route path="/review" element={<ReviewHub />} />
-            <Route path="/chat" element={<Chat />} />
+            <Route path="/flashcards" element={<Flashcards />} />
             <Route path="/reminders" element={(hasPermission('reminders') || hasPermission('calendarAccess')) ? <Reminders /> : <RestrictedModule name="Calendar" />} />
             <Route path="/admin" element={isAdmin ? <Admin /> : <Dashboard setActiveTab={setActiveTab} />} />
             <Route path="/settings" element={<Settings />} />
@@ -771,14 +760,13 @@ const App = () => {
           )}
 
           {/* Main Content Area */}
-          <main className={`print:h-auto print:overflow-visible flex-1 min-h-0 relative flex flex-col scroll-smooth ${isChatRoute ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
+          <main className="print:h-auto print:overflow-visible flex-1 min-h-0 relative flex flex-col scroll-smooth overflow-y-auto overflow-x-hidden">
             {user && <RealtimePresence user={user} profile={profile} />}
-            <div className={`w-full ${isChatRoute ? 'flex-1 min-h-0 p-0 flex flex-col' : 'flex-1 p-4 lg:p-12 lg:pb-16'}`}>
-              <div className={`${isChatRoute ? 'flex-1 min-h-0 max-w-none mx-0 space-y-0' : 'max-w-[1600px] mx-auto space-y-12'}`}>
+            <div className="w-full flex-1 p-4 lg:p-12 lg:pb-16">
+              <div className="max-w-[1600px] mx-auto space-y-12">
                 {renderContent()}
               </div>
             </div>
-            
           </main>
         </div>
       </div>

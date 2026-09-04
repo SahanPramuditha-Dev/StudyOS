@@ -72,7 +72,7 @@ export const extractBase64BytesFromContent = (contentString) => {
   let count = 0;
   if (typeof contentString !== 'string') return { bytes: 0, count: 0 };
   
-  const regex = /data:(image\/[^;]+|application\/pdf);base64,([^"'\s\)\>]+)/g;
+  const regex = /data:(image\/[^;]+|application\/pdf);base64,([^"'\s)>]+)/g;
   let match;
   while ((match = regex.exec(contentString)) !== null) {
     if (match[2]) {

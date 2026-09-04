@@ -75,7 +75,6 @@ const PAGE_CONTEXTS = {
   '/analytics':   { role: 'learning analyst',   greeting: 'Let\'s analyze your study patterns together.' },
   '/courses':     { role: 'learning guide',     greeting: 'Which course can I help you navigate today?' },
   '/goals':       { role: 'achievement coach',  greeting: 'Your goals define your future. Let\'s track progress!' },
-  '/chat':        { role: 'AI tutor',           greeting: 'Ask me anything — I\'m your personal study tutor.' },
   '/settings':    { role: 'helpful assistant',  greeting: 'Need help configuring your StudyOS experience?' },
 };
 

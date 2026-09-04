@@ -32,8 +32,22 @@ const RealtimePresence = ({ user, profile }) => {
       });
     });
 
+    const handleVisibilityChange = () => {
+      if (!user?.id) return;
+      const isHidden = document.visibilityState === 'hidden';
+      set(statusRef, {
+        state: isHidden ? 'away' : 'online',
+        name: user.name || profile?.name || currentEmail || 'StudyOs User',
+        email: currentEmail,
+        lastChanged: Date.now()
+      }).catch(() => void 0);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       unsubscribe?.();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       set(statusRef, {
         state: 'offline',
         name: user.name || profile?.name || currentEmail || 'StudyOs User',

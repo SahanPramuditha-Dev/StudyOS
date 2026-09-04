@@ -35,7 +35,6 @@ const PAGE_SYSTEM_ADDITIONS = {
   '/analytics': 'You are acting as a learning analyst. Interpret study statistics, identify weak areas, suggest improvements.',
   '/courses': 'You are acting as a learning guide. Help navigate course material, explain concepts, create study paths.',
   '/goals': 'You are acting as an achievement coach. Help set SMART goals, track progress, celebrate milestones.',
-  '/chat': 'You are acting as a full AI tutor. Answer any academic question thoroughly, create examples, suggest practice.',
 };
 
 // Context builder from StudyOS data

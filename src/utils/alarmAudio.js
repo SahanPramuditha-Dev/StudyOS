@@ -86,9 +86,9 @@ const playToneFallback = async (volume = 0.8) => {
     gainNodes: [],
     stop: () => {
       playback.oscillators.forEach(osc => {
-        try { osc.stop(); } catch {}
+        try { osc.stop(); } catch (err) { void err; }
       });
-      try { context.close(); } catch {}
+      try { context.close(); } catch (err) { void err; }
     }
   };
 

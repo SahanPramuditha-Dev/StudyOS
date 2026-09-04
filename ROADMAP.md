@@ -40,7 +40,7 @@ A realistic overview of the development journey of **StudyOS** — from core fou
 - [ ] **Collaborative Study Rooms** — Real-time multi-user note editing and shared study timers via Firebase WebSockets.
 - [ ] **Automated Google Calendar 2-Way Sync** — Webhook synchronization for assignment deadlines and exam schedules.
 - [ ] **Progressive Web App (PWA)** — Full offline-first capabilities using Service Workers and IndexedDB local caching.
-- [ ] **Spaced Repetition Flashcards** — AI-generated flashcard decks powered by the SuperMemo SM-2 algorithm.
+- [x] **Spaced Repetition Flashcards** — AI-generated flashcard decks powered by the SuperMemo SM-2 algorithm.
 
 ---
 

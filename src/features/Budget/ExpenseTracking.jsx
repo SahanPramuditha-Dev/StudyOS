@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Banknote, X, Paperclip, Users, SplitSquareHorizontal, Search, Download, Trash2, CheckSquare, Pencil } from 'lucide-react';
 import { suggestCategory } from './utils';
+import EmptyState from '../../components/EmptyState';
 
-const ExpenseTracking = ({ budgetData, setBudgetData }) => {
+const ExpenseTracking = ({ budgetData, setBudgetData, globalSearchTerm = '' }) => {
   const categories = budgetData?.categories?.length > 0 
     ? budgetData.categories 
     : ['Food', 'Transport', 'Entertainment', 'Bills', 'Shopping', 'Other'];
@@ -17,10 +18,16 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
   const currency = budgetData?.currency || '$';
 
   // Phase 4 States
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(globalSearchTerm);
   const [filterCategory, setFilterCategory] = useState('All');
   const [selectedExpenses, setSelectedExpenses] = useState([]);
   const [editingExpense, setEditingExpense] = useState(null);
+
+  useEffect(() => {
+    if (globalSearchTerm) {
+      setSearchQuery(globalSearchTerm);
+    }
+  }, [globalSearchTerm]);
 
   useEffect(() => {
     if (!categories.includes(category)) {
@@ -340,12 +347,12 @@ const ExpenseTracking = ({ budgetData, setBudgetData }) => {
             )}
             
             {filteredExpenses.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500 gap-4 py-12">
-                 <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center">
-                    <Banknote size={32} className="opacity-40" />
-                 </div>
-                 <p className="text-sm font-semibold">No expenses found.</p>
-              </div>
+              <EmptyState
+                compact
+                icon={<Banknote size={28} />}
+                title="No Expenses Found"
+                description="Add your first expense or adjust your category filter to see transaction history."
+              />
             ) : (
               filteredExpenses.map((exp, idx) => (
                 <motion.div 

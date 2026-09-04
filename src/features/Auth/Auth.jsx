@@ -27,6 +27,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [formError, setFormError] = useState('');
   const { login, signup, loginWithGoogle, loginWithGitHub, resetPassword } = useAuth();
   const [formData, setFormData] = useState({
@@ -77,9 +78,9 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        await login(formData.email, formData.password);
+        await login(formData.email, formData.password, rememberMe);
       } else {
-        await signup(formData.name, formData.email, formData.password);
+        await signup(formData.name, formData.email, formData.password, rememberMe);
       }
     } catch (error) {
       const message = authErrorMessage(error);
@@ -355,9 +356,17 @@ const Auth = () => {
                   </motion.div>
                 )}
                 {isLogin && (
-                  <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 ml-1">
-                    Password resets use the email address tied to your account.
-                  </p>
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Remember me on this device</span>
+                    </label>
+                  </div>
                 )}
               </div>
 

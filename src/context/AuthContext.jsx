@@ -16,7 +16,10 @@ import {
   linkWithPopup,
   linkWithCredential,
   EmailAuthProvider,
-  unlink
+  unlink,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
 import { ref, uploadBytesResumable, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 import { auth, storage, consumeFirebaseRedirectResult } from '../services/firebase';
@@ -344,7 +347,16 @@ export const AuthProvider = ({ children }) => {
     await signInWithRedirect(auth, provider);
   };
 
-  const login = async (emailOrUsername, password) => {
+  const applyPersistenceMode = async (remember = false) => {
+    try {
+      const mode = remember ? browserLocalPersistence : browserSessionPersistence;
+      await setPersistence(auth, mode);
+    } catch (err) {
+      console.warn('[AuthContext] Failed setting persistence mode:', err);
+    }
+  };
+
+  const login = async (emailOrUsername, password, remember = true) => {
     let normalizedInput = (emailOrUsername || '').trim();
     
     // Check if it's not an email, try resolving via Firestore username
@@ -358,6 +370,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
+      await applyPersistenceMode(remember);
       const result = await signInWithEmailAndPassword(auth, normalizedInput, password);
       // Profile will be loaded by onAuthStateChanged
       toast.success(`Welcome back!`);
@@ -369,10 +382,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const signup = async (name, email, password) => {
+  const signup = async (name, email, password, remember = true) => {
     const normalizedName = (name || '').trim();
     const normalizedEmail = (email || '').trim();
     try {
+      await applyPersistenceMode(remember);
       const result = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       await updateProfile(result.user, {
         displayName: normalizedName

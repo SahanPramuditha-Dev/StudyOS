@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, getRedirectResult } from "firebase/auth";
+import { getAuth, getRedirectResult, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";

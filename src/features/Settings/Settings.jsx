@@ -445,8 +445,7 @@ const Settings = () => {
         reminder: { web: true, email: true },
         deadline: { web: true, email: false },
         streak: { web: true, email: false },
-        roleChanges: { web: true, email: true },
-        chat: { web: true, email: false }
+        roleChanges: { web: true, email: true }
       },
       silentHours: { enabled: false, start: '22:00', end: '07:00' },
       deliveryMode: 'server',

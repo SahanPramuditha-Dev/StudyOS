@@ -16,7 +16,8 @@ import {
   addDoc,
   arrayUnion,
   arrayRemove,
-  getCountFromServer
+  getCountFromServer,
+  getDocFromCache
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from './firebase';
@@ -28,9 +29,20 @@ import { PREDEFINED_ROLES } from '../constants/predefinedRoles';
 const userDataCache = new Map();
 const userProfileCache = new Map();
 const userDataReadPromises = new Map();
-const chatRoomReadCache = new Map();
 const usersByEmailsCache = new Map();
+const pendingSaveTimeouts = new Map();
 let customRolesCache = null;
+
+const PREFERENCE_KEYS = new Set([
+  STORAGE_KEYS.SETTINGS,
+  STORAGE_KEYS.PERSONALIZATION,
+  STORAGE_KEYS.STUDY_PREFS,
+  STORAGE_KEYS.NOTIF_SETTINGS,
+  STORAGE_KEYS.PRIVACY,
+  STORAGE_KEYS.ACADEMIC_SETTINGS,
+  STORAGE_KEYS.REVIEW_PREFS,
+  STORAGE_KEYS.GRADE_CENTER
+]);
 
 const serializeValue = (value) => {
   try {
@@ -306,7 +318,15 @@ class FirestoreService {
         await auth.currentUser.getIdToken(true);
       }
       const userRef = doc(db, 'users', userId);
-      const userSnap = await getDoc(userRef);
+      let userSnap;
+      try {
+        userSnap = await getDocFromCache(userRef);
+        if (!userSnap.exists()) {
+          userSnap = await getDoc(userRef);
+        }
+      } catch {
+        userSnap = await getDoc(userRef);
+      }
 
       if (!userSnap.exists()) {
         const defaultProfile = FirestoreService.buildDefaultUserProfile(userId, profileData);
@@ -325,46 +345,6 @@ class FirestoreService {
           await updateDoc(userRef, { lastLogin: now });
           cacheEntry(userProfileCache, userId, { ...existingData, lastLogin: now });
         }
-        
-        // Background recalculation to ensure accuracy
-        (async () => {
-          try {
-            const collections = {
-              studyos_resources: getCachedCollectionData(userId, STORAGE_KEYS.RESOURCES),
-              studyos_notes: getCachedCollectionData(userId, STORAGE_KEYS.NOTES),
-              studyos_papers: getCachedCollectionData(userId, STORAGE_KEYS.PAPERS)
-            };
-            const usage = computeUsageMetrics({
-              resources: collections.studyos_resources,
-              notes: collections.studyos_notes,
-              papers: collections.studyos_papers,
-              cloudUsage: existingData.usage
-            });
-            if (
-              existingData.usage?.fileCount !== usage.displayFileCount ||
-              Number(existingData.usage?.totalBytes || 0) !== Number(usage.totalBytes || 0)
-            ) {
-              await updateDoc(userRef, {
-                'usage.fileCount': usage.displayFileCount,
-                'usage.assetCount': usage.displayFileCount,
-                'usage.totalBytes': usage.totalBytes,
-                'usage.storageUsedMB': Number(usage.displayStorageUsedMB.toFixed(3)),
-                'usage.updatedAt': new Date().toISOString()
-              });
-              cacheEntry(userProfileCache, userId, {
-                ...existingData,
-                usage: {
-                  ...(existingData.usage || {}),
-                  fileCount: usage.displayFileCount,
-                  assetCount: usage.displayFileCount,
-                  totalBytes: usage.totalBytes,
-                  storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
-                  updatedAt: new Date().toISOString()
-                }
-              });
-            }
-          } catch (e) { console.warn('[Firestore] Background audit failed:', e); }
-        })();
 
         return existingData;
       }
@@ -398,6 +378,17 @@ class FirestoreService {
       if (cached) return cached.data;
 
       const userRef = doc(db, 'users', userId);
+      try {
+        const cacheSnap = await getDocFromCache(userRef);
+        if (cacheSnap.exists()) {
+          const data = cacheSnap.data();
+          cacheEntry(userProfileCache, userId, data);
+          return data;
+        }
+      } catch {
+        // Fall through to server fetch on cache miss
+      }
+
       const userSnap = await getDoc(userRef);
       const data = userSnap.exists() ? userSnap.data() : null;
       if (data) cacheEntry(userProfileCache, userId, data);
@@ -574,87 +565,122 @@ class FirestoreService {
   }
 
   /**
-   * Syncs a specific collection for a user
+   * Syncs a specific collection for a user with debouncing (default 2.5s)
    * @param {string} userId - Current user's UID
    * @param {string} key - Storage key (e.g., 'studyos_courses')
    * @param {any} data - Data to save
+   * @param {object} [options] - Options e.g. { immediate: false }
    */
-  static async saveUserData(userId, key, data) {
+  static async saveUserData(userId, key, data, options = {}) {
     if (!userId) return;
-    try {
-      const docRef = doc(db, 'users', userId, 'data', key);
-      const cacheKey = `${userId}:${key}`;
-      const nextSerialized = serializeValue(data);
-      const existingEntry = getCachedEntry(userDataCache, cacheKey);
-      if (existingEntry?.serialized === nextSerialized) {
-        return;
-      }
+    
+    const cacheKey = `${userId}:${key}`;
+    const nextSerialized = serializeValue(data);
+    const existingEntry = getCachedEntry(userDataCache, cacheKey);
 
-      const now = new Date().toISOString();
-      const batch = writeBatch(db);
-      batch.set(docRef, { data, updatedAt: now }, { merge: true });
-      
-      let usageUpdate = null;
-      let nextProfileCache = null;
-      try {
-        const assetKeys = new Set([STORAGE_KEYS.RESOURCES, STORAGE_KEYS.NOTES, STORAGE_KEYS.PAPERS]);
-        if (assetKeys.has(key)) {
-          const userRef = doc(db, 'users', userId);
-          const profileEntry = getCachedEntry(userProfileCache, userId);
-          const cloudUsage = profileEntry?.data?.usage || {};
-          const usage = computeUsageMetrics({
-            resources: key === STORAGE_KEYS.RESOURCES ? data : getCachedCollectionData(userId, STORAGE_KEYS.RESOURCES),
-            notes: key === STORAGE_KEYS.NOTES ? data : getCachedCollectionData(userId, STORAGE_KEYS.NOTES),
-            papers: key === STORAGE_KEYS.PAPERS ? data : getCachedCollectionData(userId, STORAGE_KEYS.PAPERS),
-            cloudUsage
-          });
-          const nextUsage = {
-            totalBytes: usage.totalBytes,
-            assetCount: usage.displayFileCount,
-            storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
-            fileCount: usage.displayFileCount,
-            updatedAt: now
-          };
-          const currentUsage = {
-            totalBytes: Number(profileEntry?.data?.usage?.totalBytes || 0),
-            storageUsedMB: Number(profileEntry?.data?.usage?.storageUsedMB || 0),
-            fileCount: Number(profileEntry?.data?.usage?.fileCount || 0)
-          };
-
-          if (
-            currentUsage.totalBytes !== nextUsage.totalBytes ||
-            currentUsage.fileCount !== nextUsage.fileCount
-          ) {
-            usageUpdate = { userRef, nextUsage };
-            nextProfileCache = {
-              ...(profileEntry?.data || {}),
-              usage: nextUsage
-            };
-          }
-        }
-      } catch (usageError) {
-        console.warn(`[FirestoreService] Usage recalculation skipped for [${key}]:`, usageError);
-      }
-
-      if (usageUpdate) {
-        batch.set(usageUpdate.userRef, { usage: usageUpdate.nextUsage }, { merge: true });
-      }
-
-      await batch.commit();
-      if (nextProfileCache) {
-        cacheEntry(userProfileCache, userId, nextProfileCache);
-      }
-      cacheEntry(userDataCache, cacheKey, data);
-    } catch (error) {
-      if (error?.code !== 'permission-denied' && !error?.message?.includes('Missing or insufficient permissions')) {
-        console.error(`[FirestoreService] Error saving to Firestore [${key}]:`, error);
-      }
-      throw error;
+    if (existingEntry?.serialized === nextSerialized) {
+      return;
     }
+
+    // Always update local memory cache immediately so reads are instant
+    cacheEntry(userDataCache, cacheKey, data);
+
+    const performWrite = async () => {
+      try {
+        const isPrefKey = PREFERENCE_KEYS.has(key);
+        const targetDocName = isPrefKey ? 'preferences' : key;
+        const docRef = doc(db, 'users', userId, 'data', targetDocName);
+        const now = new Date().toISOString();
+        const batch = writeBatch(db);
+        
+        if (isPrefKey) {
+          batch.set(docRef, { [key]: data, updatedAt: now }, { merge: true });
+        } else {
+          batch.set(docRef, { data, updatedAt: now }, { merge: true });
+        }
+        
+        let usageUpdate = null;
+        let nextProfileCache = null;
+        try {
+          const assetKeys = new Set([STORAGE_KEYS.RESOURCES, STORAGE_KEYS.NOTES, STORAGE_KEYS.PAPERS]);
+          if (assetKeys.has(key)) {
+            const userRef = doc(db, 'users', userId);
+            const profileEntry = getCachedEntry(userProfileCache, userId);
+            const cloudUsage = profileEntry?.data?.usage || {};
+            const usage = computeUsageMetrics({
+              resources: key === STORAGE_KEYS.RESOURCES ? data : getCachedCollectionData(userId, STORAGE_KEYS.RESOURCES),
+              notes: key === STORAGE_KEYS.NOTES ? data : getCachedCollectionData(userId, STORAGE_KEYS.NOTES),
+              papers: key === STORAGE_KEYS.PAPERS ? data : getCachedCollectionData(userId, STORAGE_KEYS.PAPERS),
+              cloudUsage
+            });
+            const nextUsage = {
+              totalBytes: usage.totalBytes,
+              assetCount: usage.displayFileCount,
+              storageUsedMB: Number(usage.displayStorageUsedMB.toFixed(3)),
+              fileCount: usage.displayFileCount,
+              updatedAt: now
+            };
+            const currentUsage = {
+              totalBytes: Number(profileEntry?.data?.usage?.totalBytes || 0),
+              storageUsedMB: Number(profileEntry?.data?.usage?.storageUsedMB || 0),
+              fileCount: Number(profileEntry?.data?.usage?.fileCount || 0)
+            };
+
+            if (
+              currentUsage.totalBytes !== nextUsage.totalBytes ||
+              currentUsage.fileCount !== nextUsage.fileCount
+            ) {
+              usageUpdate = { userRef, nextUsage };
+              nextProfileCache = {
+                ...(profileEntry?.data || {}),
+                usage: nextUsage
+              };
+            }
+          }
+        } catch (usageError) {
+          console.warn(`[FirestoreService] Usage recalculation skipped for [${key}]:`, usageError);
+        }
+
+        if (usageUpdate) {
+          batch.set(usageUpdate.userRef, { usage: usageUpdate.nextUsage }, { merge: true });
+        }
+
+        await batch.commit();
+        if (nextProfileCache) {
+          cacheEntry(userProfileCache, userId, nextProfileCache);
+        }
+      } catch (error) {
+        if (error?.code !== 'permission-denied' && !error?.message?.includes('Missing or insufficient permissions')) {
+          console.error(`[FirestoreService] Error saving to Firestore [${key}]:`, error);
+        }
+        throw error;
+      }
+    };
+
+    if (options.immediate) {
+      if (pendingSaveTimeouts.has(cacheKey)) {
+        clearTimeout(pendingSaveTimeouts.get(cacheKey));
+        pendingSaveTimeouts.delete(cacheKey);
+      }
+      return performWrite();
+    }
+
+    if (pendingSaveTimeouts.has(cacheKey)) {
+      clearTimeout(pendingSaveTimeouts.get(cacheKey));
+    }
+
+    const timeoutId = setTimeout(() => {
+      pendingSaveTimeouts.delete(cacheKey);
+      performWrite().catch((err) => {
+        console.warn(`[FirestoreService] Debounced write failed for ${cacheKey}:`, err);
+      });
+    }, 2500);
+
+    pendingSaveTimeouts.set(cacheKey, timeoutId);
   }
 
   /**
-   * Fetches user data from Firestore
+   * Fetches user data from Firestore (tries cache first, checking preferences doc for settings keys)
    * @param {string} userId - Current user's UID
    * @param {string} key - Storage key
    */
@@ -668,16 +694,50 @@ class FirestoreService {
       const pendingRead = userDataReadPromises.get(cacheKey);
       if (pendingRead) return pendingRead;
 
-      const docRef = doc(db, 'users', userId, 'data', key);
-      const readPromise = getDoc(docRef)
-        .then((docSnap) => {
-          const data = docSnap.exists() ? docSnap.data().data : null;
-          cacheEntry(userDataCache, cacheKey, data);
-          return data;
-        })
-        .finally(() => {
-          userDataReadPromises.delete(cacheKey);
-        });
+      const isPrefKey = PREFERENCE_KEYS.has(key);
+      const readPromise = (async () => {
+        if (isPrefKey) {
+          // Check preferences consolidated doc first
+          const prefDocRef = doc(db, 'users', userId, 'data', 'preferences');
+          try {
+            let prefSnap;
+            try {
+              prefSnap = await getDocFromCache(prefDocRef);
+            } catch {
+              prefSnap = await getDoc(prefDocRef);
+            }
+            if (prefSnap.exists()) {
+              const prefData = prefSnap.data();
+              if (prefData && prefData[key] !== undefined) {
+                cacheEntry(userDataCache, cacheKey, prefData[key]);
+                return prefData[key];
+              }
+            }
+          } catch (e) {
+            // Ignore and try fallback
+          }
+        }
+
+        // Standard or legacy fallback lookup
+        const docRef = doc(db, 'users', userId, 'data', key);
+        try {
+          const cacheSnap = await getDocFromCache(docRef);
+          if (cacheSnap.exists()) {
+            const data = cacheSnap.data().data;
+            cacheEntry(userDataCache, cacheKey, data);
+            return data;
+          }
+        } catch {
+          // Cache miss, proceed to network fetch
+        }
+
+        const docSnap = await getDoc(docRef);
+        const data = docSnap.exists() ? docSnap.data().data : null;
+        cacheEntry(userDataCache, cacheKey, data);
+        return data;
+      })().finally(() => {
+        userDataReadPromises.delete(cacheKey);
+      });
 
       userDataReadPromises.set(cacheKey, readPromise);
       return readPromise;
@@ -761,470 +821,7 @@ class FirestoreService {
     }
   }
 
-  static normalizeChatEmail(email) {
-    return String(email || '').trim().toLowerCase();
-  }
-
-  static chatEmailKey(email) {
-    return FirestoreService.normalizeChatEmail(email).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  }
-
-  static chatReactionKey(reaction = 'thumbsUp') {
-    return String(reaction || 'thumbsUp').replace(/[^a-zA-Z0-9]/g, '').slice(0, 32) || 'thumbsUp';
-  }
-
-  static extractChatMentions(text = '', memberEmails = [], senderEmail = '') {
-    const normalizedText = String(text || '').toLowerCase();
-    const normalizedSender = FirestoreService.normalizeChatEmail(senderEmail);
-    const normalizedMembers = [...new Set((memberEmails || [])
-      .map(FirestoreService.normalizeChatEmail)
-      .filter(Boolean))];
-
-    if (!normalizedText || normalizedMembers.length === 0) {
-      return [];
-    }
-
-    if (normalizedText.includes('@all') || normalizedText.includes('@everyone')) {
-      return normalizedMembers.filter((email) => email !== normalizedSender);
-    }
-
-    const matched = new Set();
-    normalizedMembers.forEach((email) => {
-      const localPart = email.split('@')[0] || '';
-      const alias = localPart.replace(/[^a-z0-9]+/g, '');
-      const tokens = [
-        `@${email}`,
-        `@${localPart}`,
-        `@${alias}`
-      ].filter((token) => token !== '@');
-
-      if (tokens.some((token) => token && normalizedText.includes(token))) {
-        matched.add(email);
-      }
-    });
-
-    return [...matched].filter((email) => email !== normalizedSender);
-  }
-
-  static chatRoomCollection() {
-    return collection(db, 'chat_rooms');
-  }
-
-  static chatMessagesCollection(roomId) {
-    return collection(db, 'chat_rooms', roomId, 'messages');
-  }
-
-  static async createChatRoom({
-    title,
-    memberEmails = [],
-    createdByUid,
-    createdByEmail,
-    roomType = 'group',
-    contextType = 'general',
-    contextId = '',
-    contextLabel = ''
-  }) {
-    const normalizedCreatorEmail = FirestoreService.normalizeChatEmail(createdByEmail);
-    const normalizedMembers = [...new Set(
-      [...memberEmails, normalizedCreatorEmail]
-        .map(FirestoreService.normalizeChatEmail)
-        .filter(Boolean)
-    )];
-
-    if (!createdByUid || !normalizedCreatorEmail) {
-      throw new Error('Missing creator identity for chat room');
-    }
-
-    if (String(roomType) === 'direct' && normalizedMembers.length === 2) {
-      const q = query(
-        FirestoreService.chatRoomCollection(),
-        where('roomType', '==', 'direct'),
-        where('memberEmails', 'array-contains', normalizedCreatorEmail)
-      );
-
-      const snapshot = await getDocs(q);
-      const existingRoom = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .find((room) => {
-          const existingMembers = [...new Set(
-            (room.memberEmails || []).map(FirestoreService.normalizeChatEmail).filter(Boolean)
-          )].sort();
-          const nextMembers = [...normalizedMembers].sort();
-          return existingMembers.length === nextMembers.length &&
-            existingMembers.every((email, index) => email === nextMembers[index]);
-        });
-
-      if (existingRoom) {
-        return { ...existingRoom, existed: true };
-      }
-    }
-
-    const payload = {
-      title: String(
-        title ||
-        (String(roomType) === 'direct'
-          ? `Direct message with ${normalizedMembers.find((email) => email !== normalizedCreatorEmail) || 'member'}`
-          : 'Study Group')
-      ).trim().slice(0, 80) || 'Study Group',
-      roomType: ['group', 'direct'].includes(String(roomType)) ? String(roomType) : 'group',
-      createdByUid,
-      createdByEmail: normalizedCreatorEmail,
-      memberEmails: normalizedMembers,
-      roomAdminEmails: [normalizedCreatorEmail],
-      inviteCode: roomType === 'group' ? FirestoreService.generateChatInviteCode() : '',
-      contextType: String(contextType || 'general'),
-      contextId: String(contextId || ''),
-      contextLabel: String(contextLabel || ''),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      lastMessage: '',
-      lastMessageAt: null,
-      lastMessageSenderEmail: normalizedCreatorEmail,
-      lastMessageSenderUid: createdByUid,
-      lastMessageHasAttachments: false,
-      lastMessageAttachmentCount: 0,
-      lastMessageMentionEmails: [],
-      archivedByEmails: [],
-      lastReadAtByEmail: {
-        [FirestoreService.chatEmailKey(normalizedCreatorEmail)]: new Date().toISOString()
-      }
-    };
-
-    const docRef = await addDoc(FirestoreService.chatRoomCollection(), payload);
-    return { id: docRef.id, ...payload };
-  }
-
-  static generateChatInviteCode(length = 12) {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const bytes = new Uint32Array(length);
-    if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
-      window.crypto.getRandomValues(bytes);
-    } else {
-      for (let index = 0; index < length; index += 1) {
-        bytes[index] = Math.floor(Math.random() * alphabet.length);
-      }
-    }
-    return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
-  }
-
-  static buildChatInviteLink(roomId, inviteCode) {
-    if (!roomId || !inviteCode) return '';
-    if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.origin);
-    url.pathname = window.location.pathname;
-    url.searchParams.set('join', `${roomId}:${inviteCode}`);
-    return url.toString();
-  }
-
-  static async ensureChatRoomInviteCode(roomId) {
-    if (!roomId) return '';
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    const roomSnap = await getDoc(roomRef);
-    if (!roomSnap.exists()) {
-      throw new Error('Chat room not found');
-    }
-
-    const currentCode = String(roomSnap.data()?.inviteCode || '').trim();
-    const inviteCode = currentCode || FirestoreService.generateChatInviteCode();
-    if (!currentCode) {
-      await updateDoc(roomRef, {
-        inviteCode,
-        updatedAt: new Date().toISOString()
-      });
-    }
-
-    return inviteCode;
-  }
-
-  static async addChatRoomMembers(roomId, memberEmails = []) {
-    const normalizedMembers = [...new Set(
-      (memberEmails || [])
-        .map(FirestoreService.normalizeChatEmail)
-        .filter(Boolean)
-    )];
-
-    if (!roomId || normalizedMembers.length === 0) {
-      return;
-    }
-
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    await updateDoc(roomRef, {
-      memberEmails: arrayUnion(...normalizedMembers),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static async promoteChatRoomMember(roomId, memberEmail = '') {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
-    if (!roomId || !normalizedEmail) return;
-
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    await updateDoc(roomRef, {
-      roomAdminEmails: arrayUnion(normalizedEmail),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static async updateChatRoomSettings(roomId, updates = {}) {
-    if (!roomId) return;
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    await updateDoc(roomRef, {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static async deleteChatRoom(roomId) {
-    if (!roomId) return;
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    await deleteDoc(roomRef);
-  }
-
-  static async removeChatRoomMember(roomId, memberEmail = '') {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
-    if (!roomId || !normalizedEmail) return;
-
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    await updateDoc(roomRef, {
-      memberEmails: arrayRemove(normalizedEmail),
-      roomAdminEmails: arrayRemove(normalizedEmail),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static async joinChatRoomByInviteCode(roomId, inviteCode, memberEmail = '') {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(memberEmail);
-    if (!roomId || !inviteCode || !normalizedEmail) {
-      throw new Error('Missing invite details');
-    }
-
-    const roomRef = doc(db, 'chat_rooms', roomId);
-    const roomSnap = await getDoc(roomRef);
-    if (!roomSnap.exists()) {
-      throw new Error('Chat room not found');
-    }
-
-    const room = roomSnap.data();
-    if (room?.roomType !== 'group') {
-      throw new Error('Invite links are only available for group rooms');
-    }
-
-    const currentCode = String(room?.inviteCode || '').trim();
-    if (!currentCode || currentCode !== String(inviteCode).trim()) {
-      throw new Error('This invite link is no longer valid');
-    }
-
-    const alreadyJoined = (room?.memberEmails || [])
-      .map(FirestoreService.normalizeChatEmail)
-      .includes(normalizedEmail);
-    if (alreadyJoined) {
-      return room;
-    }
-
-    await updateDoc(roomRef, {
-      memberEmails: arrayUnion(normalizedEmail),
-      [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static subscribeToMyChatRooms(userEmail, callback) {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(userEmail);
-    if (!normalizedEmail) return () => {};
-
-    const q = query(
-      FirestoreService.chatRoomCollection(),
-      where('memberEmails', 'array-contains', normalizedEmail),
-      limit(50)
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const rooms = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => {
-          const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-          const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-          return bTime - aTime;
-        });
-      callback(rooms);
-    });
-  }
-
-  static subscribeToChatMessages(roomId, callback) {
-    if (!roomId) return () => {};
-
-    const q = query(
-      FirestoreService.chatMessagesCollection(roomId),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const messages = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
-      callback(messages);
-    });
-  }
-
-  static async getMoreChatMessages(roomId, oldestCreatedAt) {
-    if (!roomId || !oldestCreatedAt) return [];
-    try {
-      const q = query(
-        FirestoreService.chatMessagesCollection(roomId),
-        orderBy('createdAt', 'desc'),
-        startAfter(oldestCreatedAt),
-        limit(50)
-      );
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
-    } catch (error) {
-      console.error('[FirestoreService] Error fetching older messages:', error);
-      return [];
-    }
-  }
-
-  static async sendChatMessage(roomId, {
-    text,
-    senderUid,
-    senderEmail,
-    senderName = '',
-    senderAvatar = '',
-    attachments = [],
-    replyToMessageId = '',
-    replyToText = '',
-    replyToSenderName = '',
-    replyToSenderEmail = '',
-    roomContext = null
-  }) {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(senderEmail);
-    if (!roomId || !senderUid || !normalizedEmail) {
-      throw new Error('Missing message metadata');
-    }
-
-    const payload = {
-      text: String(text || '').trim(),
-      senderUid,
-      senderEmail: normalizedEmail,
-      senderName: senderName || 'StudyOs User',
-      senderAvatar: senderAvatar || '',
-      attachments,
-      replyToMessageId: String(replyToMessageId || ''),
-      replyToText: String(replyToText || ''),
-      replyToSenderName: String(replyToSenderName || ''),
-      replyToSenderEmail: String(replyToSenderEmail || ''),
-      reactions: {
-        thumbsUp: [],
-        heart: [],
-        laugh: []
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    let messageRef = null;
-    try {
-      const roomRef = doc(db, 'chat_rooms', roomId);
-      const room = roomContext || null;
-      const roomSnap = room ? null : await getDoc(roomRef);
-      const resolvedRoom = room || (roomSnap?.exists() ? roomSnap.data() : null);
-      const mentionEmails = FirestoreService.extractChatMentions(text, resolvedRoom?.memberEmails || [], normalizedEmail);
-      const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
-      const trimmedText = String(text || '').trim();
-      const roomPreviewText = trimmedText
-        ? trimmedText.slice(0, 240)
-        : (hasAttachments ? `Shared ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}` : '');
-      messageRef = doc(FirestoreService.chatMessagesCollection(roomId));
-      await setDoc(messageRef, payload);
-      try {
-        await updateDoc(roomRef, {
-          lastMessage: roomPreviewText,
-          lastMessageAt: new Date().toISOString(),
-          lastMessageSenderEmail: normalizedEmail,
-          lastMessageSenderUid: senderUid,
-          lastMessageSenderName: senderName || 'StudyOs User',
-          lastMessageSenderAvatar: senderAvatar || '',
-          lastMessageHasAttachments: hasAttachments,
-          lastMessageAttachmentCount: hasAttachments ? attachments.length : 0,
-          lastMessageMentionEmails: mentionEmails,
-          updatedAt: new Date().toISOString(),
-          [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString()
-        });
-      } catch (error) {
-        if (error?.code !== 'permission-denied') {
-          throw error;
-        }
-        console.warn('[FirestoreService] Failed to update chat room metadata after sending message:', error);
-      }
-      return messageRef;
-    } catch (error) {
-      if (error?.code === 'permission-denied') {
-        throw new Error('Chat access is not enabled for this account yet or you are not a member of this room. Please ask an admin to deploy the latest chat rules.');
-      }
-      throw error;
-    }
-  }
-
-  static async toggleChatReaction(roomId, messageId, reaction, userEmail) {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(userEmail);
-    const reactionKey = FirestoreService.chatReactionKey(reaction);
-    if (!roomId || !messageId || !normalizedEmail || !reactionKey) return;
-
-    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
-    const messageSnap = await getDoc(messageRef);
-    if (!messageSnap.exists()) {
-      throw new Error('Message not found');
-    }
-
-    const current = messageSnap.data()?.reactions?.[reactionKey] || [];
-    const hasReacted = Array.isArray(current) && current.includes(normalizedEmail);
-
-    await updateDoc(messageRef, {
-      [`reactions.${reactionKey}`]: hasReacted ? arrayRemove(normalizedEmail) : arrayUnion(normalizedEmail),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static async updateChatMessage(roomId, messageId, newText) {
-    if (!roomId || !messageId) return;
-    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
-    await updateDoc(messageRef, {
-      text: String(newText || '').trim(),
-      edited: true,
-      editedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-  static async deleteChatMessage(roomId, messageId) {
-    if (!roomId || !messageId) return;
-    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
-    await deleteDoc(messageRef);
-  }
-
-  static async togglePinChatMessage(roomId, messageId, isPinned) {
-    if (!roomId || !messageId) return;
-    const messageRef = doc(db, 'chat_rooms', roomId, 'messages', messageId);
-    await updateDoc(messageRef, {
-      pinned: !isPinned,
-      pinnedAt: !isPinned ? new Date().toISOString() : null,
-      updatedAt: new Date().toISOString()
-    });
-  }
-
-
-  static async markChatRoomRead(roomId, userEmail) {
-    const normalizedEmail = FirestoreService.normalizeChatEmail(userEmail);
-    if (!roomId || !normalizedEmail) return;
-
-    const cacheKey = `${roomId}:${normalizedEmail}`;
-    const lastMark = chatRoomReadCache.get(cacheKey) || 0;
-    if (Date.now() - lastMark < 60 * 1000) return;
-    chatRoomReadCache.set(cacheKey, Date.now());
-
-    await updateDoc(doc(db, 'chat_rooms', roomId), {
-      [`lastReadAtByEmail.${FirestoreService.chatEmailKey(normalizedEmail)}`]: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-  }
+  // End of core data methods
 
   static async syncLocalGamificationState(userId, pendingXP, pendingStudyTime) {
     if (!userId) return;
@@ -1254,6 +851,13 @@ class FirestoreService {
     }
     try {
       let sessionId = sessionStorage.getItem('studyos_session_id');
+      const lastLoggedAt = Number(sessionStorage.getItem('studyos_session_logged_at') || 0);
+
+      // If already logged in this tab session within the last 30 minutes, skip writing to Firestore
+      if (sessionId && Date.now() - lastLoggedAt < 30 * 60 * 1000) {
+        return sessionId;
+      }
+
       if (!sessionId) {
         sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         sessionStorage.setItem('studyos_session_id', sessionId);
@@ -1273,6 +877,8 @@ class FirestoreService {
         isActive: true
       }, { merge: true });
       
+      sessionStorage.setItem('studyos_session_logged_at', Date.now().toString());
+
       return sessionId;
     } catch (e) {
       if (e?.code !== 'permission-denied') {

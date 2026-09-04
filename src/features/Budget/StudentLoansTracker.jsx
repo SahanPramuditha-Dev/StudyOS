@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GraduationCap, Plus, DollarSign } from 'lucide-react';
+import EmptyState from '../../components/EmptyState';
 
 const StudentLoansTracker = ({ budgetData, setBudgetData }) => {
   const [provider, setProvider] = useState('');
@@ -147,10 +148,12 @@ const StudentLoansTracker = ({ budgetData, setBudgetData }) => {
            
            <div className="grid grid-cols-1 gap-4">
              {studentLoans.length === 0 ? (
-               <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
-                  <GraduationCap size={48} className="opacity-20 text-slate-500" />
-                  <p className="text-sm font-semibold text-slate-500">No student loans tracked yet.</p>
-               </div>
+               <EmptyState
+                 compact
+                 icon={<GraduationCap size={32} />}
+                 title="No Loans Tracked"
+                 description="Track student loans, credit cards, or formal education debts here."
+               />
              ) : (
                studentLoans.map(loan => {
                  const remaining = Math.max(0, loan.principal - loan.amountPaid);
